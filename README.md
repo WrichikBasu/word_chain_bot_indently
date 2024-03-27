@@ -1,4 +1,4 @@
-# Word Chain Bot Indently
+# Word Chain Bot for Indently
 *The Indently Discord server's indigineous word chain bot!*
 
 Join the [Indently Discord server](https://discord.gg/indently-1040343818274340935) to see this bot in action! 
@@ -14,5 +14,4 @@ A premium node can also be purchased at a very cheap rate, which is what we use.
 
 ### Credits
 - Base code for `main.py` taken from the repo [Counting Bot for Indently](https://github.com/guanciottaman/counting_bot_indently).
-Thanks to @guanciottaman for releasing the project under the MIT License.
-- Thanks to @mettlex for showing me how to use the Wiktionary API through his bot [serverless-literally](https://github.com/mettlex/serverless-literally).
+- Idea of the word chain game and the use of Wiktionary API came from the bot [serverless-literally](https://github.com/mettlex/serverless-literally).
