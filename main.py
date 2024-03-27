@@ -687,5 +687,40 @@ async def force_dump(interaction: discord.Interaction):
     await interaction.response.send_message('Configuration data successfully dumped.')
 
 
+@bot.tree.command(name='prune', description='(DANGER) Deletes data of users who are no longer in the server')
+@app_commands.default_permissions(ban_members=True)
+async def prune(interaction: discord.Interaction):
+    await interaction.response.defer()
+
+    conn: sqlite3.Connection = sqlite3.connect('database.sqlite3')
+    cursor: sqlite3.Cursor = conn.cursor()
+
+    cursor.execute(f'SELECT member_id FROM {Bot.TABLE_MEMBERS} WHERE server_id = {interaction.guild.id}')
+    result: Optional[list[tuple[int]]] = cursor.fetchall()
+
+    if result:
+        count: int = 0
+
+        for res in result:
+            user_id: int = res[0]
+
+            if interaction.guild.get_member(user_id) is None:
+                cursor.execute(f'DELETE FROM members WHERE member_id = {user_id} '
+                               f'AND server_id = {interaction.guild.id}')
+                count += 1
+                print(f'Removed data for user {user_id}.')
+
+        if count > 0:
+            conn.commit()
+            await interaction.followup.send(f'Successfully removed data for {count} user(s).')
+        else:
+            await interaction.followup.send('No users met the criteria to be removed.')
+
+    else:
+        await interaction.followup.send('No users found in the database.')
+
+    conn.close()
+
+
 if __name__ == '__main__':
     bot.run(TOKEN)
