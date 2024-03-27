@@ -179,7 +179,8 @@ class Bot(commands.Bot):
 
                 try:
                     member: discord.Member = await self.reliable_role.guild.fetch_member(user_id)
-                    cursor.execute(f'SELECT correct, wrong, score FROM members WHERE member_id = {user_id}')
+                    cursor.execute(f'SELECT correct, wrong, score FROM members WHERE member_id = {user_id} '
+                                   f'AND server_id = {member.guild.id}')
                     stats: Optional[tuple[int]] = cursor.fetchone()
 
                     if stats:
@@ -322,10 +323,16 @@ Please enter another word.''')
         # ----------------------------------
         if not self.get_query_response(future, word):
 
-            response: str = f'''{message.author.mention} messed up the chain! \
+            if self._config.current_word:
+                response: str = f'''{message.author.mention} messed up the chain! \
 The word you entered does not exist.
 Restart with a word starting with **{self._config.current_word[-1]}** and try to beat the \
 current high score of **{self._config.high_score}**!'''
+
+            else:
+                response: str = f'''{message.author.mention} messed up the chain! \
+The word you entered does not exist.
+Restart and try to beat the current high score of **{self._config.high_score}**!'''
 
             await self.handle_mistake(message=message, response=response, conn=conn)
 
@@ -407,10 +414,9 @@ WHERE member_id = ? AND server_id = ?''',
     def get_query_response(future: concurrent.futures.Future, word: str) -> bool:
         response = future.result()
         data = response.json()
-        print(data)
 
         try:
-            if data[1][0].lower == word:
+            if data[1][0] == word:
                 return True
         except Exception:
             pass
@@ -510,7 +516,7 @@ async def set_channel(interaction: discord.Interaction, channel: discord.TextCha
     config.channel_id = channel.id
     config.dump_data()
     bot.read_config()  # Explicitly ask the bot to re-read the config
-    await interaction.response.send_message(f'Counting channel was set to {channel.mention}')
+    await interaction.response.send_message(f'Word chain channel was set to {channel.mention}')
 
 
 @bot.tree.command(name='listcmds', description='Lists commands')
@@ -537,32 +543,39 @@ async def list_commands(interaction: discord.Interaction):
 async def stats_user(interaction: discord.Interaction, member: discord.Member = None):
     """Command to show the stats of a specific user"""
     await interaction.response.defer()
+
     if member is None:
         member = interaction.user
+
     emb = discord.Embed(title=f'{member.display_name}\'s stats', color=discord.Color.blue())
+
     conn = sqlite3.connect('database.sqlite3')
     c = conn.cursor()
-    c.execute('SELECT * FROM members WHERE member_id = ?', (member.id,))
+
+    c.execute(f'SELECT score, correct, wrong, highest_valid_count '
+              f'FROM {Bot.TABLE_MEMBERS} WHERE member_id = {member.id} AND server_id = {member.guild.id}')
     stats = c.fetchone()
+
     if stats is None:
-        await interaction.response.send_message('You have never counted in this server!')
+        await interaction.followup.send('You have never played in this server!')
         conn.close()
         return
-    c.execute(f'SELECT score FROM members WHERE member_id = {member.id}')
-    score = c.fetchone()[0]
-    c.execute(f'SELECT COUNT(member_id) FROM members WHERE score >= {score}')
+
+    c.execute(f'SELECT COUNT(member_id) FROM members WHERE score >= {stats[0]} AND server_id = {member.guild.id}')
     position = c.fetchone()[0]
     conn.close()
+
     emb.description = f'''{member.mention}\'s stats:\n
-**Score:** {stats[1]} (#{position})
-**✅Correct:** {stats[2]}
-**❌Wrong:** {stats[3]}
-**Highest valid count:** {stats[4]}\n
-**Correct rate:** {stats[1] / stats[2] * 100:.2f}%'''
+**Score:** {stats[0]} (#{position})
+**✅Correct:** {stats[1]}
+**❌Wrong:** {stats[2]}
+**Highest valid count:** {stats[3]}\n
+**Accuracy:** {(stats[1] / (stats[1] + stats[2])) * 100:.2f}%'''
+
     await interaction.followup.send(embed=emb)
 
 
-@bot.tree.command(name="stats_server", description="View server counting stats")
+@bot.tree.command(name="stats_server", description="View server word chain stats")
 async def stats_server(interaction: discord.Interaction):
     """Command to show the stats of the server"""
     # Use the bot's config variable, do not re-read file as it may not have been updated yet
@@ -573,9 +586,9 @@ async def stats_server(interaction: discord.Interaction):
         return
 
     server_stats_embed = discord.Embed(
-        description=f'''**Current Count**: {config.current_count}
+        description=f'''**Current Chain Length**: {config.current_count}
 High Score: {config.high_score}
-{f"Last counted by: <@{config.current_member_id}>" if config.current_member_id else ""}''',
+{f"Last word by: <@{config.current_member_id}>" if config.current_member_id else ""}''',
         color=discord.Color.blurple()
     )
     server_stats_embed.set_author(name=interaction.guild, icon_url=interaction.guild.icon)
@@ -592,7 +605,8 @@ async def leaderboard(interaction: discord.Interaction):
 
     conn = sqlite3.connect('database.sqlite3')
     c = conn.cursor()
-    c.execute('SELECT member_id, score FROM members ORDER BY score DESC LIMIT 10')
+    c.execute(f'SELECT member_id, score FROM members WHERE server_id = {interaction.guild.id} '
+              f'ORDER BY score DESC LIMIT 10')
     users = c.fetchall()
 
     for i, user in enumerate(users, 1):
@@ -604,8 +618,8 @@ async def leaderboard(interaction: discord.Interaction):
 
 
 @bot.tree.command(name='set_failed_role',
-                  description='Sets the role to be used when a user fails to count')
-@app_commands.describe(role='The role to be used when a user fails to count')
+                  description='Sets the role to be used when a user puts a wrong word')
+@app_commands.describe(role='The role to be used when a user puts a wrong word')
 @app_commands.default_permissions(ban_members=True)
 async def set_failed_role(interaction: discord.Interaction, role: discord.Role):
     """Command to set the role to be used when a user fails to count"""
@@ -618,8 +632,8 @@ async def set_failed_role(interaction: discord.Interaction, role: discord.Role):
 
 
 @bot.tree.command(name='set_reliable_role',
-                  description='Sets the role to be used when a user gets 100 of score')
-@app_commands.describe(role='The role to be used when a user fails to count')
+                  description='Sets the role to be used when a user attains a score of 100')
+@app_commands.describe(role='The role to be used when a user attains a score of 100')
 @app_commands.default_permissions(ban_members=True)
 async def set_reliable_role(interaction: discord.Interaction, role: discord.Role):
     """Command to set the role to be used when a user gets 100 of score"""
