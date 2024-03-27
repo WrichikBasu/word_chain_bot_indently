@@ -108,6 +108,7 @@ class Bot(commands.Bot):
         intents.members = True
         self._config: Config = Config.read()
         self._busy: int = 0
+        self.participating_users: Optional[set[int]] = None
         self.failed_role: Optional[discord.Role] = None
         self.reliable_role: Optional[discord.Role] = None
         super().__init__(command_prefix='!', intents=intents)
@@ -157,17 +158,41 @@ class Bot(commands.Bot):
 
             break
 
-    async def add_remove_reliable_role(self, new_score: int, message: discord.Message):
+    async def add_remove_reliable_role(self):
         """
-        Check the score and add or remove the reliable counter role.
+        Adds/removes the reliable role from participating users.
+
+        Criteria for getting the reliable role:
+        1. Accuracy must be > 99%. (Accuracy = correct / (correct + wrong)).
+        2. Must have >= 100 correct inputs.
+        3. Must have score >= 100.
         """
-        if self.reliable_role is not None:
+        if self.reliable_role and self.participating_users:
 
-            if new_score >= 100 and self.reliable_role not in message.author.roles:  # Add role if score >= 100
-                await message.author.add_roles(self.reliable_role)
+            users: set[int] = self.participating_users.copy()  # Copy into a variable to prevent data anomaly
+            self.participating_users = None
 
-            if new_score < 100 and self.reliable_role in message.author.roles:  # Remove role if score < 100
-                await message.author.remove_roles(self.reliable_role)
+            conn: sqlite3.Connection = sqlite3.connect('database.sqlite3')
+            cursor: sqlite3.Cursor = conn.cursor()
+
+            for user_id in users:
+
+                try:
+                    member: discord.Member = await self.reliable_role.guild.fetch_member(user_id)
+                    cursor.execute(f'SELECT correct, wrong, score FROM members WHERE member_id = {user_id}')
+                    stats: Optional[tuple[int]] = cursor.fetchone()
+
+                    if stats:
+                        accuracy: float = stats[0] / (stats[0] + stats[1])
+
+                        if accuracy > 0.990 and stats[0] >= 100 and stats[2] >= 100:
+                            await member.add_roles(self.reliable_role)
+                        else:
+                            await member.remove_roles(self.reliable_role)
+
+                except discord.NotFound:
+                    # Member no longer in the server
+                    continue
 
     async def add_remove_failed_role(self):
         """
@@ -213,6 +238,7 @@ class Bot(commands.Bot):
         if self._busy == 0:
             self._config.dump_data()
             await self.add_remove_failed_role()
+            await self.add_remove_reliable_role()
 
     async def on_message(self, message: discord.Message) -> None:
         """Override the on_message method"""
@@ -229,20 +255,23 @@ class Bot(commands.Bot):
 
         self._busy += 1
 
+        if self.participating_users is None:
+            self.participating_users = {message.author.id, }
+        else:
+            self.participating_users.add(message.author.id)
+
         conn = sqlite3.connect('database.sqlite3')
         c = conn.cursor()
-        c.execute(f'SELECT score, highest_valid_count FROM members WHERE member_id = {message.author.id} '
+        c.execute(f'SELECT highest_valid_count FROM members WHERE member_id = {message.author.id} '
                   f'AND server_id = {message.guild.id}')
-        stats: tuple[int] = c.fetchone()
+        stats: Optional[tuple[int]] = c.fetchone()
 
         if stats is None:
-            score = 0
             highest_valid_count = 0
             c.execute(f'INSERT INTO members VALUES({message.guild.id}, {message.author.id}, 0, 0, 0, 0)')
             conn.commit()
         else:
-            score = stats[0]
-            highest_valid_count = stats[1]
+            highest_valid_count = stats[0]
 
         # --------------------------
         # Check if word is valid
@@ -259,7 +288,7 @@ The word you entered did not begin with the last letter of the previous word ({s
 Restart with a word starting with **{self._config.current_word[-1]}** and try to beat the \
 current high score of **{self._config.high_score}**!'''
 
-            await self.handle_mistake(message, response, conn, score)
+            await self.handle_mistake(message, response, conn)
 
             return
 
@@ -272,14 +301,13 @@ You cannot send two words in a row!
 Restart with a word starting with **{self._config.current_word[-1]}** and \
 try to beat the current high score of **{self._config.high_score}**!'''
 
-            await self.handle_mistake(message=message, response=response, conn=conn, score=score)
+            await self.handle_mistake(message=message, response=response, conn=conn)
 
             return
 
         # --------------------
         # Check repetitions
         # --------------------
-        # TODO
         c.execute(f'SELECT words FROM {Bot.TABLE_USED_WORDS} WHERE server_id = {message.guild.id} AND words = "{word}"')
         used_words = c.fetchone()
         if used_words is not None:
@@ -299,7 +327,7 @@ The word you entered does not exist.
 Restart with a word starting with **{self._config.current_word[-1]}** and try to beat the \
 current high score of **{self._config.high_score}**!'''
 
-            await self.handle_mistake(message=message, response=response, conn=conn, score=score)
+            await self.handle_mistake(message=message, response=response, conn=conn)
 
             return
 
@@ -320,11 +348,6 @@ WHERE member_id = ? AND server_id = ?''',
         conn.commit()
         conn.close()
 
-        # Check and add/remove reliable counter role
-        # TODO: defer until not busy?
-        score += 1
-        await self.add_remove_reliable_role(score, message)
-
         # Check and reset the self._config.failed_member_id to None.
         # No need to remove the role itself, it will be done later when not busy
         if self.failed_role and self._config.failed_member_id == message.author.id:
@@ -338,7 +361,7 @@ WHERE member_id = ? AND server_id = ?''',
     # ---------------------------------------------------------------------------------------
 
     async def handle_mistake(self, message: discord.Message,
-                             response: str, conn: sqlite3.Connection, score: int) -> None:
+                             response: str, conn: sqlite3.Connection) -> None:
         """Handles when someone messes up the count with a wrong number"""
 
         if self.failed_role:
@@ -355,15 +378,10 @@ WHERE member_id = ? AND server_id = ?''',
                   f'SET score = score - 1, wrong = wrong + 1 '
                   f'WHERE member_id = {message.author.id} AND '
                   f'server_id = {message.guild.id}')
-        # TODO clear words schema
+        # Clear used words schema
         c.execute(f'DELETE FROM {Bot.TABLE_USED_WORDS} WHERE server_id = {message.guild.id}')
         conn.commit()
         conn.close()
-
-        # Check and add/remove reliable counter role
-        # TODO: defer until not busy?
-        score -= 1
-        await self.add_remove_reliable_role(score, message)
 
         await self.schedule_busy_work()
 
@@ -448,7 +466,7 @@ WHERE member_id = ? AND server_id = ?''',
         await self.tree.sync()
         conn = sqlite3.connect('database.sqlite3')
         c = conn.cursor()
-        c.execute('CREATE TABLE IF NOT EXISTS members '
+        c.execute(f'CREATE TABLE IF NOT EXISTS {Bot.TABLE_MEMBERS} '
                   '(server_id INTEGER NOT NULL, '
                   'member_id INTEGER NOT NULL, '
                   'score INTEGER NOT NULL, '
