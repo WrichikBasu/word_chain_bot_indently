@@ -502,10 +502,10 @@ WHERE member_id = ? AND server_id = ?''',
             return
         if not all(c in POSSIBLE_CHARACTERS for c in message.content):
             return
-
+        # TODO
         await message.channel.send(
-            f'{message.author.mention} deleted their word! '
-            f'The **last** number ws **{self._config.current_word}**.')
+            f'{message.author.mention} deleted their word!  '
+            f'The **last** word was **{self._config.current_word}**.')
 
     async def on_message_edit(self, before: discord.Message, after: discord.Message) -> None:
         """Send a message in the channel if a user modifies their input."""
@@ -525,9 +525,9 @@ WHERE member_id = ? AND server_id = ?''',
             return
         if before.content == after.content:
             return
-
+        # TODO
         await after.channel.send(
-            f'{after.author.mention} edited their word! The **next** word is **{self._config.current_word}**.')
+            f'{after.author.mention} edited their word! The **last** word was **{self._config.current_word}**.')
 
     async def setup_hook(self) -> NoReturn:
         await self.tree.sync()
@@ -590,12 +590,14 @@ async def list_commands(interaction: discord.Interaction):
 **listcmds** - Lists all the slash commands
 **stats_user** - Shows the stats of a specific user
 **stats_server** - Shows the stats of the server
+**check_word** - Check if a word exists/check the spelling.
 **leaderboard** - Shows the leaderboard of the server
 **set_failed_role** - Sets the role to give when a user fails (Admins only)
 **set_reliable_role** - Sets the role to give when a user passes the score of 100 (Admins only)
 **remove_failed_role** - Removes the role to give when a user fails (Admins only)
 **remove_reliable_role** - Removes the role to give when a user passes the score of 100 (Admins only)
-**force_dump** - Forcibly dump bot config data. Use only when no one is actively playing. (Admins only)''')
+**force_dump** - Forcibly dump bot config data. Use only when no one is actively playing. (Admins only)
+**prune** - Remove data for users who are no longer in the server. (Admins only)''')
     await interaction.response.send_message(embed=emb)
 
 
@@ -647,8 +649,9 @@ async def stats_server(interaction: discord.Interaction):
         return
 
     server_stats_embed = discord.Embed(
-        description=f'''**Current Chain Length**: {config.current_count}
-High Score: {config.high_score}
+        description=f'''Current Chain Length: {config.current_count}
+Longest chain length: {config.high_score}
+{f"**Last word:** {config.current_word}" if config.current_word else ""}
 {f"Last word by: <@{config.current_member_id}>" if config.current_member_id else ""}''',
         color=discord.Color.blurple()
     )
