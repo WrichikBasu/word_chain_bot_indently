@@ -66,11 +66,11 @@ class Config:
 
     def reset(self) -> None:
         """
-        Reset current count.
+        Reset chain stats.
+        Do NOT reset the current word.
         NOTE: config is no longer dumped by default. Explicitly call config.dump_data().
         """
         self.current_count = 0
-        self.current_word = None
         self.correct_inputs_by_failed_member = 0
 
         # update current member id
@@ -127,7 +127,7 @@ class Bot(commands.Bot):
         if self._config.channel_id is not None:
             channel = bot.get_channel(self._config.channel_id)
 
-            if self._config.current_member_id:
+            if self._config.current_word and self._config.current_member_id:
                 member: discord.Member = await channel.guild.fetch_member(self._config.current_member_id)
                 await channel.send(
                     f'I\'m now online! Last word by {member.mention}. The **next** word should **begin** with '
@@ -308,6 +308,7 @@ try to beat the current high score of **{self._config.high_score}**!'''
 
         # --------------------
         # Check repetitions
+        # (Repetitions are not mistakes)
         # --------------------
         c.execute(f'SELECT words FROM {Bot.TABLE_USED_WORDS} WHERE server_id = {message.guild.id} AND words = "{word}"')
         used_words = c.fetchone()
@@ -316,6 +317,7 @@ try to beat the current high score of **{self._config.high_score}**!'''
 The chain has **not** been broken.
 Please enter another word.''')
             await message.add_reaction('❌')
+            await self.schedule_busy_work()
             return
 
         # ----------------------------------
