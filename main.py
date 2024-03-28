@@ -619,6 +619,14 @@ async def leaderboard(interaction: discord.Interaction):
     await interaction.followup.send(embed=emb)
 
 
+@bot.tree.command(name='check_word', description='Check if a word is correct')
+@app_commands.describe(word='The word to check')
+async def check_word(interaction: discord.Interaction, word: str):
+    future: concurrent.futures.Future = bot.start_api_query(word)
+    await interaction.response.send_message(
+        f'The word **{word}** {"exists" if bot.get_query_response(future, word) else "does not exist"}.')
+
+
 @bot.tree.command(name='set_failed_role',
                   description='Sets the role to be used when a user puts a wrong word')
 @app_commands.describe(role='The role to be used when a user puts a wrong word')
