@@ -102,6 +102,10 @@ class Bot(commands.Bot):
     TABLE_USED_WORDS: str = "used_words"
     TABLE_MEMBERS: str = "members"
 
+    RESPONSE_WORD_EXISTS: int = 1
+    RESPONSE_WORD_DOESNT_EXIST: int = 0
+    RESPONSE_ERROR: int = -1
+
     def __init__(self) -> None:
         intents = discord.Intents.default()
         intents.message_content = True
@@ -323,21 +327,30 @@ Please enter another word.''')
         # ----------------------------------
         # Check if word is valid (contd.)
         # ----------------------------------
-        if not self.get_query_response(future, word):
+        result: int = self.get_query_response(future)
+
+        if result == Bot.RESPONSE_WORD_DOESNT_EXIST:
 
             if self._config.current_word:
                 response: str = f'''{message.author.mention} messed up the chain! \
 The word you entered does not exist.
 Restart with a word starting with **{self._config.current_word[-1]}** and try to beat the \
 current high score of **{self._config.high_score}**!'''
-
             else:
                 response: str = f'''{message.author.mention} messed up the chain! \
 The word you entered does not exist.
 Restart and try to beat the current high score of **{self._config.high_score}**!'''
 
             await self.handle_mistake(message=message, response=response, conn=conn)
+            return
 
+        elif result == Bot.RESPONSE_ERROR:
+
+            await message.add_reaction('⚠️')
+            await message.channel.send(''':stop_sign: There was an issue in the backend.
+The above entered word is **NOT** being taken into account.''')
+
+            await self.schedule_busy_work()
             return
 
         # --------------------
@@ -397,6 +410,19 @@ WHERE member_id = ? AND server_id = ?''',
     # ------------------------------------------------------------------------------------------------
     @staticmethod
     def start_api_query(word: str) -> concurrent.futures.Future:
+        """
+        Starts a Wiktionary API query in the background to find the given word.
+
+        Parameters
+        ----------
+        word : str
+             The word to be searched for.
+
+        Returns
+        -------
+        concurrent.futures.Future
+              A Futures object for the API query.
+        """
 
         session: FuturesSession = FuturesSession()
 
@@ -413,17 +439,50 @@ WHERE member_id = ? AND server_id = ?''',
         return session.get(url=url, params=params)
 
     @staticmethod
-    def get_query_response(future: concurrent.futures.Future, word: str) -> bool:
-        response = future.result()
-        data = response.json()
+    def get_query_response(future: concurrent.futures.Future) -> int:
+        """
+        Get the result of a query that was started in the background.
 
+        Parameters
+        ----------
+        future : concurrent.futures.Future
+            The Future object corresponding to the started API query.
+
+        Returns
+        -------
+        int
+            `Bot.RESPONSE_WORD_EXISTS` is the word exists, `Bot.RESPONSE_WORD_DOESNT_EXIST` if the word does not exist,
+            or `Bot.RESPONSE_ERROR` if an error (of any type) was raised in the query.
+        """
         try:
-            if data[1][0] == word:
-                return True
-        except Exception:
-            pass
+            response = future.result(timeout=2)
 
-        return False
+            if response.status_code >= 400:
+                print(f'Received response code {response.status_code}')
+                return Bot.RESPONSE_ERROR
+
+            data = response.json()
+            print(data)
+
+            word: str = data[0]
+            best_match: str = data[1][0]  # Should raise an IndexError if no match is returned
+
+            if best_match.lower() == word:
+                return Bot.RESPONSE_WORD_EXISTS
+            else:
+                # Normally, the control should not reach this else statement.
+                # If, however, some word is returned by chance, and it doesn't match the entered word,
+                # this else will take care of it
+                return Bot.RESPONSE_WORD_DOESNT_EXIST
+
+        except TimeoutError:  # Send Bot.RESPONSE_ERROR
+            print('Timeout error raised when trying to get the query result.')
+        except IndexError:
+            return Bot.RESPONSE_WORD_DOESNT_EXIST
+        except Exception as ex:
+            print(f'An exception was raised while getting the query result:\n{ex}')
+
+        return Bot.RESPONSE_ERROR
 
     # ------------------------------------------------------------------------------------------------
 
@@ -622,9 +681,22 @@ async def leaderboard(interaction: discord.Interaction):
 @bot.tree.command(name='check_word', description='Check if a word is correct')
 @app_commands.describe(word='The word to check')
 async def check_word(interaction: discord.Interaction, word: str):
-    future: concurrent.futures.Future = bot.start_api_query(word)
-    await interaction.response.send_message(
-        f'The word **{word}** {"exists" if bot.get_query_response(future, word) else "does not exist"}.')
+
+    future: concurrent.futures.Future = Bot.start_api_query(word)
+
+    await interaction.response.defer()
+
+    emb = discord.Embed(title=f'Check if word exists', color=discord.Color.gold())
+
+    match Bot.get_query_response(future):
+        case Bot.RESPONSE_WORD_EXISTS:
+            emb.description = f':white_check_mark: The word "*{word}*\" exists.'
+        case Bot.RESPONSE_WORD_DOESNT_EXIST:
+            emb.description = f':x: The word \"*{word}*\" does **not** exist.'
+        case _:
+            emb.description = f':warning: There was an issue in fetching the result.'
+
+    await interaction.followup.send(embed=emb)
 
 
 @bot.tree.command(name='set_failed_role',
