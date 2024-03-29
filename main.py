@@ -470,7 +470,7 @@ The above entered word is **NOT** being taken into account.''')
             word: str = data[0]
             best_match: str = data[1][0]  # Should raise an IndexError if no match is returned
 
-            if best_match.lower() == word:
+            if best_match.lower() == word.lower():
                 return Bot.RESPONSE_WORD_EXISTS
             else:
                 # Normally, the control should not reach this else statement.
