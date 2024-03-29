@@ -16,7 +16,7 @@ from dotenv import load_dotenv
 load_dotenv('.env')
 
 TOKEN: str = os.getenv('TOKEN')
-POSSIBLE_CHARACTERS: str = string.ascii_lowercase
+POSSIBLE_CHARACTERS: str = string.ascii_lowercase + "-"
 
 
 @dataclass
@@ -172,7 +172,7 @@ class Bot(commands.Bot):
         3. Must have score >= 100.
         """
         if self.reliable_role and self.participating_users:
-
+            # Todo
             users: set[int] = self.participating_users.copy()  # Copy into a variable to prevent data anomaly
             self.participating_users = None
 
@@ -289,7 +289,7 @@ class Bot(commands.Bot):
         # -------------------------
         if self._config.current_word and word[0] != self._config.current_word[-1]:
             response: str = f'''{message.author.mention} messed up the chain! \
-The word you entered did not begin with the last letter of the previous word ({self._config.current_word[-1]}).
+The word you entered did not begin with the last letter of the previous word (**{self._config.current_word[-1]}**).
 Restart with a word starting with **{self._config.current_word[-1]}** and try to beat the \
 current high score of **{self._config.high_score}**!'''
 
@@ -317,10 +317,10 @@ try to beat the current high score of **{self._config.high_score}**!'''
         c.execute(f'SELECT words FROM {Bot.TABLE_USED_WORDS} WHERE server_id = {message.guild.id} AND words = "{word}"')
         used_words = c.fetchone()
         if used_words is not None:
-            await message.channel.send(f'''The word {word} has already been used before. \
+            await message.channel.send(f'''The word \"{word}\" has already been used before. \
 The chain has **not** been broken.
 Please enter another word.''')
-            await message.add_reaction('❌')
+            await message.add_reaction(':warning:')
             await self.schedule_busy_work()
             return
 
@@ -500,12 +500,15 @@ WHERE member_id = ? AND server_id = ?''',
             return
         if not message.reactions:
             return
-        if not all(c in POSSIBLE_CHARACTERS for c in message.content):
+        if not all(c in POSSIBLE_CHARACTERS for c in message.content.lower()):
             return
-        # TODO
-        await message.channel.send(
-            f'{message.author.mention} deleted their word!  '
-            f'The **last** word was **{self._config.current_word}**.')
+
+        if self._config.current_word:
+            await message.channel.send(
+                f'{message.author.mention} deleted their word!  '
+                f'The **last** word was **{self._config.current_word}**.')
+        else:
+            await message.channel.send(f'{message.author.mention} deleted their word!')
 
     async def on_message_edit(self, before: discord.Message, after: discord.Message) -> None:
         """Send a message in the channel if a user modifies their input."""
@@ -521,13 +524,16 @@ WHERE member_id = ? AND server_id = ?''',
             return
         if not before.reactions:
             return
-        if not all(c in POSSIBLE_CHARACTERS for c in before.content):
+        if not all(c in POSSIBLE_CHARACTERS for c in before.content.lower()):
             return
-        if before.content == after.content:
+        if before.content.lower() == after.content.lower():
             return
-        # TODO
-        await after.channel.send(
-            f'{after.author.mention} edited their word! The **last** word was **{self._config.current_word}**.')
+
+        if self._config.current_word:
+            await after.channel.send(
+                f'{after.author.mention} edited their word! The **last** word was **{self._config.current_word}**.')
+        else:
+            await after.channel.send(f'{after.author.mention} edited their word!')
 
     async def setup_hook(self) -> NoReturn:
         await self.tree.sync()
