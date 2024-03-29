@@ -271,16 +271,17 @@ class Bot(commands.Bot):
 
         conn = sqlite3.connect('database.sqlite3')
         c = conn.cursor()
-        c.execute(f'SELECT highest_valid_count FROM members WHERE member_id = {message.author.id} '
-                  f'AND server_id = {message.guild.id}')
-        stats: Optional[tuple[int]] = c.fetchone()
 
-        if stats is None:
-            highest_valid_count = 0
-            c.execute(f'INSERT INTO members VALUES({message.guild.id}, {message.author.id}, 0, 0, 0, 0)')
+        # We need to check whether the current user already has an entry in the database.
+        # If not, we have to add an entry.
+        # Code courtesy: https://stackoverflow.com/a/9756276/8387076
+        c.execute(f'SELECT EXISTS(SELECT 1 FROM members WHERE member_id = {message.author.id} '
+                  f'AND server_id = {message.guild.id})')
+        exists: int = (c.fetchone())[0]  # Will either be 0 or 1
+
+        if exists == 0:
+            c.execute(f'INSERT INTO members VALUES({message.guild.id}, {message.author.id}, 0, 0, 0)')
             conn.commit()
-        else:
-            highest_valid_count = stats[0]
 
         # --------------------------
         # Check if word is valid
@@ -324,7 +325,7 @@ try to beat the current high score of **{self._config.high_score}**!'''
             await message.channel.send(f'''The word \"{word}\" has already been used before. \
 The chain has **not** been broken.
 Please enter another word.''')
-            await message.add_reaction(':warning:')
+            await message.add_reaction('⚠️')
             await self.schedule_busy_work()
             return
 
@@ -351,7 +352,7 @@ Restart and try to beat the current high score of **{self._config.high_score}**!
         elif result == Bot.RESPONSE_ERROR:
 
             await message.add_reaction('⚠️')
-            await message.channel.send(''':stop_sign: There was an issue in the backend.
+            await message.channel.send(''':octagonal_sign: There was an issue in the backend.
 The above entered word is **NOT** being taken into account.''')
 
             await self.schedule_busy_work()
@@ -360,16 +361,14 @@ The above entered word is **NOT** being taken into account.''')
         # --------------------
         # Everything is fine
         # ---------------------
-        current_count = self._config.current_count + 1
-        self._config.update_current(message.author.id, current_word=word)  # config dump triggered at the end of the method
+        self._config.update_current(message.author.id,
+                                    current_word=word)  # config dump triggered at the end of the method
 
         await message.add_reaction(self._config.reaction_emoji())  # config dumping done at the end of the method
 
-        c.execute(f'''UPDATE members SET score = score + 1,
-correct = correct + 1
-{f", highest_valid_count  = {current_count}" if current_count > highest_valid_count else ""}
-WHERE member_id = ? AND server_id = ?''',
-                  (message.author.id, message.guild.id))
+        c.execute(f'UPDATE {Bot.TABLE_MEMBERS} SET score = score + 1, correct = correct + 1 '
+                  f'WHERE member_id = {message.author.id} AND server_id = {message.guild.id}')
+
         c.execute(f'INSERT INTO {Bot.TABLE_USED_WORDS} VALUES ({message.guild.id}, "{word}")')
         conn.commit()
         conn.close()
@@ -459,10 +458,10 @@ WHERE member_id = ? AND server_id = ?''',
             or `Bot.RESPONSE_ERROR` if an error (of any type) was raised in the query.
         """
         try:
-            response = future.result(timeout=2)
+            response = future.result(timeout=1)
 
             if response.status_code >= 400:
-                print(f'Received response code {response.status_code}')
+                print(f'Received status code {response.status_code} from Wiktionary API query.')
                 return Bot.RESPONSE_ERROR
 
             data = response.json()
@@ -549,12 +548,11 @@ WHERE member_id = ? AND server_id = ?''',
                   'score INTEGER NOT NULL, '
                   'correct INTEGER NOT NULL, '
                   'wrong INTEGER NOT NULL, '
-                  'highest_valid_count INTEGER NOT NULL, '
                   'PRIMARY KEY (server_id, member_id))')
 
         c.execute(f'CREATE TABLE IF NOT EXISTS {Bot.TABLE_USED_WORDS} '
                   f'(server_id INTEGER NOT NULL, '
-                  'words VARCHAR(255) NOT NULL, '
+                  'words TEXT NOT NULL, '
                   'PRIMARY KEY (server_id, words))')
         conn.commit()
         conn.close()
@@ -625,7 +623,7 @@ async def stats_user(interaction: discord.Interaction, member: discord.Member = 
     conn = sqlite3.connect('database.sqlite3')
     c = conn.cursor()
 
-    c.execute(f'SELECT score, correct, wrong, highest_valid_count '
+    c.execute(f'SELECT score, correct, wrong '
               f'FROM {Bot.TABLE_MEMBERS} WHERE member_id = {member.id} AND server_id = {member.guild.id}')
     stats = c.fetchone()
 
@@ -642,7 +640,6 @@ async def stats_user(interaction: discord.Interaction, member: discord.Member = 
 **Score:** {stats[0]} (#{position})
 **✅Correct:** {stats[1]}
 **❌Wrong:** {stats[2]}
-**Highest valid count:** {stats[3]}\n
 **Accuracy:** {(stats[1] / (stats[1] + stats[2])) * 100:.2f}%'''
 
     await interaction.followup.send(embed=emb)
@@ -674,7 +671,8 @@ Longest chain length: {config.high_score}
 async def leaderboard(interaction: discord.Interaction):
     """Command to show the top 10 users with the highest score in Indently"""
     await interaction.response.defer()
-    emb = discord.Embed(title='Top 10 users in Indently',
+
+    emb = discord.Embed(title=f'Top 10 users in {interaction.guild.name}',
                         color=discord.Color.blue(), description='')
 
     conn = sqlite3.connect('database.sqlite3')
@@ -694,7 +692,6 @@ async def leaderboard(interaction: discord.Interaction):
 @bot.tree.command(name='check_word', description='Check if a word is correct')
 @app_commands.describe(word='The word to check')
 async def check_word(interaction: discord.Interaction, word: str):
-
     future: concurrent.futures.Future = Bot.start_api_query(word)
 
     await interaction.response.defer()
@@ -703,11 +700,11 @@ async def check_word(interaction: discord.Interaction, word: str):
 
     match Bot.get_query_response(future):
         case Bot.RESPONSE_WORD_EXISTS:
-            emb.description = f':white_check_mark: The word "*{word}*\" exists.'
+            emb.description = f'✅ The word "*{word}*\" exists.'
         case Bot.RESPONSE_WORD_DOESNT_EXIST:
-            emb.description = f':x: The word \"*{word}*\" does **not** exist.'
+            emb.description = f'❌ The word \"*{word}*\" does **not** exist.'
         case _:
-            emb.description = f':warning: There was an issue in fetching the result.'
+            emb.description = f'⚠️ There was an issue in fetching the result.'
 
     await interaction.followup.send(embed=emb)
 
