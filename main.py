@@ -112,7 +112,7 @@ class Bot(commands.Bot):
         intents.members = True
         self._config: Config = Config.read()
         self._busy: int = 0
-        self.participating_users: Optional[set[int]] = None
+        self._participating_users: Optional[set[int]] = None
         self.failed_role: Optional[discord.Role] = None
         self.reliable_role: Optional[discord.Role] = None
         super().__init__(command_prefix='!', intents=intents)
@@ -143,7 +143,7 @@ class Bot(commands.Bot):
 
     def set_roles(self):
         """
-        Sets the `self.failed_role` and `self.reliable_counter_role` variables.
+        Sets the `self.failed_role` and `self.reliable_role` variables.
         """
         for member in self.get_all_members():
             guild: discord.Guild = member.guild
@@ -164,40 +164,44 @@ class Bot(commands.Bot):
 
     async def add_remove_reliable_role(self):
         """
-        Adds/removes the reliable role from participating users.
+        Adds/removes the reliable role for participating users.
 
         Criteria for getting the reliable role:
-        1. Accuracy must be > 99%. (Accuracy = correct / (correct + wrong)).
-        2. Must have >= 100 correct inputs.
-        3. Must have score >= 100.
+        1. Accuracy must be >= 99%. (Accuracy = correct / (correct + wrong))
+        2. Must have score >= 100. (Score = correct - wrong)
         """
-        if self.reliable_role and self.participating_users:
-            # Todo
-            users: set[int] = self.participating_users.copy()  # Copy into a variable to prevent data anomaly
-            self.participating_users = None
+        if self.reliable_role and self._participating_users:
+
+            # Make a copy of the set to prevent runtime errors if the set changes while execution
+            users: set[int] = self._participating_users.copy()
+            self._participating_users = None
 
             conn: sqlite3.Connection = sqlite3.connect('database.sqlite3')
             cursor: sqlite3.Cursor = conn.cursor()
 
-            for user_id in users:
+            guild_id: int = self.reliable_role.guild.id
 
-                try:
-                    member: discord.Member = await self.reliable_role.guild.fetch_member(user_id)
-                    cursor.execute(f'SELECT correct, wrong, score FROM members WHERE member_id = {user_id} '
-                                   f'AND server_id = {member.guild.id}')
-                    stats: Optional[tuple[int]] = cursor.fetchone()
+            if len(users) == 1:
+                sql_stmt: str = (f'SELECT member_id, correct, wrong FROM members '
+                                 f'WHERE member_id = {tuple(users)[0]} AND server_id = {guild_id}')
+            else:
+                sql_stmt: str = (f'SELECT member_id, correct, wrong FROM members '
+                                 f'WHERE server_id = {guild_id} AND member_id IN {tuple(users)}')
 
-                    if stats:
-                        accuracy: float = stats[0] / (stats[0] + stats[1])
+            cursor.execute(sql_stmt)
+            result: Optional[list[tuple[int]]] = cursor.fetchall()
+            conn.close()
 
-                        if accuracy > 0.990 and stats[0] >= 100 and stats[2] >= 100:
+            if result:
+                for data in result:
+                    member: Optional[discord.Member] = self.reliable_role.guild.get_member(data[0])
+                    if member:
+                        accuracy: float = (data[1] / (data[1] + data[2])) * 100
+
+                        if float(f'{accuracy:.2f}') >= 99.00 and data[1] - data[2] >= 100:
                             await member.add_roles(self.reliable_role)
                         else:
                             await member.remove_roles(self.reliable_role)
-
-                except discord.NotFound:
-                    # Member no longer in the server
-                    continue
 
     async def add_remove_failed_role(self):
         """
@@ -260,10 +264,10 @@ class Bot(commands.Bot):
 
         self._busy += 1
 
-        if self.participating_users is None:
-            self.participating_users = {message.author.id, }
+        if self._participating_users is None:
+            self._participating_users = {message.author.id, }
         else:
-            self.participating_users.add(message.author.id)
+            self._participating_users.add(message.author.id)
 
         conn = sqlite3.connect('database.sqlite3')
         c = conn.cursor()
