@@ -459,7 +459,7 @@ The above entered word is **NOT** being taken into account.''')
             or `Bot.RESPONSE_ERROR` if an error (of any type) was raised in the query.
         """
         try:
-            response = future.result(timeout=1)
+            response = future.result(timeout=5)
 
             if response.status_code >= 400:
                 print(f'Received status code {response.status_code} from Wiktionary API query.')
