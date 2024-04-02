@@ -466,7 +466,6 @@ The above entered word is **NOT** being taken into account.''')
                 return Bot.RESPONSE_ERROR
 
             data = response.json()
-            print(data)
 
             word: str = data[0]
             best_match: str = data[1][0]  # Should raise an IndexError if no match is returned
