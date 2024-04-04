@@ -133,8 +133,11 @@ class Bot(commands.Bot):
             channel: Optional[discord.TextChannel] = bot.get_channel(self._config.channel_id)
             if channel:
 
-                emb: discord.Embed = discord.Embed(title='Status', description='I\'m now online!',
-                                                   colour=discord.Color.gold())
+                emb: discord.Embed = discord.Embed(description='**I\'m now online!**',
+                                                   colour=discord.Color.brand_green())
+
+                if self._config.high_score > 0:
+                    emb.description += f'\n:fire: Let\'s beat the high score of {self._config.high_score}! :fire:'
 
                 if self._config.current_word:
                     emb.add_field(name='Last valid word', value=f'{self._config.current_word}', inline=True)
