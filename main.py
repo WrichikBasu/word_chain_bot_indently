@@ -101,6 +101,7 @@ class Bot(commands.Bot):
 
     TABLE_USED_WORDS: str = "used_words"
     TABLE_MEMBERS: str = "members"
+    TABLE_CACHE: str = "word_cache"
 
     RESPONSE_WORD_EXISTS: int = 1
     RESPONSE_WORD_DOESNT_EXIST: int = 0
@@ -112,6 +113,7 @@ class Bot(commands.Bot):
         intents.members = True
         self._config: Config = Config.read()
         self._busy: int = 0
+        self._cached_words: Optional[set[str]] = None
         self._participating_users: Optional[set[int]] = None
         self.failed_role: Optional[discord.Role] = None
         self.reliable_role: Optional[discord.Role] = None
@@ -137,7 +139,7 @@ class Bot(commands.Bot):
                                                    colour=discord.Color.brand_green())
 
                 if self._config.high_score > 0:
-                    emb.description += f'\n:fire: Let\'s beat the high score of {self._config.high_score}! :fire:'
+                    emb.description += f'\n\n:fire: Let\'s beat the high score of {self._config.high_score}! :fire:\n'
 
                 if self._config.current_word:
                     emb.add_field(name='Last valid word', value=f'{self._config.current_word}', inline=True)
@@ -260,6 +262,7 @@ class Bot(commands.Bot):
             self._config.dump_data()
             await self.add_remove_failed_role()
             await self.add_remove_reliable_role()
+            self.add_to_cache()
 
     async def on_message(self, message: discord.Message) -> None:
         """Override the on_message method"""
@@ -287,17 +290,17 @@ Please enter another word.''')
         conn: sqlite3.Connection = sqlite3.connect('database.sqlite3')
         cursor: sqlite3.Cursor = conn.cursor()
 
-        # --------------------
+        # ------------------------------
         # Check repetitions
         # (Repetitions are not mistakes)
-        # --------------------
+        # ------------------------------
         cursor.execute(
             f'SELECT words FROM {Bot.TABLE_USED_WORDS} WHERE server_id = {message.guild.id} AND words = "{word}"')
         used_words = cursor.fetchone()
         if used_words is not None:
             await message.channel.send(f'''The word \"{word}\" has already been used before. \
-    The chain has **not** been broken.
-    Please enter another word.''')
+The chain has **not** been broken.
+Please enter another word.''')
             await message.add_reaction('⚠️')
             return
 
@@ -322,8 +325,16 @@ Please enter another word.''')
         # --------------------------
         # Check if word is valid
         # --------------------------
-        # Start the API request, but deal with it later
-        future: concurrent.futures.Future = self.start_api_query(word)
+        future: Optional[concurrent.futures.Future]
+
+        # First check the word cache
+        if self.is_word_in_cache(word, cursor):
+            # Word found in cache. No need to send API query
+            future = None
+        else:
+            # Word not found in cache.
+            # Start the API request, but deal with it later
+            future = self.start_api_query(word)
 
         # -------------------------
         # Wrong starting letter
@@ -354,31 +365,32 @@ try to beat the current high score of **{self._config.high_score}**!'''
         # ----------------------------------
         # Check if word is valid (contd.)
         # ----------------------------------
-        result: int = self.get_query_response(future)
+        if future:
+            result: int = self.get_query_response(future)
 
-        if result == Bot.RESPONSE_WORD_DOESNT_EXIST:
+            if result == Bot.RESPONSE_WORD_DOESNT_EXIST:
 
-            if self._config.current_word:
-                response: str = f'''{message.author.mention} messed up the chain! \
+                if self._config.current_word:
+                    response: str = f'''{message.author.mention} messed up the chain! \
 The word you entered does not exist.
 Restart with a word starting with **{self._config.current_word[-1]}** and try to beat the \
 current high score of **{self._config.high_score}**!'''
-            else:
-                response: str = f'''{message.author.mention} messed up the chain! \
+                else:
+                    response: str = f'''{message.author.mention} messed up the chain! \
 The word you entered does not exist.
 Restart and try to beat the current high score of **{self._config.high_score}**!'''
 
-            await self.handle_mistake(message=message, response=response, conn=conn)
-            return
+                await self.handle_mistake(message=message, response=response, conn=conn)
+                return
 
-        elif result == Bot.RESPONSE_ERROR:
+            elif result == Bot.RESPONSE_ERROR:
 
-            await message.add_reaction('⚠️')
-            await message.channel.send(''':octagonal_sign: There was an issue in the backend.
+                await message.add_reaction('⚠️')
+                await message.channel.send(''':octagonal_sign: There was an issue in the backend.
 The above entered word is **NOT** being taken into account.''')
 
-            await self.schedule_busy_work()
-            return
+                await self.schedule_busy_work()
+                return
 
         # --------------------
         # Everything is fine
@@ -395,6 +407,11 @@ The above entered word is **NOT** being taken into account.''')
         cursor.execute(f'INSERT INTO {Bot.TABLE_USED_WORDS} VALUES ({message.guild.id}, "{word}")')
         conn.commit()
         conn.close()
+
+        if self._cached_words is None:
+            self._cached_words = {word, }
+        else:
+            self._cached_words.add(word)
 
         if current_count > 0 and current_count % 100 == 0:
             await message.channel.send(f'{current_count} words! Nice work, keep it up!')
@@ -563,10 +580,58 @@ The above entered word is **NOT** being taken into account.''')
         else:
             await after.channel.send(f'{after.author.mention} edited their word!')
 
+    # -------------------------------------------------------------------------------------------------------
+
+    @staticmethod
+    def is_word_in_cache(word: str, cursor: sqlite3.Cursor) -> bool:
+        """
+        Check if a word is in the correct word cache schema.
+
+        Note that if this returns `True`, then the word is definitely correct. But, if this returns `False`, it
+        only means that the word does not yet exist in the schema. It does NOT mean that the word is wrong.
+
+        Parameters
+        ----------
+        word : str
+            The word to be searched for in the schema.
+        cursor : sqlite3.Cursor
+            The Cursor object to access the schema.
+
+        Returns
+        -------
+        `True` if the word exists in the cache, otherwise `False`.
+        """
+
+        cursor.execute(f'SELECT EXISTS(SELECT 1 FROM {Bot.TABLE_CACHE} WHERE words = \'{word}\')')
+        result: int = (cursor.fetchone())[0]
+        return result == 1
+
+    def add_to_cache(self) -> NoReturn:
+        """
+        Add words from `self._cached_words` into the `Bot.TABLE_CACHE` schema.
+        Should be executed when not busy.
+        """
+        if self._cached_words:
+
+            words = self._cached_words
+            self._cached_words = None
+
+            conn = sqlite3.connect('database.sqlite3')
+            cursor = conn.cursor()
+
+            for word in tuple(words):
+                # Code courtesy: https://stackoverflow.com/a/45299979/8387076
+                cursor.execute(f'INSERT OR IGNORE INTO {Bot.TABLE_CACHE} VALUES (\'{word}\')')
+
+            conn.commit()
+            conn.close()
+
     async def setup_hook(self) -> NoReturn:
         await self.tree.sync()
+
         conn = sqlite3.connect('database.sqlite3')
         c = conn.cursor()
+
         c.execute(f'CREATE TABLE IF NOT EXISTS {Bot.TABLE_MEMBERS} '
                   '(server_id INTEGER NOT NULL, '
                   'member_id INTEGER NOT NULL, '
@@ -579,6 +644,9 @@ The above entered word is **NOT** being taken into account.''')
                   f'(server_id INTEGER NOT NULL, '
                   'words TEXT NOT NULL, '
                   'PRIMARY KEY (server_id, words))')
+
+        c.execute(f'CREATE TABLE IF NOT EXISTS {Bot.TABLE_CACHE} '
+                  f'(words TEXT PRIMARY KEY)')
         conn.commit()
         conn.close()
 
@@ -726,15 +794,33 @@ async def check_word(interaction: discord.Interaction, word: str):
         emb.description = f'❌ The word *{word}* is **not** valid.'
 
     else:
-        future: concurrent.futures.Future = Bot.start_api_query(word)
+        word = word.lower()
+        conn = sqlite3.connect('database.sqlite3')
+        cursor = conn.cursor()
 
-        match Bot.get_query_response(future):
-            case Bot.RESPONSE_WORD_EXISTS:
-                emb.description = f'✅ The word *{word}* is valid.'
-            case Bot.RESPONSE_WORD_DOESNT_EXIST:
-                emb.description = f'❌ The word *{word}* is **not** valid.'
-            case _:
-                emb.description = f'⚠️ There was an issue in fetching the result.'
+        if Bot.is_word_in_cache(word, cursor):
+            emb.description = f'✅ The word *{word}* is valid.'
+
+        else:
+            future: concurrent.futures.Future = Bot.start_api_query(word)
+
+            match Bot.get_query_response(future):
+                case Bot.RESPONSE_WORD_EXISTS:
+
+                    emb.description = f'✅ The word *{word}* is valid.'
+
+                    if bot._cached_words is None:
+                        bot._cached_words = {word, }
+                    else:
+                        bot._cached_words.add(word)
+                    bot.add_to_cache()
+
+                case Bot.RESPONSE_WORD_DOESNT_EXIST:
+                    emb.description = f'❌ The word *{word}* is **not** valid.'
+                case _:
+                    emb.description = f'⚠️ There was an issue in fetching the result.'
+
+        conn.close()
 
     await interaction.followup.send(embed=emb)
 
