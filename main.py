@@ -271,6 +271,33 @@ class Bot(commands.Bot):
         if not all(c in POSSIBLE_CHARACTERS for c in word):
             return
 
+        # --------------------
+        # Check word length
+        # --------------------
+        if len(word) == 1:
+            await message.channel.send(f'''Single-letter inputs are no longer accepted. \
+The chain has **not** been broken.
+Please enter another word.''')
+            await message.add_reaction('⚠️')
+            return
+
+        conn: sqlite3.Connection = sqlite3.connect('database.sqlite3')
+        cursor: sqlite3.Cursor = conn.cursor()
+
+        # --------------------
+        # Check repetitions
+        # (Repetitions are not mistakes)
+        # --------------------
+        cursor.execute(
+            f'SELECT words FROM {Bot.TABLE_USED_WORDS} WHERE server_id = {message.guild.id} AND words = "{word}"')
+        used_words = cursor.fetchone()
+        if used_words is not None:
+            await message.channel.send(f'''The word \"{word}\" has already been used before. \
+    The chain has **not** been broken.
+    Please enter another word.''')
+            await message.add_reaction('⚠️')
+            return
+
         self._busy += 1
 
         if self._participating_users is None:
@@ -278,18 +305,15 @@ class Bot(commands.Bot):
         else:
             self._participating_users.add(message.author.id)
 
-        conn = sqlite3.connect('database.sqlite3')
-        c = conn.cursor()
-
         # We need to check whether the current user already has an entry in the database.
         # If not, we have to add an entry.
         # Code courtesy: https://stackoverflow.com/a/9756276/8387076
-        c.execute(f'SELECT EXISTS(SELECT 1 FROM members WHERE member_id = {message.author.id} '
-                  f'AND server_id = {message.guild.id})')
-        exists: int = (c.fetchone())[0]  # Will either be 0 or 1
+        cursor.execute(f'SELECT EXISTS(SELECT 1 FROM members WHERE member_id = {message.author.id} '
+                       f'AND server_id = {message.guild.id})')
+        exists: int = (cursor.fetchone())[0]  # Will be either 0 or 1
 
         if exists == 0:
-            c.execute(f'INSERT INTO members VALUES({message.guild.id}, {message.author.id}, 0, 0, 0)')
+            cursor.execute(f'INSERT INTO members VALUES({message.guild.id}, {message.author.id}, 0, 0, 0)')
             conn.commit()
 
         # --------------------------
@@ -322,20 +346,6 @@ try to beat the current high score of **{self._config.high_score}**!'''
 
             await self.handle_mistake(message=message, response=response, conn=conn)
 
-            return
-
-        # --------------------
-        # Check repetitions
-        # (Repetitions are not mistakes)
-        # --------------------
-        c.execute(f'SELECT words FROM {Bot.TABLE_USED_WORDS} WHERE server_id = {message.guild.id} AND words = "{word}"')
-        used_words = c.fetchone()
-        if used_words is not None:
-            await message.channel.send(f'''The word \"{word}\" has already been used before. \
-The chain has **not** been broken.
-Please enter another word.''')
-            await message.add_reaction('⚠️')
-            await self.schedule_busy_work()
             return
 
         # ----------------------------------
@@ -371,14 +381,15 @@ The above entered word is **NOT** being taken into account.''')
         # Everything is fine
         # ---------------------
         current_count: int = self._config.current_count + 1
+
         self._config.update_current(message.author.id, current_word=word)  # config dump at the end of the method
 
         await message.add_reaction(self._config.reaction_emoji())  # config dump at the end of the method
 
-        c.execute(f'UPDATE {Bot.TABLE_MEMBERS} SET score = score + 1, correct = correct + 1 '
-                  f'WHERE member_id = {message.author.id} AND server_id = {message.guild.id}')
+        cursor.execute(f'UPDATE {Bot.TABLE_MEMBERS} SET score = score + 1, correct = correct + 1 '
+                       f'WHERE member_id = {message.author.id} AND server_id = {message.guild.id}')
 
-        c.execute(f'INSERT INTO {Bot.TABLE_USED_WORDS} VALUES ({message.guild.id}, "{word}")')
+        cursor.execute(f'INSERT INTO {Bot.TABLE_USED_WORDS} VALUES ({message.guild.id}, "{word}")')
         conn.commit()
         conn.close()
 
@@ -703,19 +714,24 @@ async def leaderboard(interaction: discord.Interaction):
 @bot.tree.command(name='check_word', description='Check if a word is correct')
 @app_commands.describe(word='The word to check')
 async def check_word(interaction: discord.Interaction, word: str):
-    future: concurrent.futures.Future = Bot.start_api_query(word)
 
     await interaction.response.defer()
 
-    emb = discord.Embed(title=f'Check if word exists', color=discord.Color.gold())
+    emb = discord.Embed(color=discord.Color.blurple())
 
-    match Bot.get_query_response(future):
-        case Bot.RESPONSE_WORD_EXISTS:
-            emb.description = f'✅ The word "*{word}*\" exists.'
-        case Bot.RESPONSE_WORD_DOESNT_EXIST:
-            emb.description = f'❌ The word \"*{word}*\" does **not** exist.'
-        case _:
-            emb.description = f'⚠️ There was an issue in fetching the result.'
+    if len(word) == 1:
+        emb.description = f'❌ The word *{word}* is **not** valid.'
+
+    else:
+        future: concurrent.futures.Future = Bot.start_api_query(word)
+
+        match Bot.get_query_response(future):
+            case Bot.RESPONSE_WORD_EXISTS:
+                emb.description = f'✅ The word *{word}* is valid.'
+            case Bot.RESPONSE_WORD_DOESNT_EXIST:
+                emb.description = f'❌ The word *{word}* is **not** valid.'
+            case _:
+                emb.description = f'⚠️ There was an issue in fetching the result.'
 
     await interaction.followup.send(embed=emb)
 
