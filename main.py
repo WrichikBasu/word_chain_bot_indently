@@ -128,16 +128,24 @@ class Bot(commands.Bot):
         """Override the on_ready method"""
         print(f'Bot is ready as {self.user.name}#{self.user.discriminator}')
 
-        if self._config.channel_id is not None:
-            channel = bot.get_channel(self._config.channel_id)
+        if self._config.channel_id:
 
-            if self._config.current_word and self._config.current_member_id:
-                member: discord.Member = await channel.guild.fetch_member(self._config.current_member_id)
-                await channel.send(
-                    f'I\'m now online! Last word by {member.mention}. The **next** word should **begin** with '
-                    f'the letter **{self._config.current_word[-1]}**.')
-            else:
-                await channel.send(f'I\'m now online!')
+            channel: Optional[discord.TextChannel] = bot.get_channel(self._config.channel_id)
+            if channel:
+
+                emb: discord.Embed = discord.Embed(title='Status', description='I\'m now online!',
+                                                   colour=discord.Color.gold())
+
+                if self._config.current_word:
+                    emb.add_field(name='Last valid word', value=f'{self._config.current_word}', inline=True)
+
+                    if self._config.current_member_id:
+
+                        member: Optional[discord.Member] = channel.guild.get_member(self._config.current_member_id)
+                        if member:
+                            emb.add_field(name='Last input by', value=f'{member.mention}', inline=True)
+
+                await channel.send(embed=emb)
 
         self.set_roles()
 
@@ -362,10 +370,10 @@ The above entered word is **NOT** being taken into account.''')
         # --------------------
         # Everything is fine
         # ---------------------
-        self._config.update_current(message.author.id,
-                                    current_word=word)  # config dump triggered at the end of the method
+        current_count: int = self._config.current_count + 1
+        self._config.update_current(message.author.id, current_word=word)  # config dump at the end of the method
 
-        await message.add_reaction(self._config.reaction_emoji())  # config dumping done at the end of the method
+        await message.add_reaction(self._config.reaction_emoji())  # config dump at the end of the method
 
         c.execute(f'UPDATE {Bot.TABLE_MEMBERS} SET score = score + 1, correct = correct + 1 '
                   f'WHERE member_id = {message.author.id} AND server_id = {message.guild.id}')
@@ -373,6 +381,9 @@ The above entered word is **NOT** being taken into account.''')
         c.execute(f'INSERT INTO {Bot.TABLE_USED_WORDS} VALUES ({message.guild.id}, "{word}")')
         conn.commit()
         conn.close()
+
+        if current_count > 0 and current_count % 100 == 0:
+            await message.channel.send(f'{current_count} words! Nice work, keep it up!')
 
         # Check and reset the self._config.failed_member_id to None.
         # No need to remove the role itself, it will be done later when not busy
