@@ -362,10 +362,10 @@ The above entered word is **NOT** being taken into account.''')
         # --------------------
         # Everything is fine
         # ---------------------
-        self._config.update_current(message.author.id,
-                                    current_word=word)  # config dump triggered at the end of the method
+        current_count: int = self._config.current_count + 1
+        self._config.update_current(message.author.id, current_word=word)  # config dump at the end of the method
 
-        await message.add_reaction(self._config.reaction_emoji())  # config dumping done at the end of the method
+        await message.add_reaction(self._config.reaction_emoji())  # config dump at the end of the method
 
         c.execute(f'UPDATE {Bot.TABLE_MEMBERS} SET score = score + 1, correct = correct + 1 '
                   f'WHERE member_id = {message.author.id} AND server_id = {message.guild.id}')
@@ -373,6 +373,9 @@ The above entered word is **NOT** being taken into account.''')
         c.execute(f'INSERT INTO {Bot.TABLE_USED_WORDS} VALUES ({message.guild.id}, "{word}")')
         conn.commit()
         conn.close()
+
+        if current_count > 0 and current_count % 100 == 0:
+            await message.channel.send(f'{current_count} words! Nice work, keep it up!')
 
         # Check and reset the self._config.failed_member_id to None.
         # No need to remove the role itself, it will be done later when not busy
