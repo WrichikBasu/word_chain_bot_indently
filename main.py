@@ -346,7 +346,6 @@ Restart with a word starting with **{self._config.current_word[-1]}** and try to
 current high score of **{self._config.high_score}**!'''
 
             await self.handle_mistake(message, response, conn)
-
             return
 
         # -------------
@@ -359,7 +358,6 @@ Restart with a word starting with **{self._config.current_word[-1]}** and \
 try to beat the current high score of **{self._config.high_score}**!'''
 
             await self.handle_mistake(message=message, response=response, conn=conn)
-
             return
 
         # ----------------------------------
@@ -375,6 +373,7 @@ try to beat the current high score of **{self._config.high_score}**!'''
 The word you entered does not exist.
 Restart with a word starting with **{self._config.current_word[-1]}** and try to beat the \
 current high score of **{self._config.high_score}**!'''
+
                 else:
                     response: str = f'''{message.author.mention} messed up the chain! \
 The word you entered does not exist.
@@ -389,7 +388,8 @@ Restart and try to beat the current high score of **{self._config.high_score}**!
                 await message.channel.send(''':octagonal_sign: There was an issue in the backend.
 The above entered word is **NOT** being taken into account.''')
 
-                await self.schedule_busy_work()
+                # No need to schedule busy work as nothing has changed. Just decrement the variable.
+                self._busy -= 1
                 return
 
         # --------------------
