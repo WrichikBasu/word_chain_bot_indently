@@ -67,14 +67,11 @@ class Config:
     def reset(self) -> None:
         """
         Reset chain stats.
-        Do NOT reset the current word.
+        Do NOT reset the `current_word` and the `current_member_id`.
         NOTE: config is no longer dumped by default. Explicitly call config.dump_data().
         """
         self.current_count = 0
         self.correct_inputs_by_failed_member = 0
-
-        # update current member id
-        self.current_member_id = None
         self.put_high_score_emoji = False
 
     def reaction_emoji(self) -> str:
@@ -339,6 +336,18 @@ Please enter another word.''')
             # Start the API request, but deal with it later
             future = self.start_api_query(word)
 
+        # -------------
+        # Wrong member
+        # -------------
+        if self._config.current_member_id and self._config.current_member_id == message.author.id:
+            response: str = f'''{message.author.mention} messed up the count! \
+    You cannot send two words in a row!
+    Restart with a word starting with **{self._config.current_word[-1]}** and \
+    try to beat the current high score of **{self._config.high_score}**!'''
+
+            await self.handle_mistake(message=message, response=response, conn=conn)
+            return
+
         # -------------------------
         # Wrong starting letter
         # -------------------------
@@ -349,18 +358,6 @@ Restart with a word starting with **{self._config.current_word[-1]}** and try to
 current high score of **{self._config.high_score}**!'''
 
             await self.handle_mistake(message, response, conn)
-            return
-
-        # -------------
-        # Wrong member
-        # -------------
-        if self._config.current_word and self._config.current_member_id == message.author.id:
-            response: str = f'''{message.author.mention} messed up the count! \
-You cannot send two words in a row!
-Restart with a word starting with **{self._config.current_word[-1]}** and \
-try to beat the current high score of **{self._config.high_score}**!'''
-
-            await self.handle_mistake(message=message, response=response, conn=conn)
             return
 
         # ----------------------------------
@@ -391,7 +388,8 @@ Restart and try to beat the current high score of **{self._config.high_score}**!
                 await message.channel.send(''':octagonal_sign: There was an issue in the backend.
 The above entered word is **NOT** being taken into account.''')
 
-                # No need to schedule busy work as nothing has changed. Just decrement the variable.
+                # No need to schedule busy work as nothing has changed.
+                # Just decrement the variable.
                 self._busy -= 1
                 return
 
