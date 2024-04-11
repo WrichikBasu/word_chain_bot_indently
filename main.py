@@ -274,7 +274,10 @@ class Bot(commands.Bot):
             return
 
         word: str = message.content.lower()
+
         if not all(c in POSSIBLE_CHARACTERS for c in word):
+            return
+        if len(word) == 0:
             return
 
         # --------------------
