@@ -99,6 +99,7 @@ class Bot(commands.Bot):
     TABLE_USED_WORDS: str = "used_words"
     TABLE_MEMBERS: str = "members"
     TABLE_CACHE: str = "word_cache"
+    TABLE_BLACKLIST: str = "blacklist"
 
     RESPONSE_WORD_EXISTS: int = 1
     RESPONSE_WORD_DOESNT_EXIST: int = 0
@@ -648,6 +649,10 @@ The above entered word is **NOT** being taken into account.''')
 
         c.execute(f'CREATE TABLE IF NOT EXISTS {Bot.TABLE_CACHE} '
                   f'(words TEXT PRIMARY KEY)')
+
+        c.execute(f'CREATE TABLE IF NOT EXISTS {Bot.TABLE_BLACKLIST} '
+                  f'(words TEXT PRIMARY KEY)')
+
         conn.commit()
         conn.close()
 
@@ -881,10 +886,8 @@ async def remove_reliable_role(interaction: discord.Interaction):
 @bot.tree.command(name='disconnect', description='Makes the bot go offline')
 @app_commands.default_permissions(ban_members=True)
 async def disconnect(interaction: discord.Interaction):
-    config = Config.read()
-    if config.channel_id is not None:
-        channel = bot.get_channel(config.channel_id)
-        await channel.send('Bot is now offline.')
+    emb = discord.Embed(description='⚠️  Bot is now offline.', colour=discord.Color.brand_red())
+    await interaction.response.send_message(embed=emb)
     await bot.close()
 
 
@@ -931,5 +934,60 @@ async def prune(interaction: discord.Interaction):
     conn.close()
 
 
+@app_commands.default_permissions(ban_members=True)
+class BlacklistCmdGroup(app_commands.Group):
+
+    def __init__(self):
+        super().__init__(name='blacklist')
+
+    # subcommand of Group
+    @app_commands.command(description='Add a word to the blacklist')
+    @app_commands.describe(word="The word to be added to the blacklist")
+    async def add(self, interaction: discord.Interaction, word: str) -> None:
+        await interaction.response.defer()
+
+        emb: discord.Embed = discord.Embed(colour=discord.Color.blurple())
+
+        if not all(c in POSSIBLE_CHARACTERS for c in word.lower()):
+            emb.description = f'❌ The word *{word.lower()}* is not a legal word.'
+            await interaction.followup.send(embed=emb)
+            return
+
+        conn: sqlite3.Connection = sqlite3.connect('database.sqlite3')
+        cursor: sqlite3.Cursor = conn.cursor()
+
+        cursor.execute(f'INSERT OR IGNORE INTO {Bot.TABLE_BLACKLIST} '
+                       f'VALUES (\'{word.lower()}\')')
+        conn.commit()
+        conn.close()
+
+        emb.description = f'✅ The word *{word.lower()}* was successfully added to the blacklist.'
+        await interaction.followup.send(embed=emb)
+
+    @app_commands.command(description='Remove a word from the blacklist')
+    @app_commands.describe(word='The word to be removed from the blacklist')
+    async def remove(self, interaction: discord.Interaction, word: str) -> None:
+        await interaction.response.defer()
+
+        emb: discord.Embed = discord.Embed(colour=discord.Color.blurple())
+
+        if not all(c in POSSIBLE_CHARACTERS for c in word.lower()):
+            emb.description = f'❌ The word *{word.lower()}* is not a legal word.'
+            await interaction.followup.send(embed=emb)
+            return
+
+        conn: sqlite3.Connection = sqlite3.connect('database.sqlite3')
+        cursor: sqlite3.Cursor = conn.cursor()
+
+        cursor.execute(f'DELETE FROM {Bot.TABLE_BLACKLIST} '
+                       f'WHERE words = \'{word.lower()}\'')
+        conn.commit()
+        conn.close()
+
+        emb.description = f'✅ The word *{word.lower()}* was successfully removed from the blacklist.'
+        await interaction.followup.send(embed=emb)
+
+
 if __name__ == '__main__':
+    bot.tree.add_command(BlacklistCmdGroup())
     bot.run(TOKEN)
