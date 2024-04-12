@@ -841,41 +841,58 @@ async def leaderboard(interaction: discord.Interaction):
 @bot.tree.command(name='check_word', description='Check if a word is correct')
 @app_commands.describe(word='The word to check')
 async def check_word(interaction: discord.Interaction, word: str):
+    """
+    Checks if a word is valid.
+
+    Hierarchy followed:
+    1. Length of word must be > 1.
+    2. The word must not be blacklisted in the server in which the command was run.
+    3. Check word cache.
+    4. Query API.
+    """
     await interaction.response.defer()
 
     emb = discord.Embed(color=discord.Color.blurple())
 
     if len(word) == 1:
         emb.description = f'❌ The word *{word}* is **not** valid.'
+        await interaction.followup.send(embed=emb)
+        return
 
-    else:
-        word = word.lower()
-        conn = sqlite3.connect('database.sqlite3')
-        cursor = conn.cursor()
+    word = word.lower()
+    conn = sqlite3.connect('database.sqlite3')
+    cursor = conn.cursor()
 
-        if Bot.is_word_in_cache(word, cursor):
+    if Bot.is_word_blacklisted(interaction.guild.id, word, cursor):
+        emb.description = f'❌ The word *{word}* is **blacklisted** in this server and hence, **not** valid.'
+        await interaction.followup.send(embed=emb)
+        conn.close()
+        return
+
+    if Bot.is_word_in_cache(word, cursor):
+        emb.description = f'✅ The word *{word}* is valid.'
+        await interaction.followup.send(embed=emb)
+        conn.close()
+        return
+
+    future: concurrent.futures.Future = Bot.start_api_query(word)
+    conn.close()
+
+    match Bot.get_query_response(future):
+        case Bot.RESPONSE_WORD_EXISTS:
+
             emb.description = f'✅ The word *{word}* is valid.'
 
-        else:
-            future: concurrent.futures.Future = Bot.start_api_query(word)
+            if bot._cached_words is None:
+                bot._cached_words = {word, }
+            else:
+                bot._cached_words.add(word)
+            bot.add_to_cache()
 
-            match Bot.get_query_response(future):
-                case Bot.RESPONSE_WORD_EXISTS:
-
-                    emb.description = f'✅ The word *{word}* is valid.'
-
-                    if bot._cached_words is None:
-                        bot._cached_words = {word, }
-                    else:
-                        bot._cached_words.add(word)
-                    bot.add_to_cache()
-
-                case Bot.RESPONSE_WORD_DOESNT_EXIST:
-                    emb.description = f'❌ The word *{word}* is **not** valid.'
-                case _:
-                    emb.description = f'⚠️ There was an issue in fetching the result.'
-
-        conn.close()
+        case Bot.RESPONSE_WORD_DOESNT_EXIST:
+            emb.description = f'❌ The word *{word}* is **not** valid.'
+        case _:
+            emb.description = f'⚠️ There was an issue in fetching the result.'
 
     await interaction.followup.send(embed=emb)
 
