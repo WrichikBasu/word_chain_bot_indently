@@ -99,6 +99,7 @@ class Bot(commands.Bot):
     TABLE_USED_WORDS: str = "used_words"
     TABLE_MEMBERS: str = "members"
     TABLE_CACHE: str = "word_cache"
+    TABLE_BLACKLIST: str = "blacklist"
 
     RESPONSE_WORD_EXISTS: int = 1
     RESPONSE_WORD_DOESNT_EXIST: int = 0
@@ -290,20 +291,6 @@ Please enter another word.''')
         conn: sqlite3.Connection = sqlite3.connect('database.sqlite3')
         cursor: sqlite3.Cursor = conn.cursor()
 
-        # ------------------------------
-        # Check repetitions
-        # (Repetitions are not mistakes)
-        # ------------------------------
-        cursor.execute(
-            f'SELECT words FROM {Bot.TABLE_USED_WORDS} WHERE server_id = {message.guild.id} AND words = "{word}"')
-        used_words = cursor.fetchone()
-        if used_words is not None:
-            await message.channel.send(f'''The word \"{word}\" has already been used before. \
-The chain has **not** been broken.
-Please enter another word.''')
-            await message.add_reaction('⚠️')
-            return
-
         self._busy += 1
 
         if self._participating_users is None:
@@ -321,6 +308,39 @@ Please enter another word.''')
         if exists == 0:
             cursor.execute(f'INSERT INTO members VALUES({message.guild.id}, {message.author.id}, 0, 0, 0)')
             conn.commit()
+
+        # ------------------------------
+        # Check repetitions
+        # (Repetitions are not mistakes)
+        # ------------------------------
+        cursor.execute(f'SELECT EXISTS(SELECT 1 FROM {Bot.TABLE_USED_WORDS} '
+                       f'WHERE server_id = {message.guild.id} AND words = "{word}")')
+        used: int = cursor.fetchone()[0]
+        if used == 1:
+            await message.add_reaction('⚠️')
+            await message.channel.send(f'''The word *{word}* has already been used before. \
+The chain has **not** been broken.
+Please enter another word.''')
+
+            # No need to schedule busy work as nothing has changed.
+            # Just decrement the variable.
+            self._busy -= 1
+            return
+
+        # -------------------------------
+        # Check if word is blacklisted
+        # -------------------------------
+        if Bot.is_word_blacklisted(message.guild.id, word, cursor):
+            await message.add_reaction('⚠️')
+            await message.channel.send(f'''This word has been **blacklisted**. \
+Please do not use it.
+The chain has **not** been broken.
+Please enter another word.''')
+
+            # No need to schedule busy work as nothing has changed.
+            # Just decrement the variable.
+            self._busy -= 1
+            return
 
         # --------------------------
         # Check if word is valid
@@ -627,6 +647,29 @@ The above entered word is **NOT** being taken into account.''')
             conn.commit()
             conn.close()
 
+    @staticmethod
+    def is_word_blacklisted(server_id: int, word: str, cursor: sqlite3.Cursor) -> bool:
+        """
+        Checks if a word is blacklisted.
+
+        Parameters
+        ----------
+        server_id : int
+            The guild which is calling this function
+        word : str
+            The word that is to be checked.
+        cursor : sqlite3.Cursor
+            An instance of Cursor through which the DB will be accessed.
+
+        Returns
+        -------
+        `True` if the word is blacklisted, otherwise `False`.
+        """
+        cursor.execute(f'SELECT EXISTS(SELECT 1 FROM {Bot.TABLE_BLACKLIST} WHERE '
+                       f'server_id = {server_id} AND words = \'{word}\')')
+        result: int = (cursor.fetchone())[0]
+        return result == 1
+
     async def setup_hook(self) -> NoReturn:
         await self.tree.sync()
 
@@ -648,6 +691,12 @@ The above entered word is **NOT** being taken into account.''')
 
         c.execute(f'CREATE TABLE IF NOT EXISTS {Bot.TABLE_CACHE} '
                   f'(words TEXT PRIMARY KEY)')
+
+        c.execute(f'CREATE TABLE IF NOT EXISTS {Bot.TABLE_BLACKLIST} '
+                  f'(server_id INT NOT NULL, '
+                  f'words TEXT NOT NULL, '
+                  f'PRIMARY KEY (server_id, words))')
+
         conn.commit()
         conn.close()
 
@@ -656,7 +705,7 @@ bot = Bot()
 
 
 @bot.tree.command(name='sync', description='Syncs the slash commands to the bot')
-@app_commands.checks.has_permissions(administrator=True, ban_members=True)
+@app_commands.default_permissions(ban_members=True)
 async def sync(interaction: discord.Interaction):
     """Sync all the slash commands to the bot"""
     if not interaction.user.guild_permissions.ban_members:
@@ -669,7 +718,7 @@ async def sync(interaction: discord.Interaction):
 
 @bot.tree.command(name='set_channel', description='Sets the channel to count in')
 @app_commands.describe(channel='The channel to count in')
-@app_commands.checks.has_permissions(ban_members=True)
+@app_commands.default_permissions(ban_members=True)
 async def set_channel(interaction: discord.Interaction, channel: discord.TextChannel):
     """Command to set the channel to count in"""
     if not interaction.user.guild_permissions.ban_members:
@@ -682,24 +731,30 @@ async def set_channel(interaction: discord.Interaction, channel: discord.TextCha
     await interaction.response.send_message(f'Word chain channel was set to {channel.mention}')
 
 
-@bot.tree.command(name='listcmds', description='Lists commands')
+@bot.tree.command(name='list_commands', description='List all slash commands')
 async def list_commands(interaction: discord.Interaction):
     """Command to list all the slash commands"""
     emb = discord.Embed(title='Slash Commands', color=discord.Color.blue(),
                         description='''
-**sync** - Syncs the slash commands to the bot (Admins only)
-**set_channel** - Sets the channel to count in (Admins only)
-**listcmds** - Lists all the slash commands
-**stats_user** - Shows the stats of a specific user
-**stats_server** - Shows the stats of the server
+__Unrestricted commands__
+**list_commands** - Lists all the slash commands.
+**stats_user** - Shows the stats of a specific user.
+**stats_server** - Shows the stats of the server.
 **check_word** - Check if a word exists/check the spelling.
-**leaderboard** - Shows the leaderboard of the server
-**set_failed_role** - Sets the role to give when a user fails (Admins only)
-**set_reliable_role** - Sets the role to give when a user passes the score of 100 (Admins only)
-**remove_failed_role** - Removes the role to give when a user fails (Admins only)
-**remove_reliable_role** - Removes the role to give when a user passes the score of 100 (Admins only)
-**force_dump** - Forcibly dump bot config data. Use only when no one is actively playing. (Admins only)
-**prune** - Remove data for users who are no longer in the server. (Admins only)''')
+**leaderboard** - Shows the leaderboard of the server.
+
+__Restricted commands__ (Admin-only)
+**sync** - Syncs the slash commands to the bot.
+**set_channel** - Sets the channel to chain words.
+**set_failed_role** - Sets the role to give when a user fails.
+**set_reliable_role** - Sets the reliable role.
+**remove_failed_role** - Unsets the role to give when a user fails.
+**remove_reliable_role** - Unset the reliable role.
+**force_dump** - Forcibly dump bot config data. Use only when no one is actively playing.
+**prune** - Remove data for users who are no longer in the server.
+**blacklist add** - Add a word to the blacklist for this server.
+**blacklist remove** - Remove a word from the blacklist of this server.
+**blacklist show** - Show the blacklisted words for this server.''')
     await interaction.response.send_message(embed=emb)
 
 
@@ -786,7 +841,6 @@ async def leaderboard(interaction: discord.Interaction):
 @bot.tree.command(name='check_word', description='Check if a word is correct')
 @app_commands.describe(word='The word to check')
 async def check_word(interaction: discord.Interaction, word: str):
-
     await interaction.response.defer()
 
     emb = discord.Embed(color=discord.Color.blurple())
@@ -881,10 +935,8 @@ async def remove_reliable_role(interaction: discord.Interaction):
 @bot.tree.command(name='disconnect', description='Makes the bot go offline')
 @app_commands.default_permissions(ban_members=True)
 async def disconnect(interaction: discord.Interaction):
-    config = Config.read()
-    if config.channel_id is not None:
-        channel = bot.get_channel(config.channel_id)
-        await channel.send('Bot is now offline.')
+    emb = discord.Embed(description='⚠️  Bot is now offline.', colour=discord.Color.brand_red())
+    await interaction.response.send_message(embed=emb)
     await bot.close()
 
 
@@ -931,5 +983,83 @@ async def prune(interaction: discord.Interaction):
     conn.close()
 
 
+@app_commands.default_permissions(ban_members=True)
+class BlacklistCmdGroup(app_commands.Group):
+
+    def __init__(self):
+        super().__init__(name='blacklist')
+
+    # subcommand of Group
+    @app_commands.command(description='Add a word to the blacklist')
+    @app_commands.describe(word="The word to be added to the blacklist")
+    async def add(self, interaction: discord.Interaction, word: str) -> None:
+        await interaction.response.defer()
+
+        emb: discord.Embed = discord.Embed(colour=discord.Color.blurple())
+
+        if not all(c in POSSIBLE_CHARACTERS for c in word.lower()):
+            emb.description = f'⚠️ The word *{word.lower()}* is not a legal word.'
+            await interaction.followup.send(embed=emb)
+            return
+
+        conn: sqlite3.Connection = sqlite3.connect('database.sqlite3')
+        cursor: sqlite3.Cursor = conn.cursor()
+
+        cursor.execute(f'INSERT OR IGNORE INTO {Bot.TABLE_BLACKLIST} '
+                       f'VALUES ({interaction.guild.id}, \'{word.lower()}\')')
+        conn.commit()
+        conn.close()
+
+        emb.description = f'✅ The word *{word.lower()}* was successfully added to the blacklist.'
+        await interaction.followup.send(embed=emb)
+
+    @app_commands.command(description='Remove a word from the blacklist')
+    @app_commands.describe(word='The word to be removed from the blacklist')
+    async def remove(self, interaction: discord.Interaction, word: str) -> None:
+        await interaction.response.defer()
+
+        emb: discord.Embed = discord.Embed(colour=discord.Color.blurple())
+
+        if not all(c in POSSIBLE_CHARACTERS for c in word.lower()):
+            emb.description = f'⚠️ The word *{word.lower()}* is not a legal word.'
+            await interaction.followup.send(embed=emb)
+            return
+
+        conn: sqlite3.Connection = sqlite3.connect('database.sqlite3')
+        cursor: sqlite3.Cursor = conn.cursor()
+
+        cursor.execute(f'DELETE FROM {Bot.TABLE_BLACKLIST} '
+                       f'WHERE server_id = {interaction.guild.id} AND words = \'{word.lower()}\'')
+        conn.commit()
+        conn.close()
+
+        emb.description = f'✅ The word *{word.lower()}* was successfully removed from the blacklist.'
+        await interaction.followup.send(embed=emb)
+
+    @app_commands.command(description='List the blacklisted words')
+    async def show(self, interaction: discord.Interaction) -> None:
+        await interaction.response.defer()
+
+        conn: sqlite3.Connection = sqlite3.connect('database.sqlite3')
+        cursor: sqlite3.Cursor = conn.cursor()
+
+        cursor.execute(f'SELECT words FROM {Bot.TABLE_BLACKLIST} WHERE server_id = {interaction.guild.id}')
+        result: list[tuple[int]] = cursor.fetchall()  # Structure: [(word1,), (word2,), (word3,), ...] or [] if empty
+
+        emb = discord.Embed(title=f'Blacklisted words', description='', colour=discord.Color.dark_orange())
+
+        if len(result) == 0:
+            emb.description = f'No word has been blacklisted in this server.'
+            await interaction.followup.send(embed=emb)
+        else:
+            i: int = 0
+            for word in result:
+                i += 1
+                emb.description += f'{i}. {word[0]}\n'
+
+            await interaction.followup.send(embed=emb)
+
+
 if __name__ == '__main__':
+    bot.tree.add_command(BlacklistCmdGroup())
     bot.run(TOKEN)
