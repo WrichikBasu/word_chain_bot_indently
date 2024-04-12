@@ -705,7 +705,7 @@ bot = Bot()
 
 
 @bot.tree.command(name='sync', description='Syncs the slash commands to the bot')
-@app_commands.checks.has_permissions(administrator=True, ban_members=True)
+@app_commands.default_permissions(ban_members=True)
 async def sync(interaction: discord.Interaction):
     """Sync all the slash commands to the bot"""
     if not interaction.user.guild_permissions.ban_members:
@@ -718,7 +718,7 @@ async def sync(interaction: discord.Interaction):
 
 @bot.tree.command(name='set_channel', description='Sets the channel to count in')
 @app_commands.describe(channel='The channel to count in')
-@app_commands.checks.has_permissions(ban_members=True)
+@app_commands.default_permissions(ban_members=True)
 async def set_channel(interaction: discord.Interaction, channel: discord.TextChannel):
     """Command to set the channel to count in"""
     if not interaction.user.guild_permissions.ban_members:
