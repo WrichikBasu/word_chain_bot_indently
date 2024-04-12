@@ -291,20 +291,6 @@ Please enter another word.''')
         conn: sqlite3.Connection = sqlite3.connect('database.sqlite3')
         cursor: sqlite3.Cursor = conn.cursor()
 
-        # ------------------------------
-        # Check repetitions
-        # (Repetitions are not mistakes)
-        # ------------------------------
-        cursor.execute(
-            f'SELECT words FROM {Bot.TABLE_USED_WORDS} WHERE server_id = {message.guild.id} AND words = "{word}"')
-        used_words = cursor.fetchone()
-        if used_words is not None:
-            await message.channel.send(f'''The word \"{word}\" has already been used before. \
-The chain has **not** been broken.
-Please enter another word.''')
-            await message.add_reaction('⚠️')
-            return
-
         self._busy += 1
 
         if self._participating_users is None:
@@ -322,6 +308,39 @@ Please enter another word.''')
         if exists == 0:
             cursor.execute(f'INSERT INTO members VALUES({message.guild.id}, {message.author.id}, 0, 0, 0)')
             conn.commit()
+
+        # ------------------------------
+        # Check repetitions
+        # (Repetitions are not mistakes)
+        # ------------------------------
+        cursor.execute(f'SELECT EXISTS(SELECT 1 FROM {Bot.TABLE_USED_WORDS} '
+                       f'WHERE server_id = {message.guild.id} AND words = "{word}")')
+        used: int = cursor.fetchone()[0]
+        if used == 1:
+            await message.add_reaction('⚠️')
+            await message.channel.send(f'''The word *{word}* has already been used before. \
+The chain has **not** been broken.
+Please enter another word.''')
+
+            # No need to schedule busy work as nothing has changed.
+            # Just decrement the variable.
+            self._busy -= 1
+            return
+
+        # -------------------------------
+        # Check if word is blacklisted
+        # -------------------------------
+        if Bot.is_word_blacklisted(message.guild.id, word, cursor):
+            await message.add_reaction('⚠️')
+            await message.channel.send(f'''This word has been **blacklisted**. \
+Please do not use it.
+The chain has **not** been broken.
+Please enter another word.''')
+
+            # No need to schedule busy work as nothing has changed.
+            # Just decrement the variable.
+            self._busy -= 1
+            return
 
         # --------------------------
         # Check if word is valid
@@ -628,6 +647,29 @@ The above entered word is **NOT** being taken into account.''')
             conn.commit()
             conn.close()
 
+    @staticmethod
+    def is_word_blacklisted(server_id: int, word: str, cursor: sqlite3.Cursor) -> bool:
+        """
+        Checks if a word is blacklisted.
+
+        Parameters
+        ----------
+        server_id : int
+            The guild which is calling this function
+        word : str
+            The word that is to be checked.
+        cursor : sqlite3.Cursor
+            An instance of Cursor through which the DB will be accessed.
+
+        Returns
+        -------
+        `True` if the word is blacklisted, otherwise `False`.
+        """
+        cursor.execute(f'SELECT EXISTS(SELECT 1 FROM {Bot.TABLE_BLACKLIST} WHERE '
+                       f'server_id = {server_id} AND words = \'{word}\')')
+        result: int = (cursor.fetchone())[0]
+        return result == 1
+
     async def setup_hook(self) -> NoReturn:
         await self.tree.sync()
 
@@ -651,7 +693,9 @@ The above entered word is **NOT** being taken into account.''')
                   f'(words TEXT PRIMARY KEY)')
 
         c.execute(f'CREATE TABLE IF NOT EXISTS {Bot.TABLE_BLACKLIST} '
-                  f'(words TEXT PRIMARY KEY)')
+                  f'(server_id INT NOT NULL, '
+                  f'words TEXT NOT NULL, '
+                  f'PRIMARY KEY (server_id, words))')
 
         conn.commit()
         conn.close()
@@ -957,7 +1001,7 @@ class BlacklistCmdGroup(app_commands.Group):
         cursor: sqlite3.Cursor = conn.cursor()
 
         cursor.execute(f'INSERT OR IGNORE INTO {Bot.TABLE_BLACKLIST} '
-                       f'VALUES (\'{word.lower()}\')')
+                       f'VALUES ({interaction.guild.id}, \'{word.lower()}\')')
         conn.commit()
         conn.close()
 
@@ -980,7 +1024,7 @@ class BlacklistCmdGroup(app_commands.Group):
         cursor: sqlite3.Cursor = conn.cursor()
 
         cursor.execute(f'DELETE FROM {Bot.TABLE_BLACKLIST} '
-                       f'WHERE words = \'{word.lower()}\'')
+                       f'WHERE server_id = {interaction.guild.id} AND words = \'{word.lower()}\'')
         conn.commit()
         conn.close()
 
