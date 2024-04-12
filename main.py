@@ -731,24 +731,30 @@ async def set_channel(interaction: discord.Interaction, channel: discord.TextCha
     await interaction.response.send_message(f'Word chain channel was set to {channel.mention}')
 
 
-@bot.tree.command(name='listcmds', description='Lists commands')
+@bot.tree.command(name='list_commands', description='List all slash commands')
 async def list_commands(interaction: discord.Interaction):
     """Command to list all the slash commands"""
     emb = discord.Embed(title='Slash Commands', color=discord.Color.blue(),
                         description='''
-**sync** - Syncs the slash commands to the bot (Admins only)
-**set_channel** - Sets the channel to count in (Admins only)
-**listcmds** - Lists all the slash commands
-**stats_user** - Shows the stats of a specific user
-**stats_server** - Shows the stats of the server
+__Unrestricted commands__
+**list_commands** - Lists all the slash commands.
+**stats_user** - Shows the stats of a specific user.
+**stats_server** - Shows the stats of the server.
 **check_word** - Check if a word exists/check the spelling.
-**leaderboard** - Shows the leaderboard of the server
-**set_failed_role** - Sets the role to give when a user fails (Admins only)
-**set_reliable_role** - Sets the role to give when a user passes the score of 100 (Admins only)
-**remove_failed_role** - Removes the role to give when a user fails (Admins only)
-**remove_reliable_role** - Removes the role to give when a user passes the score of 100 (Admins only)
-**force_dump** - Forcibly dump bot config data. Use only when no one is actively playing. (Admins only)
-**prune** - Remove data for users who are no longer in the server. (Admins only)''')
+**leaderboard** - Shows the leaderboard of the server.
+
+__Restricted commands__ (Admin-only)
+**sync** - Syncs the slash commands to the bot.
+**set_channel** - Sets the channel to chain words.
+**set_failed_role** - Sets the role to give when a user fails.
+**set_reliable_role** - Sets the reliable role.
+**remove_failed_role** - Unsets the role to give when a user fails.
+**remove_reliable_role** - Unset the reliable role.
+**force_dump** - Forcibly dump bot config data. Use only when no one is actively playing.
+**prune** - Remove data for users who are no longer in the server.
+**blacklist add** - Add a word to the blacklist for this server.
+**blacklist remove** - Remove a word from the blacklist of this server.
+**blacklist show** - Show the blacklisted words for this server.''')
     await interaction.response.send_message(embed=emb)
 
 
@@ -835,7 +841,6 @@ async def leaderboard(interaction: discord.Interaction):
 @bot.tree.command(name='check_word', description='Check if a word is correct')
 @app_commands.describe(word='The word to check')
 async def check_word(interaction: discord.Interaction, word: str):
-
     await interaction.response.defer()
 
     emb = discord.Embed(color=discord.Color.blurple())
@@ -993,7 +998,7 @@ class BlacklistCmdGroup(app_commands.Group):
         emb: discord.Embed = discord.Embed(colour=discord.Color.blurple())
 
         if not all(c in POSSIBLE_CHARACTERS for c in word.lower()):
-            emb.description = f'❌ The word *{word.lower()}* is not a legal word.'
+            emb.description = f'⚠️ The word *{word.lower()}* is not a legal word.'
             await interaction.followup.send(embed=emb)
             return
 
@@ -1016,7 +1021,7 @@ class BlacklistCmdGroup(app_commands.Group):
         emb: discord.Embed = discord.Embed(colour=discord.Color.blurple())
 
         if not all(c in POSSIBLE_CHARACTERS for c in word.lower()):
-            emb.description = f'❌ The word *{word.lower()}* is not a legal word.'
+            emb.description = f'⚠️ The word *{word.lower()}* is not a legal word.'
             await interaction.followup.send(embed=emb)
             return
 
@@ -1044,7 +1049,7 @@ class BlacklistCmdGroup(app_commands.Group):
         emb = discord.Embed(title=f'Blacklisted words', description='', colour=discord.Color.dark_orange())
 
         if len(result) == 0:
-            emb.description = f'No words have been blacklisted in this server.'
+            emb.description = f'No word has been blacklisted in this server.'
             await interaction.followup.send(embed=emb)
         else:
             i: int = 0
