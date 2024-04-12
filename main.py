@@ -263,7 +263,16 @@ class Bot(commands.Bot):
             self.add_to_cache()
 
     async def on_message(self, message: discord.Message) -> None:
-        """Override the on_message method"""
+        """
+        Hierarchy of checking:
+        1. Word length must be > 1.
+        2. Is the word blacklisted?
+        3. Repetition?
+        4. Is the word valid? (Check cache/start query if not found in cache)
+        5. Wrong member?
+        6. Wrong starting letter?
+        """
+
         if message.author == self.user:
             return
 
@@ -282,10 +291,9 @@ class Bot(commands.Bot):
         # Check word length
         # --------------------
         if len(word) == 1:
-            await message.channel.send(f'''Single-letter inputs are no longer accepted. \
-The chain has **not** been broken.
-Please enter another word.''')
             await message.add_reaction('⚠️')
+            await message.channel.send(f'''Single-letter inputs are no longer accepted.
+The chain has **not** been broken. Please enter another word.''')
             return
 
         conn: sqlite3.Connection = sqlite3.connect('database.sqlite3')
@@ -309,6 +317,19 @@ Please enter another word.''')
             cursor.execute(f'INSERT INTO members VALUES({message.guild.id}, {message.author.id}, 0, 0, 0)')
             conn.commit()
 
+        # -------------------------------
+        # Check if word is blacklisted
+        # -------------------------------
+        if Bot.is_word_blacklisted(message.guild.id, word, cursor):
+            await message.add_reaction('⚠️')
+            await message.channel.send(f'''This word has been **blacklisted**. Please do not use it.
+The chain has **not** been broken. Please enter another word.''')
+
+            # No need to schedule busy work as nothing has changed.
+            # Just decrement the variable.
+            self._busy -= 1
+            return
+
         # ------------------------------
         # Check repetitions
         # (Repetitions are not mistakes)
@@ -327,21 +348,6 @@ Please enter another word.''')
             self._busy -= 1
             return
 
-        # -------------------------------
-        # Check if word is blacklisted
-        # -------------------------------
-        if Bot.is_word_blacklisted(message.guild.id, word, cursor):
-            await message.add_reaction('⚠️')
-            await message.channel.send(f'''This word has been **blacklisted**. \
-Please do not use it.
-The chain has **not** been broken.
-Please enter another word.''')
-
-            # No need to schedule busy work as nothing has changed.
-            # Just decrement the variable.
-            self._busy -= 1
-            return
-
         # --------------------------
         # Check if word is valid
         # --------------------------
@@ -349,7 +355,7 @@ Please enter another word.''')
 
         # First check the word cache
         if self.is_word_in_cache(word, cursor):
-            # Word found in cache. No need to send API query
+            # Word found in cache. No need to query API
             future = None
         else:
             # Word not found in cache.
@@ -361,9 +367,9 @@ Please enter another word.''')
         # -------------
         if self._config.current_member_id and self._config.current_member_id == message.author.id:
             response: str = f'''{message.author.mention} messed up the count! \
-    You cannot send two words in a row!
-    Restart with a word starting with **{self._config.current_word[-1]}** and \
-    try to beat the current high score of **{self._config.high_score}**!'''
+You cannot send two words in a row!
+Restart with a word starting with **{self._config.current_word[-1]}** and \
+try to beat the current high score of **{self._config.high_score}**!'''
 
             await self.handle_mistake(message=message, response=response, conn=conn)
             return
