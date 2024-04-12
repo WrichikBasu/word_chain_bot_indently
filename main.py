@@ -1031,6 +1031,29 @@ class BlacklistCmdGroup(app_commands.Group):
         emb.description = f'✅ The word *{word.lower()}* was successfully removed from the blacklist.'
         await interaction.followup.send(embed=emb)
 
+    @app_commands.command(description='List the blacklisted words')
+    async def show(self, interaction: discord.Interaction) -> None:
+        await interaction.response.defer()
+
+        conn: sqlite3.Connection = sqlite3.connect('database.sqlite3')
+        cursor: sqlite3.Cursor = conn.cursor()
+
+        cursor.execute(f'SELECT words FROM {Bot.TABLE_BLACKLIST} WHERE server_id = {interaction.guild.id}')
+        result: list[tuple[int]] = cursor.fetchall()  # Structure: [(word1,), (word2,), (word3,), ...] or [] if empty
+
+        emb = discord.Embed(title=f'Blacklisted words', description='', colour=discord.Color.dark_orange())
+
+        if len(result) == 0:
+            emb.description = f'No words have been blacklisted in this server.'
+            await interaction.followup.send(embed=emb)
+        else:
+            i: int = 0
+            for word in result:
+                i += 1
+                emb.description += f'{i}. {word[0]}\n'
+
+            await interaction.followup.send(embed=emb)
+
 
 if __name__ == '__main__':
     bot.tree.add_command(BlacklistCmdGroup())
