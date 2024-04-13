@@ -738,17 +738,20 @@ async def set_channel(interaction: discord.Interaction, channel: discord.TextCha
 
 
 @bot.tree.command(name='list_commands', description='List all slash commands')
-async def list_commands(interaction: discord.Interaction):
+@app_commands.describe(ephemeral="Whether the list will be publicly displayed")
+async def list_commands(interaction: discord.Interaction, ephemeral: bool = True):
     """Command to list all the slash commands"""
+
     emb = discord.Embed(title='Slash Commands', color=discord.Color.blue(),
                         description='''
-__Unrestricted commands__
 **list_commands** - Lists all the slash commands.
 **stats_user** - Shows the stats of a specific user.
 **stats_server** - Shows the stats of the server.
 **check_word** - Check if a word exists/check the spelling.
-**leaderboard** - Shows the leaderboard of the server.
+**leaderboard** - Shows the leaderboard of the server.''')
 
+    if interaction.user.guild_permissions.ban_members:
+        emb.description += '''\n
 __Restricted commands__ (Admin-only)
 **sync** - Syncs the slash commands to the bot.
 **set_channel** - Sets the channel to chain words.
@@ -760,8 +763,9 @@ __Restricted commands__ (Admin-only)
 **prune** - Remove data for users who are no longer in the server.
 **blacklist add** - Add a word to the blacklist for this server.
 **blacklist remove** - Remove a word from the blacklist of this server.
-**blacklist show** - Show the blacklisted words for this server.''')
-    await interaction.response.send_message(embed=emb)
+**blacklist show** - Show the blacklisted words for this server.'''
+
+    await interaction.response.send_message(embed=emb, ephemeral=ephemeral)
 
 
 @bot.tree.command(name='stats_user', description='Shows the user stats')
