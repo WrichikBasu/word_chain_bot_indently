@@ -855,14 +855,20 @@ async def check_word(interaction: discord.Interaction, word: str):
     Checks if a word is valid.
 
     Hierarchy followed:
-    1. Length of word must be > 1.
-    2. The word must not be blacklisted in the server in which the command was run.
-    3. Check word cache.
-    4. Query API.
+    1. The input must have all legal characters.
+    2. Length of word must be > 1.
+    3. The word must not be blacklisted in the server in which the command was run.
+    4. Check word cache.
+    5. Query API.
     """
     await interaction.response.defer()
 
     emb = discord.Embed(color=discord.Color.blurple())
+
+    if not all(c in POSSIBLE_CHARACTERS for c in word.lower()):
+        emb.description = f'❌ The word *{word}* is **not** a legal word.'
+        await interaction.followup.send(embed=emb)
+        return
 
     if len(word) == 1:
         emb.description = f'❌ The word *{word}* is **not** valid.'
