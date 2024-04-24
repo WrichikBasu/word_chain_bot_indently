@@ -193,10 +193,10 @@ class Bot(commands.Bot):
             guild_id: int = self.reliable_role.guild.id
 
             if len(users) == 1:
-                sql_stmt: str = (f'SELECT member_id, correct, wrong FROM members '
+                sql_stmt: str = (f'SELECT member_id, correct, wrong FROM {Bot.TABLE_MEMBERS} '
                                  f'WHERE member_id = {tuple(users)[0]} AND server_id = {guild_id}')
             else:
-                sql_stmt: str = (f'SELECT member_id, correct, wrong FROM members '
+                sql_stmt: str = (f'SELECT member_id, correct, wrong FROM {Bot.TABLE_MEMBERS} '
                                  f'WHERE server_id = {guild_id} AND member_id IN {tuple(users)}')
 
             cursor.execute(sql_stmt)
@@ -309,12 +309,12 @@ The chain has **not** been broken. Please enter another word.''')
         # We need to check whether the current user already has an entry in the database.
         # If not, we have to add an entry.
         # Code courtesy: https://stackoverflow.com/a/9756276/8387076
-        cursor.execute(f'SELECT EXISTS(SELECT 1 FROM members WHERE member_id = {message.author.id} '
+        cursor.execute(f'SELECT EXISTS(SELECT 1 FROM {Bot.TABLE_MEMBERS} WHERE member_id = {message.author.id} '
                        f'AND server_id = {message.guild.id})')
         exists: int = (cursor.fetchone())[0]  # Will be either 0 or 1
 
         if exists == 0:
-            cursor.execute(f'INSERT INTO members VALUES({message.guild.id}, {message.author.id}, 0, 0, 0)')
+            cursor.execute(f'INSERT INTO {Bot.TABLE_MEMBERS} VALUES({message.guild.id}, {message.author.id}, 0, 0, 0)')
             conn.commit()
 
         # -------------------------------
@@ -469,7 +469,7 @@ The above entered word is **NOT** being taken into account.''')
         await message.add_reaction('❌')
 
         c = conn.cursor()
-        c.execute(f'UPDATE members '
+        c.execute(f'UPDATE {Bot.TABLE_MEMBERS} '
                   f'SET score = score - 1, wrong = wrong + 1 '
                   f'WHERE member_id = {message.author.id} AND '
                   f'server_id = {message.guild.id}')
@@ -999,7 +999,7 @@ async def prune(interaction: discord.Interaction):
             user_id: int = res[0]
 
             if interaction.guild.get_member(user_id) is None:
-                cursor.execute(f'DELETE FROM members WHERE member_id = {user_id} '
+                cursor.execute(f'DELETE FROM {Bot.TABLE_MEMBERS} WHERE member_id = {user_id} '
                                f'AND server_id = {interaction.guild.id}')
                 count += 1
                 print(f'Removed data for user {user_id}.')
