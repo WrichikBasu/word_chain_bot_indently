@@ -12,6 +12,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 from dotenv import load_dotenv
+from consts import FIRST_CHAR_SCORE
 
 load_dotenv('.env')
 
@@ -314,7 +315,8 @@ The chain has **not** been broken. Please enter another word.''')
         exists: int = (cursor.fetchone())[0]  # Will be either 0 or 1
 
         if exists == 0:
-            cursor.execute(f'INSERT INTO {Bot.TABLE_MEMBERS} VALUES({message.guild.id}, {message.author.id}, 0, 0, 0)')
+            cursor.execute(f'INSERT INTO {Bot.TABLE_MEMBERS} '
+                           f'VALUES({message.guild.id}, {message.author.id}, 0, 0, 0, 0)')
             conn.commit()
 
         # -------------------------------
@@ -428,7 +430,10 @@ The above entered word is **NOT** being taken into account.''')
 
         await message.add_reaction(self._config.reaction_emoji())  # config dump at the end of the method
 
-        cursor.execute(f'UPDATE {Bot.TABLE_MEMBERS} SET score = score + 1, correct = correct + 1 '
+        karma: float = self.calculate_karma(word)
+
+        cursor.execute(f'UPDATE {Bot.TABLE_MEMBERS} '
+                       f'SET score = score + 1, correct = correct + 1, karma = karma + {karma} '
                        f'WHERE member_id = {message.author.id} AND server_id = {message.guild.id}')
 
         cursor.execute(f'INSERT INTO {Bot.TABLE_USED_WORDS} VALUES ({message.guild.id}, "{word}")')
@@ -661,7 +666,7 @@ The above entered word is **NOT** being taken into account.''')
         Parameters
         ----------
         server_id : int
-            The guild which is calling this function
+            The guild which is calling this function.
         word : str
             The word that is to be checked.
         cursor : sqlite3.Cursor
@@ -676,6 +681,32 @@ The above entered word is **NOT** being taken into account.''')
         result: int = (cursor.fetchone())[0]
         return result == 1
 
+    @staticmethod
+    def calculate_karma(word: str, last_char_bias: float = .7) -> float:
+        """
+        Calculates the karma gain or loss for given word.
+
+        Parameters
+        ----------
+        word : str
+            The word to calculate the karma change from.
+        last_char_bias : float
+            Bias to be multiplied with the karma part for the last character.
+
+        Returns
+        -------
+        Karma change value, usually closely around 0.
+        """
+        first_char_score: float = FIRST_CHAR_SCORE[word[0]]  # indicates how difficult it is to find this word
+        last_char_score: float = FIRST_CHAR_SCORE[word[-1]]  # indicates how difficult it is for the next player
+
+        first_char_karma: float = (first_char_score - 1) * -1  # distance to average, inverted
+        last_char_karma: float = (last_char_score - 1)  # distance to average
+
+        # no karma loss if first char is common, because you cannot choose the first one, it is determined by last one
+        # apply bias to last characters karma to fine tune the total influence
+        return (first_char_karma if first_char_karma > 0 else 0) + (last_char_karma * last_char_bias)
+
     async def setup_hook(self) -> NoReturn:
         await self.tree.sync()
 
@@ -688,6 +719,7 @@ The above entered word is **NOT** being taken into account.''')
                   'score INTEGER NOT NULL, '
                   'correct INTEGER NOT NULL, '
                   'wrong INTEGER NOT NULL, '
+                  'karma REAL NOT NULL, '
                   'PRIMARY KEY (server_id, member_id))')
 
         c.execute(f'CREATE TABLE IF NOT EXISTS {Bot.TABLE_USED_WORDS} '
