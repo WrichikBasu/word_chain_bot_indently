@@ -814,24 +814,27 @@ async def stats_user(interaction: discord.Interaction, member: discord.Member = 
     conn = sqlite3.connect('database.sqlite3')
     c = conn.cursor()
 
-    c.execute(f'SELECT score, correct, wrong '
+    c.execute(f'SELECT score, correct, wrong, karma '
               f'FROM {Bot.TABLE_MEMBERS} WHERE member_id = {member.id} AND server_id = {member.guild.id}')
-    stats = c.fetchone()
+    stats: Optional[tuple[int, int, int, float]] = c.fetchone()
 
     if stats is None:
         await interaction.followup.send('You have never played in this server!')
         conn.close()
         return
 
-    c.execute(f'SELECT COUNT(member_id) FROM members WHERE score >= {stats[0]} AND server_id = {member.guild.id}')
+    score, correct, wrong, karma = stats
+
+    c.execute(f'SELECT COUNT(member_id) FROM members WHERE score >= {score} AND server_id = {member.guild.id}')
     position = c.fetchone()[0]
     conn.close()
 
     emb.description = f'''{member.mention}\'s stats:\n
-**Score:** {stats[0]} (#{position})
-**✅Correct:** {stats[1]}
-**❌Wrong:** {stats[2]}
-**Accuracy:** {(stats[1] / (stats[1] + stats[2])) * 100:.2f}%'''
+**Score:** {score} (#{position})
+**🌟Karma:** {karma:.2f}
+**✅Correct:** {correct}
+**❌Wrong:** {wrong}
+**Accuracy:** {(correct / (correct + wrong)):.2%}'''
 
     await interaction.followup.send(embed=emb)
 
