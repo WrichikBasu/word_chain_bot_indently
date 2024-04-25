@@ -204,13 +204,18 @@ class Bot(commands.Bot):
             result: Optional[list[tuple[int, int, int, float]]] = cursor.fetchall()
             conn.close()
 
+            def truncate(value: float, decimals: int = 4):
+                t = 10.0 ** decimals
+                return (value * t) // 1 / t
+
             if result:
                 for data in result:
                     member_id, correct, wrong, karma = data
+                    karma = truncate(karma)
                     if karma != 0:
                         member: Optional[discord.Member] = self.reliable_role.guild.get_member(member_id)
                         if member:
-                            accuracy: float = correct / (correct + wrong)
+                            accuracy: float = truncate(correct / (correct + wrong))
                             if karma >= RELIABLE_ROLE_KARMA_THRESHOLD and accuracy >= RELIABLE_ROLE_ACCURACY_THRESHOLD:
                                 await member.add_roles(self.reliable_role)
                             else:
@@ -367,6 +372,7 @@ Please enter another word.''')
         # -------------
         # Wrong member
         # -------------
+        """
         if self._config.current_member_id and self._config.current_member_id == message.author.id:
             response: str = f'''{message.author.mention} messed up the count! \
 You cannot send two words in a row!
@@ -375,6 +381,7 @@ try to beat the current high score of **{self._config.high_score}**!'''
 
             await self.handle_mistake(message=message, response=response, conn=conn)
             return
+        """
 
         # -------------------------
         # Wrong starting letter
