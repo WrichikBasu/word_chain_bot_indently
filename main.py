@@ -30,7 +30,7 @@ class Config:
     current_member_id: Optional[int] = None
     put_high_score_emoji: bool = False
     failed_role_id: Optional[int] = None
-    reliable_counter_role_id: Optional[int] = None
+    reliable_role_id: Optional[int] = None
     failed_member_id: Optional[int] = None
     correct_inputs_by_failed_member: int = 0
 
@@ -166,9 +166,9 @@ class Bot(commands.Bot):
             else:
                 self.failed_role = None
 
-            # Set self.reliable_counter_role
-            if self._config.reliable_counter_role_id is not None:
-                self.reliable_role = discord.utils.get(guild.roles, id=self._config.reliable_counter_role_id)
+            # Set self.reliable_role
+            if self._config.reliable_role_id is not None:
+                self.reliable_role = discord.utils.get(guild.roles, id=self._config.reliable_role_id)
             else:
                 self.reliable_role = None
 
@@ -966,7 +966,7 @@ async def set_failed_role(interaction: discord.Interaction, role: discord.Role):
 async def set_reliable_role(interaction: discord.Interaction, role: discord.Role):
     """Command to set the role to be used when a user gets 100 of score"""
     config = Config.read()
-    config.reliable_counter_role_id = role.id
+    config.reliable_role_id = role.id
     config.dump_data()
     bot.read_config()  # Explicitly ask the bot to re-read the config
     bot.set_roles()  # Ask the bot to re-load the roles
@@ -990,7 +990,7 @@ async def remove_failed_role(interaction: discord.Interaction):
 @app_commands.default_permissions(ban_members=True)
 async def remove_reliable_role(interaction: discord.Interaction):
     config = Config.read()
-    config.reliable_counter_role_id = None
+    config.reliable_role_id = None
     config.dump_data()
     bot.read_config()  # Explicitly ask the bot to re-read the config
     bot.set_roles()  # Ask the bot to re-load the roles
