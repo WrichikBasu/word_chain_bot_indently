@@ -32,4 +32,7 @@ FIRST_CHAR_SCORE = {
     "y": 0.08029613217870604,
     "z": 0.09743721376366166
 }
+""" amount of karma removed for a mistake """
 MISTAKE_PENALTY = 10
+""" amount of karma needed for the reliable role """
+RELIABLE_ROLE_THRESHOLD = 50

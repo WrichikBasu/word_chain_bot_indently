@@ -12,7 +12,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 from dotenv import load_dotenv
-from consts import FIRST_CHAR_SCORE, MISTAKE_PENALTY
+from consts import FIRST_CHAR_SCORE, MISTAKE_PENALTY, RELIABLE_ROLE_THRESHOLD
 
 load_dotenv('.env')
 
@@ -178,9 +178,7 @@ class Bot(commands.Bot):
         """
         Adds/removes the reliable role for participating users.
 
-        Criteria for getting the reliable role:
-        1. Accuracy must be >= 99%. (Accuracy = correct / (correct + wrong))
-        2. Must have score >= 100. (Score = correct - wrong)
+        Users must have a karma of at least `RELIABLE_ROLE_THRESHOLD` to get the reliable role.
         """
         if self.reliable_role and self._participating_users:
 
@@ -194,24 +192,23 @@ class Bot(commands.Bot):
             guild_id: int = self.reliable_role.guild.id
 
             if len(users) == 1:
-                sql_stmt: str = (f'SELECT member_id, correct, wrong FROM {Bot.TABLE_MEMBERS} '
+                sql_stmt: str = (f'SELECT member_id, karma FROM {Bot.TABLE_MEMBERS} '
                                  f'WHERE member_id = {tuple(users)[0]} AND server_id = {guild_id}')
             else:
-                sql_stmt: str = (f'SELECT member_id, correct, wrong FROM {Bot.TABLE_MEMBERS} '
+                sql_stmt: str = (f'SELECT member_id, karma FROM {Bot.TABLE_MEMBERS} '
                                  f'WHERE server_id = {guild_id} AND member_id IN {tuple(users)}')
 
             cursor.execute(sql_stmt)
-            result: Optional[list[tuple[int]]] = cursor.fetchall()
+            result: Optional[list[tuple[int, float]]] = cursor.fetchall()
             conn.close()
 
             if result:
                 for data in result:
-                    if data[1] + data[2] != 0:
-                        member: Optional[discord.Member] = self.reliable_role.guild.get_member(data[0])
+                    member_id, karma = data
+                    if karma != 0:
+                        member: Optional[discord.Member] = self.reliable_role.guild.get_member(member_id)
                         if member:
-                            accuracy: float = (data[1] / (data[1] + data[2])) * 100
-
-                            if float(f'{accuracy:.2f}') >= 99.00 and data[1] - data[2] >= 100:
+                            if karma > RELIABLE_ROLE_THRESHOLD:
                                 await member.add_roles(self.reliable_role)
                             else:
                                 await member.remove_roles(self.reliable_role)
