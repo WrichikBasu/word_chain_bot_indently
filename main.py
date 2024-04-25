@@ -12,7 +12,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 from dotenv import load_dotenv
-from consts import FIRST_CHAR_SCORE
+from consts import FIRST_CHAR_SCORE, MISTAKE_PENALTY
 
 load_dotenv('.env')
 
@@ -475,7 +475,7 @@ The above entered word is **NOT** being taken into account.''')
 
         c = conn.cursor()
         c.execute(f'UPDATE {Bot.TABLE_MEMBERS} '
-                  f'SET score = score - 1, wrong = wrong + 1 '
+                  f'SET score = score - 1, wrong = wrong + 1, karma = karma - {MISTAKE_PENALTY} '
                   f'WHERE member_id = {message.author.id} AND '
                   f'server_id = {message.guild.id}')
         # Clear used words schema
