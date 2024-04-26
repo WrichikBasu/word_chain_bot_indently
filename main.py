@@ -879,12 +879,14 @@ async def leaderboard(interaction: discord.Interaction, option: Optional[app_com
     value: int = 1 if option is None else option.value
     name: str = 'score' if option is None else option.name
 
-    emb = discord.Embed(title=f'Top 10 users in {interaction.guild.name} by {name}',
-                        color=discord.Color.blue(), description='')
+    emb = discord.Embed(
+        title=f'Top 10 users by {name}',
+        color=discord.Color.blue(),
+        description=''
+    ).set_author(name=interaction.guild.name, icon_url=interaction.guild.icon.url)
 
     conn = sqlite3.connect('database.sqlite3')
     c = conn.cursor()
-
 
     match value:
         case 1:
