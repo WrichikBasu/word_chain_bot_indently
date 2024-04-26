@@ -12,6 +12,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 from dotenv import load_dotenv
+from consts import FIRST_CHAR_SCORE, MISTAKE_PENALTY, RELIABLE_ROLE_KARMA_THRESHOLD, RELIABLE_ROLE_ACCURACY_THRESHOLD
 
 load_dotenv('.env')
 
@@ -29,7 +30,7 @@ class Config:
     current_member_id: Optional[int] = None
     put_high_score_emoji: bool = False
     failed_role_id: Optional[int] = None
-    reliable_counter_role_id: Optional[int] = None
+    reliable_role_id: Optional[int] = None
     failed_member_id: Optional[int] = None
     correct_inputs_by_failed_member: int = 0
 
@@ -165,9 +166,9 @@ class Bot(commands.Bot):
             else:
                 self.failed_role = None
 
-            # Set self.reliable_counter_role
-            if self._config.reliable_counter_role_id is not None:
-                self.reliable_role = discord.utils.get(guild.roles, id=self._config.reliable_counter_role_id)
+            # Set self.reliable_role
+            if self._config.reliable_role_id is not None:
+                self.reliable_role = discord.utils.get(guild.roles, id=self._config.reliable_role_id)
             else:
                 self.reliable_role = None
 
@@ -178,8 +179,8 @@ class Bot(commands.Bot):
         Adds/removes the reliable role for participating users.
 
         Criteria for getting the reliable role:
-        1. Accuracy must be >= 99%. (Accuracy = correct / (correct + wrong))
-        2. Must have score >= 100. (Score = correct - wrong)
+        1. Accuracy must be >= `RELIABLE_ROLE_ACCURACY_THRESHOLD`. (Accuracy = correct / (correct + wrong))
+        2. Karma must be >= `RELIABLE_ROLE_KARMA_THRESHOLD`
         """
         if self.reliable_role and self._participating_users:
 
@@ -193,24 +194,29 @@ class Bot(commands.Bot):
             guild_id: int = self.reliable_role.guild.id
 
             if len(users) == 1:
-                sql_stmt: str = (f'SELECT member_id, correct, wrong FROM members '
+                sql_stmt: str = (f'SELECT member_id, correct, wrong, karma FROM {Bot.TABLE_MEMBERS} '
                                  f'WHERE member_id = {tuple(users)[0]} AND server_id = {guild_id}')
             else:
-                sql_stmt: str = (f'SELECT member_id, correct, wrong FROM members '
+                sql_stmt: str = (f'SELECT member_id, correct, wrong, karma FROM {Bot.TABLE_MEMBERS} '
                                  f'WHERE server_id = {guild_id} AND member_id IN {tuple(users)}')
 
             cursor.execute(sql_stmt)
-            result: Optional[list[tuple[int]]] = cursor.fetchall()
+            result: Optional[list[tuple[int, int, int, float]]] = cursor.fetchall()
             conn.close()
+
+            def truncate(value: float, decimals: int = 4):
+                t = 10.0 ** decimals
+                return (value * t) // 1 / t
 
             if result:
                 for data in result:
-                    if data[1] + data[2] != 0:
-                        member: Optional[discord.Member] = self.reliable_role.guild.get_member(data[0])
+                    member_id, correct, wrong, karma = data
+                    karma = truncate(karma)
+                    if karma != 0:
+                        member: Optional[discord.Member] = self.reliable_role.guild.get_member(member_id)
                         if member:
-                            accuracy: float = (data[1] / (data[1] + data[2])) * 100
-
-                            if float(f'{accuracy:.2f}') >= 99.00 and data[1] - data[2] >= 100:
+                            accuracy: float = truncate(correct / (correct + wrong))
+                            if karma >= RELIABLE_ROLE_KARMA_THRESHOLD and accuracy >= RELIABLE_ROLE_ACCURACY_THRESHOLD:
                                 await member.add_roles(self.reliable_role)
                             else:
                                 await member.remove_roles(self.reliable_role)
@@ -309,12 +315,13 @@ The chain has **not** been broken. Please enter another word.''')
         # We need to check whether the current user already has an entry in the database.
         # If not, we have to add an entry.
         # Code courtesy: https://stackoverflow.com/a/9756276/8387076
-        cursor.execute(f'SELECT EXISTS(SELECT 1 FROM members WHERE member_id = {message.author.id} '
+        cursor.execute(f'SELECT EXISTS(SELECT 1 FROM {Bot.TABLE_MEMBERS} WHERE member_id = {message.author.id} '
                        f'AND server_id = {message.guild.id})')
         exists: int = (cursor.fetchone())[0]  # Will be either 0 or 1
 
         if exists == 0:
-            cursor.execute(f'INSERT INTO members VALUES({message.guild.id}, {message.author.id}, 0, 0, 0)')
+            cursor.execute(f'INSERT INTO {Bot.TABLE_MEMBERS} '
+                           f'VALUES({message.guild.id}, {message.author.id}, 0, 0, 0, 0)')
             conn.commit()
 
         # -------------------------------
@@ -428,7 +435,10 @@ The above entered word is **NOT** being taken into account.''')
 
         await message.add_reaction(self._config.reaction_emoji())  # config dump at the end of the method
 
-        cursor.execute(f'UPDATE {Bot.TABLE_MEMBERS} SET score = score + 1, correct = correct + 1 '
+        karma: float = self.calculate_karma(word)
+
+        cursor.execute(f'UPDATE {Bot.TABLE_MEMBERS} '
+                       f'SET score = score + 1, correct = correct + 1, karma = karma + {karma} '
                        f'WHERE member_id = {message.author.id} AND server_id = {message.guild.id}')
 
         cursor.execute(f'INSERT INTO {Bot.TABLE_USED_WORDS} VALUES ({message.guild.id}, "{word}")')
@@ -469,8 +479,8 @@ The above entered word is **NOT** being taken into account.''')
         await message.add_reaction('❌')
 
         c = conn.cursor()
-        c.execute(f'UPDATE members '
-                  f'SET score = score - 1, wrong = wrong + 1 '
+        c.execute(f'UPDATE {Bot.TABLE_MEMBERS} '
+                  f'SET score = score - 1, wrong = wrong + 1, karma = karma - {MISTAKE_PENALTY} '
                   f'WHERE member_id = {message.author.id} AND '
                   f'server_id = {message.guild.id}')
         # Clear used words schema
@@ -661,7 +671,7 @@ The above entered word is **NOT** being taken into account.''')
         Parameters
         ----------
         server_id : int
-            The guild which is calling this function
+            The guild which is calling this function.
         word : str
             The word that is to be checked.
         cursor : sqlite3.Cursor
@@ -676,6 +686,32 @@ The above entered word is **NOT** being taken into account.''')
         result: int = (cursor.fetchone())[0]
         return result == 1
 
+    @staticmethod
+    def calculate_karma(word: str, last_char_bias: float = .7) -> float:
+        """
+        Calculates the karma gain or loss for given word.
+
+        Parameters
+        ----------
+        word : str
+            The word to calculate the karma change from.
+        last_char_bias : float
+            Bias to be multiplied with the karma part for the last character.
+
+        Returns
+        -------
+        Karma change value, usually closely around 0.
+        """
+        first_char_score: float = FIRST_CHAR_SCORE[word[0]]  # indicates how difficult it is to find this word
+        last_char_score: float = FIRST_CHAR_SCORE[word[-1]]  # indicates how difficult it is for the next player
+
+        first_char_karma: float = (first_char_score - 1) * -1  # distance to average, inverted
+        last_char_karma: float = (last_char_score - 1)  # distance to average
+
+        # no karma loss if first char is common, because you cannot choose the first one, it is determined by last one
+        # apply bias to last characters karma to fine tune the total influence
+        return (first_char_karma if first_char_karma > 0 else 0) + (last_char_karma * last_char_bias)
+
     async def setup_hook(self) -> NoReturn:
         await self.tree.sync()
 
@@ -688,6 +724,7 @@ The above entered word is **NOT** being taken into account.''')
                   'score INTEGER NOT NULL, '
                   'correct INTEGER NOT NULL, '
                   'wrong INTEGER NOT NULL, '
+                  'karma REAL NOT NULL, '
                   'PRIMARY KEY (server_id, member_id))')
 
         c.execute(f'CREATE TABLE IF NOT EXISTS {Bot.TABLE_USED_WORDS} '
@@ -777,29 +814,34 @@ async def stats_user(interaction: discord.Interaction, member: discord.Member = 
     if member is None:
         member = interaction.user
 
-    emb = discord.Embed(title=f'{member.display_name}\'s stats', color=discord.Color.blue())
-
     conn = sqlite3.connect('database.sqlite3')
     c = conn.cursor()
 
-    c.execute(f'SELECT score, correct, wrong '
+    c.execute(f'SELECT score, correct, wrong, karma '
               f'FROM {Bot.TABLE_MEMBERS} WHERE member_id = {member.id} AND server_id = {member.guild.id}')
-    stats = c.fetchone()
+    stats: Optional[tuple[int, int, int, float]] = c.fetchone()
 
     if stats is None:
         await interaction.followup.send('You have never played in this server!')
         conn.close()
         return
 
-    c.execute(f'SELECT COUNT(member_id) FROM members WHERE score >= {stats[0]} AND server_id = {member.guild.id}')
-    position = c.fetchone()[0]
+    score, correct, wrong, karma = stats
+
+    c.execute(f'SELECT COUNT(member_id) FROM members WHERE score >= {score} AND server_id = {member.guild.id}')
+    pos_by_score: int = c.fetchone()[0]
+    c.execute(f'SELECT COUNT(member_id) FROM members WHERE karma >= {karma} AND server_id = {member.guild.id}')
+    pos_by_karma: float = c.fetchone()[0]
     conn.close()
 
-    emb.description = f'''{member.mention}\'s stats:\n
-**Score:** {stats[0]} (#{position})
-**✅Correct:** {stats[1]}
-**❌Wrong:** {stats[2]}
-**Accuracy:** {(stats[1] / (stats[1] + stats[2])) * 100:.2f}%'''
+    emb = discord.Embed(
+        color=discord.Color.blue(),
+        description=f'''**Score:** {score} (#{pos_by_score})
+**🌟Karma:** {karma:.2f} (#{pos_by_karma})
+**✅Correct:** {correct}
+**❌Wrong:** {wrong}
+**Accuracy:** {(correct / (correct + wrong)):.2%}'''
+    ).set_author(name=f"{member} | stats", icon_url=member.avatar)
 
     await interaction.followup.send(embed=emb)
 
@@ -827,22 +869,47 @@ Longest chain length: {config.high_score}
 
 
 @bot.tree.command(name='leaderboard', description='Shows the first 10 users with the highest score')
-async def leaderboard(interaction: discord.Interaction):
+@app_commands.describe(option='The type of the leaderboard')
+@app_commands.choices(option=[
+    app_commands.Choice(name='score', value=1),
+    app_commands.Choice(name='karma', value=2)
+])
+async def leaderboard(interaction: discord.Interaction, option: Optional[app_commands.Choice[int]]):
     """Command to show the top 10 users with the highest score in Indently"""
     await interaction.response.defer()
 
-    emb = discord.Embed(title=f'Top 10 users in {interaction.guild.name}',
-                        color=discord.Color.blue(), description='')
+    value: int = 1 if option is None else option.value
+    name: str = 'score' if option is None else option.name
+
+    emb = discord.Embed(
+        title=f'Top 10 users by {name}',
+        color=discord.Color.blue(),
+        description=''
+    ).set_author(name=interaction.guild.name, icon_url=interaction.guild.icon.url)
 
     conn = sqlite3.connect('database.sqlite3')
     c = conn.cursor()
-    c.execute(f'SELECT member_id, score FROM members WHERE server_id = {interaction.guild.id} '
-              f'ORDER BY score DESC LIMIT 10')
-    users = c.fetchall()
 
-    for i, user in enumerate(users, 1):
-        user_obj = await interaction.guild.fetch_member(user[0])
-        emb.description += f'{i}. {user_obj.mention} **{user[1]}**\n'
+    match value:
+        case 1:
+            c.execute(f'SELECT member_id, score FROM members WHERE server_id = {interaction.guild.id} '
+                      f'ORDER BY score DESC LIMIT 10')
+            users: list[tuple[int, int]] = c.fetchall()
+            for i, user in enumerate(users, 1):
+                member_id, score = user
+                user_obj = await interaction.guild.fetch_member(member_id)
+                emb.description += f'{i}. {user_obj.mention} **{score}**\n'
+        case 2:
+            c.execute(f'SELECT member_id, karma FROM members WHERE server_id = {interaction.guild.id} '
+                      f'ORDER BY karma DESC LIMIT 10')
+            users: list[tuple[int, float]] = c.fetchall()
+            for i, user in enumerate(users, 1):
+                member_id, karma = user
+                user_obj = await interaction.guild.fetch_member(member_id)
+                emb.description += f'{i}. {user_obj.mention} **{karma:.2f}**\n'
+        case _:
+            raise ValueError(f'invalid option value')
+
     conn.close()
 
     await interaction.followup.send(embed=emb)
@@ -934,7 +1001,7 @@ async def set_failed_role(interaction: discord.Interaction, role: discord.Role):
 async def set_reliable_role(interaction: discord.Interaction, role: discord.Role):
     """Command to set the role to be used when a user gets 100 of score"""
     config = Config.read()
-    config.reliable_counter_role_id = role.id
+    config.reliable_role_id = role.id
     config.dump_data()
     bot.read_config()  # Explicitly ask the bot to re-read the config
     bot.set_roles()  # Ask the bot to re-load the roles
@@ -958,7 +1025,7 @@ async def remove_failed_role(interaction: discord.Interaction):
 @app_commands.default_permissions(ban_members=True)
 async def remove_reliable_role(interaction: discord.Interaction):
     config = Config.read()
-    config.reliable_counter_role_id = None
+    config.reliable_role_id = None
     config.dump_data()
     bot.read_config()  # Explicitly ask the bot to re-read the config
     bot.set_roles()  # Ask the bot to re-load the roles
@@ -999,7 +1066,7 @@ async def prune(interaction: discord.Interaction):
             user_id: int = res[0]
 
             if interaction.guild.get_member(user_id) is None:
-                cursor.execute(f'DELETE FROM members WHERE member_id = {user_id} '
+                cursor.execute(f'DELETE FROM {Bot.TABLE_MEMBERS} WHERE member_id = {user_id} '
                                f'AND server_id = {interaction.guild.id}')
                 count += 1
                 print(f'Removed data for user {user_id}.')
