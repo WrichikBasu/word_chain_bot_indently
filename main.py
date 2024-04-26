@@ -829,13 +829,15 @@ async def stats_user(interaction: discord.Interaction, member: discord.Member = 
     score, correct, wrong, karma = stats
 
     c.execute(f'SELECT COUNT(member_id) FROM members WHERE score >= {score} AND server_id = {member.guild.id}')
-    position = c.fetchone()[0]
+    pos_by_score: int = c.fetchone()[0]
+    c.execute(f'SELECT COUNT(member_id) FROM members WHERE karma >= {karma} AND server_id = {member.guild.id}')
+    pos_by_karma: float = c.fetchone()[0]
     conn.close()
 
     emb = discord.Embed(
         color=discord.Color.blue(),
-        description=f'''**Score:** {score} (#{position})
-**🌟Karma:** {karma:.2f}
+        description=f'''**Score:** {score} (#{pos_by_score})
+**🌟Karma:** {karma:.2f} (#{pos_by_karma})
 **✅Correct:** {correct}
 **❌Wrong:** {wrong}
 **Accuracy:** {(correct / (correct + wrong)):.2%}'''
