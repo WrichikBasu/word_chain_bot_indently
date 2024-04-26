@@ -869,7 +869,12 @@ Longest chain length: {config.high_score}
 
 
 @bot.tree.command(name='leaderboard', description='Shows the first 10 users with the highest score')
-async def leaderboard(interaction: discord.Interaction):
+@app_commands.describe(option='The type of the leaderboard')
+@app_commands.choices(option=[
+    app_commands.Choice(name='score', value=1),
+    app_commands.Choice(name='karma', value=2)
+])
+async def leaderboard(interaction: discord.Interaction, option: Optional[app_commands.Choice[int]]):
     """Command to show the top 10 users with the highest score in Indently"""
     await interaction.response.defer()
 
@@ -878,13 +883,29 @@ async def leaderboard(interaction: discord.Interaction):
 
     conn = sqlite3.connect('database.sqlite3')
     c = conn.cursor()
-    c.execute(f'SELECT member_id, score FROM members WHERE server_id = {interaction.guild.id} '
-              f'ORDER BY score DESC LIMIT 10')
-    users = c.fetchall()
 
-    for i, user in enumerate(users, 1):
-        user_obj = await interaction.guild.fetch_member(user[0])
-        emb.description += f'{i}. {user_obj.mention} **{user[1]}**\n'
+    value: int = 1 if option is None else option.value
+
+    match value:
+        case 1:
+            c.execute(f'SELECT member_id, score FROM members WHERE server_id = {interaction.guild.id} '
+                      f'ORDER BY score DESC LIMIT 10')
+            users: list[tuple[int, int]] = c.fetchall()
+            for i, user in enumerate(users, 1):
+                member_id, score = user
+                user_obj = await interaction.guild.fetch_member(member_id)
+                emb.description += f'{i}. {user_obj.mention} **{score}**\n'
+        case 2:
+            c.execute(f'SELECT member_id, karma FROM members WHERE server_id = {interaction.guild.id} '
+                      f'ORDER BY karma DESC LIMIT 10')
+            users: list[tuple[int, float]] = c.fetchall()
+            for i, user in enumerate(users, 1):
+                member_id, karma = user
+                user_obj = await interaction.guild.fetch_member(member_id)
+                emb.description += f'{i}. {user_obj.mention} **{karma:.2f}**\n'
+        case _:
+            raise ValueError(f'invalid option value')
+
     conn.close()
 
     await interaction.followup.send(embed=emb)
