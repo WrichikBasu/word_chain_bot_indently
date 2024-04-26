@@ -372,7 +372,6 @@ Please enter another word.''')
         # -------------
         # Wrong member
         # -------------
-        """
         if self._config.current_member_id and self._config.current_member_id == message.author.id:
             response: str = f'''{message.author.mention} messed up the count! \
 You cannot send two words in a row!
@@ -381,7 +380,6 @@ try to beat the current high score of **{self._config.high_score}**!'''
 
             await self.handle_mistake(message=message, response=response, conn=conn)
             return
-        """
 
         # -------------------------
         # Wrong starting letter
