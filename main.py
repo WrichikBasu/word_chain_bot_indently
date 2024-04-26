@@ -84,14 +84,12 @@ class Config:
         if self.current_count == self.high_score and not self.put_high_score_emoji:
             emoji = "🎉"
             self.put_high_score_emoji = True  # Needs a config data dump
-        elif self.current_count == 100:
-            emoji = "💯"
-        elif self.current_count == 69:
-            emoji = "😏"
-        elif self.current_count == 666:
-            emoji = "👹"
         else:
-            emoji = "✅"
+            emoji = {
+                100: "💯",
+                69: "😏",
+                666: "👹",
+            }.get(self.current_count, "✅")
         return emoji
 
 
