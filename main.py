@@ -816,8 +816,6 @@ async def stats_user(interaction: discord.Interaction, member: discord.Member = 
     if member is None:
         member = interaction.user
 
-    emb = discord.Embed(title=f'{member.display_name}\'s stats', color=discord.Color.blue())
-
     conn = sqlite3.connect('database.sqlite3')
     c = conn.cursor()
 
@@ -836,12 +834,14 @@ async def stats_user(interaction: discord.Interaction, member: discord.Member = 
     position = c.fetchone()[0]
     conn.close()
 
-    emb.description = f'''{member.mention}\'s stats:\n
-**Score:** {score} (#{position})
+    emb = discord.Embed(
+        color=discord.Color.blue(),
+        description=f'''**Score:** {score} (#{position})
 **🌟Karma:** {karma:.2f}
 **✅Correct:** {correct}
 **❌Wrong:** {wrong}
 **Accuracy:** {(correct / (correct + wrong)):.2%}'''
+    ).set_author(name=f"{member} | stats", icon_url=member.avatar)
 
     await interaction.followup.send(embed=emb)
 
