@@ -643,7 +643,8 @@ The above entered word is **NOT** being taken into account.''')
 
         Returns
         -------
-        `True` if the word exists in the cache, otherwise `False`.
+        bool
+            `True` if the word exists in the cache, otherwise `False`.
         """
 
         cursor.execute(f'SELECT EXISTS(SELECT 1 FROM {Bot.TABLE_CACHE} WHERE words = \'{word}\')')
@@ -686,7 +687,8 @@ The above entered word is **NOT** being taken into account.''')
 
         Returns
         -------
-        `True` if the word is blacklisted, otherwise `False`.
+        bool
+            `True` if the word is blacklisted, otherwise `False`.
         """
         cursor.execute(f'SELECT EXISTS(SELECT 1 FROM {Bot.TABLE_BLACKLIST} WHERE '
                        f'server_id = {server_id} AND words = \'{word}\')')
@@ -707,7 +709,8 @@ The above entered word is **NOT** being taken into account.''')
 
         Returns
         -------
-        Karma change value, usually closely around 0.
+        float
+            The change in Karma, usually closely around 0.
         """
         first_char_score: float = FIRST_CHAR_SCORE[word[0]]  # indicates how difficult it is to find this word
         last_char_score: float = FIRST_CHAR_SCORE[word[-1]]  # indicates how difficult it is for the next player
