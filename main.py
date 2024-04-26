@@ -878,13 +878,15 @@ async def leaderboard(interaction: discord.Interaction, option: Optional[app_com
     """Command to show the top 10 users with the highest score in Indently"""
     await interaction.response.defer()
 
-    emb = discord.Embed(title=f'Top 10 users in {interaction.guild.name}',
+    value: int = 1 if option is None else option.value
+    name: str = 'score' if option is None else option.name
+
+    emb = discord.Embed(title=f'Top 10 users in {interaction.guild.name} by {name}',
                         color=discord.Color.blue(), description='')
 
     conn = sqlite3.connect('database.sqlite3')
     c = conn.cursor()
 
-    value: int = 1 if option is None else option.value
 
     match value:
         case 1:
