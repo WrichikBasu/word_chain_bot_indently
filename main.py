@@ -33,6 +33,7 @@ class Config:
     reliable_role_id: Optional[int] = None
     failed_member_id: Optional[int] = None
     correct_inputs_by_failed_member: int = 0
+    indently_emoji: Optional[str] = None
 
     @staticmethod
     def read():
@@ -433,7 +434,10 @@ The above entered word is **NOT** being taken into account.''')
 
         self._config.update_current(message.author.id, current_word=word)  # config dump at the end of the method
 
-        await message.add_reaction(self._config.reaction_emoji())  # config dump at the end of the method
+        if word == 'indently' and self._config.indently_emoji:
+            await message.add_reaction(self._config.indently_emoji)
+        else:
+            await message.add_reaction(self._config.reaction_emoji())
 
         karma: float = self.calculate_karma(word)
 
@@ -792,10 +796,12 @@ async def list_commands(interaction: discord.Interaction, ephemeral: bool = True
 __Restricted commands__ (Admin-only)
 **sync** - Syncs the slash commands to the bot.
 **set_channel** - Sets the channel to chain words.
+**set_indently_emoji** - Sets the special reaction emoji for Indently
 **set_failed_role** - Sets the role to give when a user fails.
 **set_reliable_role** - Sets the reliable role.
 **remove_failed_role** - Unsets the role to give when a user fails.
 **remove_reliable_role** - Unset the reliable role.
+**remove_indently_emoji** - Removes the special reaction emoji for Indently
 **force_dump** - Forcibly dump bot config data. Use only when no one is actively playing.
 **prune** - Remove data for users who are no longer in the server.
 **blacklist add** - Add a word to the blacklist for this server.
@@ -978,6 +984,46 @@ async def check_word(interaction: discord.Interaction, word: str):
             emb.description = f'⚠️ There was an issue in fetching the result.'
 
     await interaction.followup.send(embed=emb)
+
+
+@bot.tree.command(name='set_indently_emoji', description='Set the special reaction emoji for Indently')
+@app_commands.describe(emoji='The emoji')
+@app_commands.default_permissions(ban_members=True)
+async def set_indently_emoji(interaction: discord.Interaction, emoji: str):
+    """
+    Set a special emoji which the bot will use if someone enters 'Indently'.
+    """
+    await interaction.response.defer()
+
+    bot._config.indently_emoji = emoji
+    bot._config.dump_data()
+
+    emb: discord.Embed = discord.Embed(description=f'✅ Successfully set the reaction emoji for Indently to {emoji}',
+                                       colour=discord.Colour.green())
+
+    await interaction.followup.send(embed=emb)
+
+
+@bot.tree.command(name='remove_indently_emoji', description='Removes the special reaction emoji for Indently')
+@app_commands.default_permissions(ban_members=True)
+async def remove_indently_emoji(interaction: discord.Interaction):
+    """
+    Removes the special emoji for 'Indently'.
+    """
+    await interaction.response.defer()
+
+    if bot._config.indently_emoji:
+
+        bot._config.indently_emoji = None
+        bot._config.dump_data()
+
+        emb: discord.Embed = discord.Embed(description=f'✅ Successfully removed the reaction emoji for Indently',
+                                           colour=discord.Colour.green())
+        await interaction.followup.send(embed=emb)
+    else:
+        emb: discord.Embed = discord.Embed(description=f'⚠️ Emoji not set, so nothing to removed.',
+                                           colour=discord.Colour.dark_teal())
+        await interaction.followup.send(embed=emb)
 
 
 @bot.tree.command(name='set_failed_role',
