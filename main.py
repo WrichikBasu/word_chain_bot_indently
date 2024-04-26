@@ -375,7 +375,8 @@ Please enter another word.''')
         # -------------
         if self._config.current_member_id and self._config.current_member_id == message.author.id:
             response: str = f'''{message.author.mention} messed up the count! \
-You cannot send two words in a row!
+*You cannot send two words in a row!*
+{f'The chain length was {self._config.current_count} when it was broken. :sob:\n' if self._config.current_count > 0 else ''}\
 Restart with a word starting with **{self._config.current_word[-1]}** and \
 try to beat the current high score of **{self._config.high_score}**!'''
 
@@ -387,7 +388,8 @@ try to beat the current high score of **{self._config.high_score}**!'''
         # -------------------------
         if self._config.current_word and word[0] != self._config.current_word[-1]:
             response: str = f'''{message.author.mention} messed up the chain! \
-The word you entered did not begin with the last letter of the previous word (**{self._config.current_word[-1]}**).
+*The word you entered did not begin with the last letter of the previous word* (**{self._config.current_word[-1]}**).
+{f'The chain length was {self._config.current_count} when it was broken. :sob:\n' if self._config.current_count > 0 else ''}\
 Restart with a word starting with **{self._config.current_word[-1]}** and try to beat the \
 current high score of **{self._config.high_score}**!'''
 
@@ -404,13 +406,14 @@ current high score of **{self._config.high_score}**!'''
 
                 if self._config.current_word:
                     response: str = f'''{message.author.mention} messed up the chain! \
-The word you entered does not exist.
+*The word you entered does not exist.*
+{f'The chain length was {self._config.current_count} when it was broken. :sob:\n' if self._config.current_count > 0 else ''}\
 Restart with a word starting with **{self._config.current_word[-1]}** and try to beat the \
 current high score of **{self._config.high_score}**!'''
 
                 else:
                     response: str = f'''{message.author.mention} messed up the chain! \
-The word you entered does not exist.
+*The word you entered does not exist.*
 Restart and try to beat the current high score of **{self._config.high_score}**!'''
 
                 await self.handle_mistake(message=message, response=response, conn=conn)
