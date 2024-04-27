@@ -33,6 +33,7 @@ class Config:
     reliable_role_id: Optional[int] = None
     failed_member_id: Optional[int] = None
     correct_inputs_by_failed_member: int = 0
+    indently_emoji: Optional[str] = None
 
     @staticmethod
     def read():
@@ -83,14 +84,12 @@ class Config:
         if self.current_count == self.high_score and not self.put_high_score_emoji:
             emoji = "🎉"
             self.put_high_score_emoji = True  # Needs a config data dump
-        elif self.current_count == 100:
-            emoji = "💯"
-        elif self.current_count == 69:
-            emoji = "😏"
-        elif self.current_count == 666:
-            emoji = "👹"
         else:
-            emoji = "✅"
+            emoji = {
+                100: "💯",
+                69: "😏",
+                666: "👹",
+            }.get(self.current_count, "✅")
         return emoji
 
 
@@ -374,7 +373,8 @@ Please enter another word.''')
         # -------------
         if self._config.current_member_id and self._config.current_member_id == message.author.id:
             response: str = f'''{message.author.mention} messed up the count! \
-You cannot send two words in a row!
+*You cannot send two words in a row!*
+{f'The chain length was {self._config.current_count} when it was broken. :sob:\n' if self._config.current_count > 0 else ''}\
 Restart with a word starting with **{self._config.current_word[-1]}** and \
 try to beat the current high score of **{self._config.high_score}**!'''
 
@@ -386,7 +386,8 @@ try to beat the current high score of **{self._config.high_score}**!'''
         # -------------------------
         if self._config.current_word and word[0] != self._config.current_word[-1]:
             response: str = f'''{message.author.mention} messed up the chain! \
-The word you entered did not begin with the last letter of the previous word (**{self._config.current_word[-1]}**).
+*The word you entered did not begin with the last letter of the previous word* (**{self._config.current_word[-1]}**).
+{f'The chain length was {self._config.current_count} when it was broken. :sob:\n' if self._config.current_count > 0 else ''}\
 Restart with a word starting with **{self._config.current_word[-1]}** and try to beat the \
 current high score of **{self._config.high_score}**!'''
 
@@ -403,13 +404,14 @@ current high score of **{self._config.high_score}**!'''
 
                 if self._config.current_word:
                     response: str = f'''{message.author.mention} messed up the chain! \
-The word you entered does not exist.
+*The word you entered does not exist.*
+{f'The chain length was {self._config.current_count} when it was broken. :sob:\n' if self._config.current_count > 0 else ''}\
 Restart with a word starting with **{self._config.current_word[-1]}** and try to beat the \
 current high score of **{self._config.high_score}**!'''
 
                 else:
                     response: str = f'''{message.author.mention} messed up the chain! \
-The word you entered does not exist.
+*The word you entered does not exist.*
 Restart and try to beat the current high score of **{self._config.high_score}**!'''
 
                 await self.handle_mistake(message=message, response=response, conn=conn)
@@ -433,7 +435,10 @@ The above entered word is **NOT** being taken into account.''')
 
         self._config.update_current(message.author.id, current_word=word)  # config dump at the end of the method
 
-        await message.add_reaction(self._config.reaction_emoji())  # config dump at the end of the method
+        if word == 'indently' and self._config.indently_emoji:
+            await message.add_reaction(self._config.indently_emoji)
+        else:
+            await message.add_reaction(self._config.reaction_emoji())
 
         karma: float = self.calculate_karma(word)
 
@@ -636,7 +641,8 @@ The above entered word is **NOT** being taken into account.''')
 
         Returns
         -------
-        `True` if the word exists in the cache, otherwise `False`.
+        bool
+            `True` if the word exists in the cache, otherwise `False`.
         """
 
         cursor.execute(f'SELECT EXISTS(SELECT 1 FROM {Bot.TABLE_CACHE} WHERE words = \'{word}\')')
@@ -679,7 +685,8 @@ The above entered word is **NOT** being taken into account.''')
 
         Returns
         -------
-        `True` if the word is blacklisted, otherwise `False`.
+        bool
+            `True` if the word is blacklisted, otherwise `False`.
         """
         cursor.execute(f'SELECT EXISTS(SELECT 1 FROM {Bot.TABLE_BLACKLIST} WHERE '
                        f'server_id = {server_id} AND words = \'{word}\')')
@@ -700,7 +707,8 @@ The above entered word is **NOT** being taken into account.''')
 
         Returns
         -------
-        Karma change value, usually closely around 0.
+        float
+            The change in Karma, usually closely around 0.
         """
         first_char_score: float = FIRST_CHAR_SCORE[word[0]]  # indicates how difficult it is to find this word
         last_char_score: float = FIRST_CHAR_SCORE[word[-1]]  # indicates how difficult it is for the next player
@@ -792,10 +800,12 @@ async def list_commands(interaction: discord.Interaction, ephemeral: bool = True
 __Restricted commands__ (Admin-only)
 **sync** - Syncs the slash commands to the bot.
 **set_channel** - Sets the channel to chain words.
+**set_indently_emoji** - Sets the special reaction emoji for Indently
 **set_failed_role** - Sets the role to give when a user fails.
 **set_reliable_role** - Sets the reliable role.
 **remove_failed_role** - Unsets the role to give when a user fails.
 **remove_reliable_role** - Unset the reliable role.
+**remove_indently_emoji** - Removes the special reaction emoji for Indently
 **force_dump** - Forcibly dump bot config data. Use only when no one is actively playing.
 **prune** - Remove data for users who are no longer in the server.
 **blacklist add** - Add a word to the blacklist for this server.
@@ -978,6 +988,46 @@ async def check_word(interaction: discord.Interaction, word: str):
             emb.description = f'⚠️ There was an issue in fetching the result.'
 
     await interaction.followup.send(embed=emb)
+
+
+@bot.tree.command(name='set_indently_emoji', description='Set the special reaction emoji for Indently')
+@app_commands.describe(emoji='The emoji')
+@app_commands.default_permissions(ban_members=True)
+async def set_indently_emoji(interaction: discord.Interaction, emoji: str):
+    """
+    Set a special emoji which the bot will use if someone enters 'Indently'.
+    """
+    await interaction.response.defer()
+
+    bot._config.indently_emoji = emoji
+    bot._config.dump_data()
+
+    emb: discord.Embed = discord.Embed(description=f'✅ Successfully set the reaction emoji for Indently to {emoji}',
+                                       colour=discord.Colour.green())
+
+    await interaction.followup.send(embed=emb)
+
+
+@bot.tree.command(name='remove_indently_emoji', description='Removes the special reaction emoji for Indently')
+@app_commands.default_permissions(ban_members=True)
+async def remove_indently_emoji(interaction: discord.Interaction):
+    """
+    Removes the special emoji for 'Indently'.
+    """
+    await interaction.response.defer()
+
+    if bot._config.indently_emoji:
+
+        bot._config.indently_emoji = None
+        bot._config.dump_data()
+
+        emb: discord.Embed = discord.Embed(description=f'✅ Successfully removed the reaction emoji for Indently',
+                                           colour=discord.Colour.green())
+        await interaction.followup.send(embed=emb)
+    else:
+        emb: discord.Embed = discord.Embed(description=f'⚠️ Emoji not set, so nothing to removed.',
+                                           colour=discord.Colour.dark_teal())
+        await interaction.followup.send(embed=emb)
 
 
 @bot.tree.command(name='set_failed_role',
