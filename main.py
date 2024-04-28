@@ -945,12 +945,12 @@ async def check_word(interaction: discord.Interaction, word: str):
     emb = discord.Embed(color=discord.Color.blurple())
 
     if not all(c in POSSIBLE_CHARACTERS for c in word.lower()):
-        emb.description = f'❌ The word *{word}* is **not** a legal word.'
+        emb.description = f'❌ **{word}** is **not** a legal word.'
         await interaction.followup.send(embed=emb)
         return
 
     if len(word) == 1:
-        emb.description = f'❌ The word *{word}* is **not** valid.'
+        emb.description = f'❌ **{word}** is **not** a valid word.'
         await interaction.followup.send(embed=emb)
         return
 
@@ -959,13 +959,13 @@ async def check_word(interaction: discord.Interaction, word: str):
     cursor = conn.cursor()
 
     if Bot.is_word_blacklisted(interaction.guild.id, word, cursor):
-        emb.description = f'❌ The word *{word}* is **blacklisted** in this server and hence, **not** valid.'
+        emb.description = f'❌ The word **{word}** is **blacklisted** in this server and hence, **not** valid.'
         await interaction.followup.send(embed=emb)
         conn.close()
         return
 
     if Bot.is_word_in_cache(word, cursor):
-        emb.description = f'✅ The word *{word}* is valid.'
+        emb.description = f'✅ The word **{word}** is valid.'
         await interaction.followup.send(embed=emb)
         conn.close()
         return
@@ -976,7 +976,7 @@ async def check_word(interaction: discord.Interaction, word: str):
     match Bot.get_query_response(future):
         case Bot.RESPONSE_WORD_EXISTS:
 
-            emb.description = f'✅ The word *{word}* is valid.'
+            emb.description = f'✅ The word **{word}** is valid.'
 
             if bot._cached_words is None:
                 bot._cached_words = {word, }
@@ -985,7 +985,7 @@ async def check_word(interaction: discord.Interaction, word: str):
             bot.add_to_cache()
 
         case Bot.RESPONSE_WORD_DOESNT_EXIST:
-            emb.description = f'❌ The word *{word}* is **not** valid.'
+            emb.description = f'❌ **{word}** is **not** a valid word.'
         case _:
             emb.description = f'⚠️ There was an issue in fetching the result.'
 
