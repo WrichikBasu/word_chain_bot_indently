@@ -12,7 +12,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 from dotenv import load_dotenv
-from consts import FIRST_CHAR_SCORE, MISTAKE_PENALTY, RELIABLE_ROLE_KARMA_THRESHOLD, RELIABLE_ROLE_ACCURACY_THRESHOLD
+from consts import FIRST_CHAR_SCORE, MISTAKE_PENALTY, RELIABLE_ROLE_KARMA_THRESHOLD, RELIABLE_ROLE_ACCURACY_THRESHOLD, COUNTRY_FLAGS
 
 load_dotenv('.env')
 
@@ -435,8 +435,10 @@ The above entered word is **NOT** being taken into account.''')
 
         self._config.update_current(message.author.id, current_word=word)  # config dump at the end of the method
 
-        if word == 'indently' and self._config.indently_emoji:
+        if word == 'indently' and self._config.indently_emoji:  # Special reaction for 'Indently'
             await message.add_reaction(self._config.indently_emoji)
+        elif word in COUNTRY_FLAGS:
+            await message.add_reaction(COUNTRY_FLAGS[word])
         else:
             await message.add_reaction(self._config.reaction_emoji())
 
