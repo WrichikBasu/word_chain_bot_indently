@@ -42,6 +42,12 @@ RELIABLE_ROLE_KARMA_THRESHOLD = 50
 """Minimum accuracy needed for the reliable role """
 RELIABLE_ROLE_ACCURACY_THRESHOLD = .99
 
+'''The bot's config file'''
+CONFIG_FILE: str = 'config_word_chain.json'
+
+'''The bot's database file'''
+DB_FILE: str = 'database_word_chain.sqlite3'
+
 """
 A dictionary mapping the country name to the corresponding flag emoji.
 """

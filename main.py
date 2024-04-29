@@ -12,7 +12,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 from dotenv import load_dotenv
-from consts import FIRST_CHAR_SCORE, MISTAKE_PENALTY, RELIABLE_ROLE_KARMA_THRESHOLD, RELIABLE_ROLE_ACCURACY_THRESHOLD, COUNTRY_FLAGS
+from consts import *
 
 load_dotenv('.env')
 
@@ -39,7 +39,7 @@ class Config:
     def read():
         _config: Optional[Config] = None
         try:
-            with open("config.json", "r") as file:
+            with open(CONFIG_FILE, "r") as file:
                 _config = Config(**json.load(file))
         except FileNotFoundError:
             _config = Config()
@@ -48,7 +48,7 @@ class Config:
 
     def dump_data(self) -> None:
         """Update the config.json file"""
-        with open("config.json", "w", encoding='utf-8') as file:
+        with open(CONFIG_FILE, "w", encoding='utf-8') as file:
             json.dump(self.__dict__, file, indent=2)
 
     def update_current(self, member_id: int, current_word: str) -> None:
@@ -187,7 +187,7 @@ class Bot(commands.Bot):
             users: set[int] = self._participating_users.copy()
             self._participating_users = None
 
-            conn: sqlite3.Connection = sqlite3.connect('database.sqlite3')
+            conn: sqlite3.Connection = sqlite3.connect(DB_FILE)
             cursor: sqlite3.Cursor = conn.cursor()
 
             guild_id: int = self.reliable_role.guild.id
@@ -301,7 +301,7 @@ class Bot(commands.Bot):
 The chain has **not** been broken. Please enter another word.''')
             return
 
-        conn: sqlite3.Connection = sqlite3.connect('database.sqlite3')
+        conn: sqlite3.Connection = sqlite3.connect(DB_FILE)
         cursor: sqlite3.Cursor = conn.cursor()
 
         self._busy += 1
@@ -661,7 +661,7 @@ The above entered word is **NOT** being taken into account.''')
             words = self._cached_words
             self._cached_words = None
 
-            conn = sqlite3.connect('database.sqlite3')
+            conn = sqlite3.connect(DB_FILE)
             cursor = conn.cursor()
 
             for word in tuple(words):
@@ -725,7 +725,7 @@ The above entered word is **NOT** being taken into account.''')
     async def setup_hook(self) -> NoReturn:
         await self.tree.sync()
 
-        conn = sqlite3.connect('database.sqlite3')
+        conn = sqlite3.connect(DB_FILE)
         c = conn.cursor()
 
         c.execute(f'CREATE TABLE IF NOT EXISTS {Bot.TABLE_MEMBERS} '
@@ -826,7 +826,7 @@ async def stats_user(interaction: discord.Interaction, member: discord.Member = 
     if member is None:
         member = interaction.user
 
-    conn = sqlite3.connect('database.sqlite3')
+    conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
 
     c.execute(f'SELECT score, correct, wrong, karma '
@@ -840,9 +840,9 @@ async def stats_user(interaction: discord.Interaction, member: discord.Member = 
 
     score, correct, wrong, karma = stats
 
-    c.execute(f'SELECT COUNT(member_id) FROM members WHERE score >= {score} AND server_id = {member.guild.id}')
+    c.execute(f'SELECT COUNT(member_id) FROM {Bot.TABLE_MEMBERS} WHERE score >= {score} AND server_id = {member.guild.id}')
     pos_by_score: int = c.fetchone()[0]
-    c.execute(f'SELECT COUNT(member_id) FROM members WHERE karma >= {karma} AND server_id = {member.guild.id}')
+    c.execute(f'SELECT COUNT(member_id) FROM {Bot.TABLE_MEMBERS} WHERE karma >= {karma} AND server_id = {member.guild.id}')
     pos_by_karma: float = c.fetchone()[0]
     conn.close()
 
@@ -899,12 +899,13 @@ async def leaderboard(interaction: discord.Interaction, option: Optional[app_com
         description=''
     ).set_author(name=interaction.guild.name, icon_url=interaction.guild.icon.url)
 
-    conn = sqlite3.connect('database.sqlite3')
+    conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
 
     match value:
         case 1:
-            c.execute(f'SELECT member_id, score FROM members WHERE server_id = {interaction.guild.id} '
+            c.execute(f'SELECT member_id, score FROM {Bot.TABLE_MEMBERS} '
+                      f'WHERE server_id = {interaction.guild.id} '
                       f'ORDER BY score DESC LIMIT 10')
             users: list[tuple[int, int]] = c.fetchall()
             for i, user in enumerate(users, 1):
@@ -912,7 +913,8 @@ async def leaderboard(interaction: discord.Interaction, option: Optional[app_com
                 user_obj = await interaction.guild.fetch_member(member_id)
                 emb.description += f'{i}. {user_obj.mention} **{score}**\n'
         case 2:
-            c.execute(f'SELECT member_id, karma FROM members WHERE server_id = {interaction.guild.id} '
+            c.execute(f'SELECT member_id, karma FROM {Bot.TABLE_MEMBERS} '
+                      f'WHERE server_id = {interaction.guild.id} '
                       f'ORDER BY karma DESC LIMIT 10')
             users: list[tuple[int, float]] = c.fetchall()
             for i, user in enumerate(users, 1):
@@ -955,7 +957,7 @@ async def check_word(interaction: discord.Interaction, word: str):
         return
 
     word = word.lower()
-    conn = sqlite3.connect('database.sqlite3')
+    conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
 
     if Bot.is_word_blacklisted(interaction.guild.id, word, cursor):
@@ -1105,7 +1107,7 @@ async def force_dump(interaction: discord.Interaction):
 async def prune(interaction: discord.Interaction):
     await interaction.response.defer()
 
-    conn: sqlite3.Connection = sqlite3.connect('database.sqlite3')
+    conn: sqlite3.Connection = sqlite3.connect(DB_FILE)
     cursor: sqlite3.Cursor = conn.cursor()
 
     cursor.execute(f'SELECT member_id FROM {Bot.TABLE_MEMBERS} WHERE server_id = {interaction.guild.id}')
@@ -1154,7 +1156,7 @@ class BlacklistCmdGroup(app_commands.Group):
             await interaction.followup.send(embed=emb)
             return
 
-        conn: sqlite3.Connection = sqlite3.connect('database.sqlite3')
+        conn: sqlite3.Connection = sqlite3.connect(DB_FILE)
         cursor: sqlite3.Cursor = conn.cursor()
 
         cursor.execute(f'INSERT OR IGNORE INTO {Bot.TABLE_BLACKLIST} '
@@ -1177,7 +1179,7 @@ class BlacklistCmdGroup(app_commands.Group):
             await interaction.followup.send(embed=emb)
             return
 
-        conn: sqlite3.Connection = sqlite3.connect('database.sqlite3')
+        conn: sqlite3.Connection = sqlite3.connect(DB_FILE)
         cursor: sqlite3.Cursor = conn.cursor()
 
         cursor.execute(f'DELETE FROM {Bot.TABLE_BLACKLIST} '
@@ -1192,7 +1194,7 @@ class BlacklistCmdGroup(app_commands.Group):
     async def show(self, interaction: discord.Interaction) -> None:
         await interaction.response.defer()
 
-        conn: sqlite3.Connection = sqlite3.connect('database.sqlite3')
+        conn: sqlite3.Connection = sqlite3.connect(DB_FILE)
         cursor: sqlite3.Cursor = conn.cursor()
 
         cursor.execute(f'SELECT words FROM {Bot.TABLE_BLACKLIST} WHERE server_id = {interaction.guild.id}')
