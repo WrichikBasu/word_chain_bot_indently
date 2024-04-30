@@ -791,8 +791,8 @@ async def list_commands(interaction: discord.Interaction, ephemeral: bool = True
     emb = discord.Embed(title='Slash Commands', color=discord.Color.blue(),
                         description='''
 **list_commands** - Lists all the slash commands.
-**stats_user** - Shows the stats of a specific user.
-**stats_server** - Shows the stats of the server.
+**stats user** - Shows the stats of a specific user.
+**stats server** - Shows the stats of the server.
 **check_word** - Check if a word exists/check the spelling.
 **leaderboard** - Shows the leaderboard of the server.''')
 
@@ -814,71 +814,6 @@ __Restricted commands__ (Admin-only)
 **blacklist show** - Show the blacklisted words for this server.'''
 
     await interaction.response.send_message(embed=emb, ephemeral=ephemeral)
-
-
-@bot.tree.command(name='stats_user', description='Shows the user stats')
-@app_commands.describe(member='The member to get the stats for')
-async def stats_user(interaction: discord.Interaction, member: discord.Member = None):
-    """Command to show the stats of a specific user"""
-    await interaction.response.defer()
-
-    if member is None:
-        member = interaction.user
-
-    conn: sqlite3.Connection = sqlite3.connect(Bot.DB_FILE)
-    cursor: sqlite3.Cursor = conn.cursor()
-
-    cursor.execute(f'SELECT score, correct, wrong, karma '
-                   f'FROM {Bot.TABLE_MEMBERS} WHERE member_id = {member.id} AND server_id = {member.guild.id}')
-    stats: Optional[tuple[int, int, int, float]] = cursor.fetchone()
-
-    if stats is None:
-        await interaction.followup.send('You have never played in this server!')
-        conn.close()
-        return
-
-    score, correct, wrong, karma = stats
-
-    cursor.execute(
-        f'SELECT COUNT(member_id) FROM {Bot.TABLE_MEMBERS} WHERE score >= {score} AND server_id = {member.guild.id}')
-    pos_by_score: int = cursor.fetchone()[0]
-    cursor.execute(
-        f'SELECT COUNT(member_id) FROM {Bot.TABLE_MEMBERS} WHERE karma >= {karma} AND server_id = {member.guild.id}')
-    pos_by_karma: float = cursor.fetchone()[0]
-    conn.close()
-
-    emb = discord.Embed(
-        color=discord.Color.blue(),
-        description=f'''**Score:** {score} (#{pos_by_score})
-**🌟Karma:** {karma:.2f} (#{pos_by_karma})
-**✅Correct:** {correct}
-**❌Wrong:** {wrong}
-**Accuracy:** {(correct / (correct + wrong)):.2%}'''
-    ).set_author(name=f"{member} | stats", icon_url=member.avatar)
-
-    await interaction.followup.send(embed=emb)
-
-
-@bot.tree.command(name="stats_server", description="View server word chain stats")
-async def stats_server(interaction: discord.Interaction):
-    """Command to show the stats of the server"""
-    # Use the bot's config variable, do not re-read file as it may not have been updated yet
-    config: Config = bot._config
-
-    if config.channel_id is None:  # channel not set yet
-        await interaction.response.send_message("Counting channel not set yet!")
-        return
-
-    server_stats_embed = discord.Embed(
-        description=f'''Current Chain Length: {config.current_count}
-Longest chain length: {config.high_score}
-{f"**Last word:** {config.current_word}" if config.current_word else ""}
-{f"Last word by: <@{config.current_member_id}>" if config.current_member_id else ""}''',
-        color=discord.Color.blurple()
-    )
-    server_stats_embed.set_author(name=interaction.guild, icon_url=interaction.guild.icon)
-
-    await interaction.response.send_message(embed=server_stats_embed)
 
 
 @bot.tree.command(name='leaderboard', description='Shows the first 10 users with the highest score')
@@ -1138,6 +1073,75 @@ async def prune(interaction: discord.Interaction):
     conn.close()
 
 
+class StatsCmdGroup(app_commands.Group):
+
+    def __init__(self):
+        super().__init__(name='stats')
+
+    @app_commands.command(description='Show the server stats for the word chain game')
+    async def server(self, interaction: discord.Interaction) -> None:
+        """Command to show the stats of the server"""
+        # Use the bot's config variable, do not re-read file as it may not have been updated yet
+        config: Config = bot._config
+
+        if config.channel_id is None:  # channel not set yet
+            await interaction.response.send_message("Counting channel not set yet!")
+            return
+
+        server_stats_embed = discord.Embed(
+            description=f'''Current Chain Length: {config.current_count}
+        Longest chain length: {config.high_score}
+        {f"**Last word:** {config.current_word}" if config.current_word else ""}
+        {f"Last word by: <@{config.current_member_id}>" if config.current_member_id else ""}''',
+            color=discord.Color.blurple()
+        )
+        server_stats_embed.set_author(name=interaction.guild, icon_url=interaction.guild.icon)
+
+        await interaction.response.send_message(embed=server_stats_embed)
+
+    @app_commands.command(description='Get the word chain game stats of a user')
+    @app_commands.describe(member="The user whose stats you want to see")
+    async def user(self, interaction: discord.Interaction, member: Optional[discord.Member]) -> None:
+        """Command to show the stats of a specific user"""
+        await interaction.response.defer()
+
+        if member is None:
+            member = interaction.user
+
+        conn: sqlite3.Connection = sqlite3.connect(Bot.DB_FILE)
+        cursor: sqlite3.Cursor = conn.cursor()
+
+        cursor.execute(f'SELECT score, correct, wrong, karma '
+                       f'FROM {Bot.TABLE_MEMBERS} WHERE member_id = {member.id} AND server_id = {member.guild.id}')
+        stats: Optional[tuple[int, int, int, float]] = cursor.fetchone()
+
+        if stats is None:
+            await interaction.followup.send('You have never played in this server!')
+            conn.close()
+            return
+
+        score, correct, wrong, karma = stats
+
+        cursor.execute(
+            f'SELECT COUNT(member_id) FROM {Bot.TABLE_MEMBERS} WHERE score >= {score} AND server_id = {member.guild.id}')
+        pos_by_score: int = cursor.fetchone()[0]
+        cursor.execute(
+            f'SELECT COUNT(member_id) FROM {Bot.TABLE_MEMBERS} WHERE karma >= {karma} AND server_id = {member.guild.id}')
+        pos_by_karma: float = cursor.fetchone()[0]
+        conn.close()
+
+        emb = discord.Embed(
+            color=discord.Color.blue(),
+            description=f'''**Score:** {score} (#{pos_by_score})
+        **🌟Karma:** {karma:.2f} (#{pos_by_karma})
+        **✅Correct:** {correct}
+        **❌Wrong:** {wrong}
+        **Accuracy:** {(correct / (correct + wrong)):.2%}'''
+        ).set_author(name=f"{member} | stats", icon_url=member.avatar)
+
+        await interaction.followup.send(embed=emb)
+
+
 @app_commands.default_permissions(ban_members=True)
 class BlacklistCmdGroup(app_commands.Group):
 
@@ -1216,5 +1220,6 @@ class BlacklistCmdGroup(app_commands.Group):
 
 
 if __name__ == '__main__':
+    bot.tree.add_command(StatsCmdGroup())
     bot.tree.add_command(BlacklistCmdGroup())
     bot.run(os.getenv('TOKEN'))
