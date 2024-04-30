@@ -1,3 +1,11 @@
+import string
+
+"""
+The allowed characters in the input.
+If the inout has any character(s) other than these, it will be ignored by the bot.
+"""
+POSSIBLE_CHARACTERS: str = string.ascii_lowercase + "-"
+
 """
 This dictionary maps each character to its frequency as the first letter in an english word. It is calculated by
 multiplying the frequency with the total character count of 26. This results in scores around 1, with scores below 1
@@ -42,16 +50,10 @@ RELIABLE_ROLE_KARMA_THRESHOLD = 50
 """Minimum accuracy needed for the reliable role """
 RELIABLE_ROLE_ACCURACY_THRESHOLD = .99
 
-'''The bot's config file'''
-CONFIG_FILE: str = 'config_word_chain.json'
-
-'''The bot's database file'''
-DB_FILE: str = 'database_word_chain.sqlite3'
-
 """
-A dictionary mapping the country name to the corresponding flag emoji.
+A dictionary mapping the words to the corresponding special emojis.
 """
-COUNTRY_FLAGS = {
+SPECIAL_REACTION_EMOJIS: dict[str, str] = {
     'afghanistan': '🇦🇫',
     'albania': '🇦🇱',
     'algeria': '🇩🇿',
