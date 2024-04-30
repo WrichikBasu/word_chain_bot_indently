@@ -159,6 +159,5 @@ cython_debug/
 #  option (not recommended) you can uncomment the following to ignore the entire idea folder.
 .idea/
 
-database.sqlite3
-database(1).sqlite3
-config.json
+database_word_chain.sqlite3
+config_word_chain.json

@@ -4,7 +4,6 @@ import concurrent.futures
 import json
 import os
 import sqlite3
-import string
 from dataclasses import dataclass
 from typing import Optional, NoReturn
 from requests_futures.sessions import FuturesSession
@@ -12,12 +11,9 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 from dotenv import load_dotenv
-from consts import FIRST_CHAR_SCORE, MISTAKE_PENALTY, RELIABLE_ROLE_KARMA_THRESHOLD, RELIABLE_ROLE_ACCURACY_THRESHOLD
+from consts import *
 
 load_dotenv('.env')
-
-TOKEN: str = os.getenv('TOKEN')
-POSSIBLE_CHARACTERS: str = string.ascii_lowercase + "-"
 
 
 @dataclass
@@ -39,7 +35,7 @@ class Config:
     def read():
         _config: Optional[Config] = None
         try:
-            with open("config.json", "r") as file:
+            with open(Bot.CONFIG_FILE, "r") as file:
                 _config = Config(**json.load(file))
         except FileNotFoundError:
             _config = Config()
@@ -48,7 +44,7 @@ class Config:
 
     def dump_data(self) -> None:
         """Update the config.json file"""
-        with open("config.json", "w", encoding='utf-8') as file:
+        with open(Bot.CONFIG_FILE, "w", encoding='utf-8') as file:
             json.dump(self.__dict__, file, indent=2)
 
     def update_current(self, member_id: int, current_word: str) -> None:
@@ -95,6 +91,9 @@ class Config:
 
 class Bot(commands.Bot):
     """Counting Discord bot for Indently discord server."""
+
+    CONFIG_FILE: str = 'config_word_chain.json'
+    DB_FILE: str = 'database_word_chain.sqlite3'
 
     TABLE_USED_WORDS: str = "used_words"
     TABLE_MEMBERS: str = "members"
@@ -187,7 +186,7 @@ class Bot(commands.Bot):
             users: set[int] = self._participating_users.copy()
             self._participating_users = None
 
-            conn: sqlite3.Connection = sqlite3.connect('database.sqlite3')
+            conn: sqlite3.Connection = sqlite3.connect(Bot.DB_FILE)
             cursor: sqlite3.Cursor = conn.cursor()
 
             guild_id: int = self.reliable_role.guild.id
@@ -301,7 +300,7 @@ class Bot(commands.Bot):
 The chain has **not** been broken. Please enter another word.''')
             return
 
-        conn: sqlite3.Connection = sqlite3.connect('database.sqlite3')
+        conn: sqlite3.Connection = sqlite3.connect(Bot.DB_FILE)
         cursor: sqlite3.Cursor = conn.cursor()
 
         self._busy += 1
@@ -435,8 +434,10 @@ The above entered word is **NOT** being taken into account.''')
 
         self._config.update_current(message.author.id, current_word=word)  # config dump at the end of the method
 
-        if word == 'indently' and self._config.indently_emoji:
+        if word == 'indently' and self._config.indently_emoji:  # Special reaction for 'Indently'
             await message.add_reaction(self._config.indently_emoji)
+        elif word in SPECIAL_REACTION_EMOJIS:
+            await message.add_reaction(SPECIAL_REACTION_EMOJIS[word])
         else:
             await message.add_reaction(self._config.reaction_emoji())
 
@@ -483,13 +484,13 @@ The above entered word is **NOT** being taken into account.''')
         await message.channel.send(response)
         await message.add_reaction('❌')
 
-        c = conn.cursor()
-        c.execute(f'UPDATE {Bot.TABLE_MEMBERS} '
-                  f'SET score = score - 1, wrong = wrong + 1, karma = karma - {MISTAKE_PENALTY} '
-                  f'WHERE member_id = {message.author.id} AND '
-                  f'server_id = {message.guild.id}')
+        cursor: sqlite3.Cursor = conn.cursor()
+        cursor.execute(f'UPDATE {Bot.TABLE_MEMBERS} '
+                       f'SET score = score - 1, wrong = wrong + 1, karma = karma - {MISTAKE_PENALTY} '
+                       f'WHERE member_id = {message.author.id} AND '
+                       f'server_id = {message.guild.id}')
         # Clear used words schema
-        c.execute(f'DELETE FROM {Bot.TABLE_USED_WORDS} WHERE server_id = {message.guild.id}')
+        cursor.execute(f'DELETE FROM {Bot.TABLE_USED_WORDS} WHERE server_id = {message.guild.id}')
         conn.commit()
         conn.close()
 
@@ -659,8 +660,8 @@ The above entered word is **NOT** being taken into account.''')
             words = self._cached_words
             self._cached_words = None
 
-            conn = sqlite3.connect('database.sqlite3')
-            cursor = conn.cursor()
+            conn: sqlite3.Connection = sqlite3.connect(Bot.DB_FILE)
+            cursor: sqlite3.Cursor = conn.cursor()
 
             for word in tuple(words):
                 # Code courtesy: https://stackoverflow.com/a/45299979/8387076
@@ -723,30 +724,30 @@ The above entered word is **NOT** being taken into account.''')
     async def setup_hook(self) -> NoReturn:
         await self.tree.sync()
 
-        conn = sqlite3.connect('database.sqlite3')
-        c = conn.cursor()
+        conn: sqlite3.Connection = sqlite3.connect(Bot.DB_FILE)
+        cursor: sqlite3.Cursor = conn.cursor()
 
-        c.execute(f'CREATE TABLE IF NOT EXISTS {Bot.TABLE_MEMBERS} '
-                  '(server_id INTEGER NOT NULL, '
-                  'member_id INTEGER NOT NULL, '
-                  'score INTEGER NOT NULL, '
-                  'correct INTEGER NOT NULL, '
-                  'wrong INTEGER NOT NULL, '
-                  'karma REAL NOT NULL, '
-                  'PRIMARY KEY (server_id, member_id))')
+        cursor.execute(f'CREATE TABLE IF NOT EXISTS {Bot.TABLE_MEMBERS} '
+                       '(server_id INTEGER NOT NULL, '
+                       'member_id INTEGER NOT NULL, '
+                       'score INTEGER NOT NULL, '
+                       'correct INTEGER NOT NULL, '
+                       'wrong INTEGER NOT NULL, '
+                       'karma REAL NOT NULL, '
+                       'PRIMARY KEY (server_id, member_id))')
 
-        c.execute(f'CREATE TABLE IF NOT EXISTS {Bot.TABLE_USED_WORDS} '
-                  f'(server_id INTEGER NOT NULL, '
-                  'words TEXT NOT NULL, '
-                  'PRIMARY KEY (server_id, words))')
+        cursor.execute(f'CREATE TABLE IF NOT EXISTS {Bot.TABLE_USED_WORDS} '
+                       f'(server_id INTEGER NOT NULL, '
+                       'words TEXT NOT NULL, '
+                       'PRIMARY KEY (server_id, words))')
 
-        c.execute(f'CREATE TABLE IF NOT EXISTS {Bot.TABLE_CACHE} '
-                  f'(words TEXT PRIMARY KEY)')
+        cursor.execute(f'CREATE TABLE IF NOT EXISTS {Bot.TABLE_CACHE} '
+                       f'(words TEXT PRIMARY KEY)')
 
-        c.execute(f'CREATE TABLE IF NOT EXISTS {Bot.TABLE_BLACKLIST} '
-                  f'(server_id INT NOT NULL, '
-                  f'words TEXT NOT NULL, '
-                  f'PRIMARY KEY (server_id, words))')
+        cursor.execute(f'CREATE TABLE IF NOT EXISTS {Bot.TABLE_BLACKLIST} '
+                       f'(server_id INT NOT NULL, '
+                       f'words TEXT NOT NULL, '
+                       f'PRIMARY KEY (server_id, words))')
 
         conn.commit()
         conn.close()
@@ -790,8 +791,8 @@ async def list_commands(interaction: discord.Interaction, ephemeral: bool = True
     emb = discord.Embed(title='Slash Commands', color=discord.Color.blue(),
                         description='''
 **list_commands** - Lists all the slash commands.
-**stats_user** - Shows the stats of a specific user.
-**stats_server** - Shows the stats of the server.
+**stats user** - Shows the stats of a specific user.
+**stats server** - Shows the stats of the server.
 **check_word** - Check if a word exists/check the spelling.
 **leaderboard** - Shows the leaderboard of the server.''')
 
@@ -815,69 +816,6 @@ __Restricted commands__ (Admin-only)
     await interaction.response.send_message(embed=emb, ephemeral=ephemeral)
 
 
-@bot.tree.command(name='stats_user', description='Shows the user stats')
-@app_commands.describe(member='The member to get the stats for')
-async def stats_user(interaction: discord.Interaction, member: discord.Member = None):
-    """Command to show the stats of a specific user"""
-    await interaction.response.defer()
-
-    if member is None:
-        member = interaction.user
-
-    conn = sqlite3.connect('database.sqlite3')
-    c = conn.cursor()
-
-    c.execute(f'SELECT score, correct, wrong, karma '
-              f'FROM {Bot.TABLE_MEMBERS} WHERE member_id = {member.id} AND server_id = {member.guild.id}')
-    stats: Optional[tuple[int, int, int, float]] = c.fetchone()
-
-    if stats is None:
-        await interaction.followup.send('You have never played in this server!')
-        conn.close()
-        return
-
-    score, correct, wrong, karma = stats
-
-    c.execute(f'SELECT COUNT(member_id) FROM members WHERE score >= {score} AND server_id = {member.guild.id}')
-    pos_by_score: int = c.fetchone()[0]
-    c.execute(f'SELECT COUNT(member_id) FROM members WHERE karma >= {karma} AND server_id = {member.guild.id}')
-    pos_by_karma: float = c.fetchone()[0]
-    conn.close()
-
-    emb = discord.Embed(
-        color=discord.Color.blue(),
-        description=f'''**Score:** {score} (#{pos_by_score})
-**🌟Karma:** {karma:.2f} (#{pos_by_karma})
-**✅Correct:** {correct}
-**❌Wrong:** {wrong}
-**Accuracy:** {(correct / (correct + wrong)):.2%}'''
-    ).set_author(name=f"{member} | stats", icon_url=member.avatar)
-
-    await interaction.followup.send(embed=emb)
-
-
-@bot.tree.command(name="stats_server", description="View server word chain stats")
-async def stats_server(interaction: discord.Interaction):
-    """Command to show the stats of the server"""
-    # Use the bot's config variable, do not re-read file as it may not have been updated yet
-    config: Config = bot._config
-
-    if config.channel_id is None:  # channel not set yet
-        await interaction.response.send_message("Counting channel not set yet!")
-        return
-
-    server_stats_embed = discord.Embed(
-        description=f'''Current Chain Length: {config.current_count}
-Longest chain length: {config.high_score}
-{f"**Last word:** {config.current_word}" if config.current_word else ""}
-{f"Last word by: <@{config.current_member_id}>" if config.current_member_id else ""}''',
-        color=discord.Color.blurple()
-    )
-    server_stats_embed.set_author(name=interaction.guild, icon_url=interaction.guild.icon)
-
-    await interaction.response.send_message(embed=server_stats_embed)
-
-
 @bot.tree.command(name='leaderboard', description='Shows the first 10 users with the highest score')
 @app_commands.describe(option='The type of the leaderboard')
 @app_commands.choices(option=[
@@ -897,22 +835,24 @@ async def leaderboard(interaction: discord.Interaction, option: Optional[app_com
         description=''
     ).set_author(name=interaction.guild.name, icon_url=interaction.guild.icon.url)
 
-    conn = sqlite3.connect('database.sqlite3')
-    c = conn.cursor()
+    conn: sqlite3.Connection = sqlite3.connect(Bot.DB_FILE)
+    cursor: sqlite3.Cursor = conn.cursor()
 
     match value:
         case 1:
-            c.execute(f'SELECT member_id, score FROM members WHERE server_id = {interaction.guild.id} '
-                      f'ORDER BY score DESC LIMIT 10')
-            users: list[tuple[int, int]] = c.fetchall()
+            cursor.execute(f'SELECT member_id, score FROM {Bot.TABLE_MEMBERS} '
+                           f'WHERE server_id = {interaction.guild.id} '
+                           f'ORDER BY score DESC LIMIT 10')
+            users: list[tuple[int, int]] = cursor.fetchall()
             for i, user in enumerate(users, 1):
                 member_id, score = user
                 user_obj = await interaction.guild.fetch_member(member_id)
                 emb.description += f'{i}. {user_obj.mention} **{score}**\n'
         case 2:
-            c.execute(f'SELECT member_id, karma FROM members WHERE server_id = {interaction.guild.id} '
-                      f'ORDER BY karma DESC LIMIT 10')
-            users: list[tuple[int, float]] = c.fetchall()
+            cursor.execute(f'SELECT member_id, karma FROM {Bot.TABLE_MEMBERS} '
+                           f'WHERE server_id = {interaction.guild.id} '
+                           f'ORDER BY karma DESC LIMIT 10')
+            users: list[tuple[int, float]] = cursor.fetchall()
             for i, user in enumerate(users, 1):
                 member_id, karma = user
                 user_obj = await interaction.guild.fetch_member(member_id)
@@ -943,27 +883,27 @@ async def check_word(interaction: discord.Interaction, word: str):
     emb = discord.Embed(color=discord.Color.blurple())
 
     if not all(c in POSSIBLE_CHARACTERS for c in word.lower()):
-        emb.description = f'❌ The word *{word}* is **not** a legal word.'
+        emb.description = f'❌ **{word}** is **not** a legal word.'
         await interaction.followup.send(embed=emb)
         return
 
     if len(word) == 1:
-        emb.description = f'❌ The word *{word}* is **not** valid.'
+        emb.description = f'❌ **{word}** is **not** a valid word.'
         await interaction.followup.send(embed=emb)
         return
 
     word = word.lower()
-    conn = sqlite3.connect('database.sqlite3')
-    cursor = conn.cursor()
+    conn: sqlite3.Connection = sqlite3.connect(Bot.DB_FILE)
+    cursor: sqlite3.Cursor = conn.cursor()
 
     if Bot.is_word_blacklisted(interaction.guild.id, word, cursor):
-        emb.description = f'❌ The word *{word}* is **blacklisted** in this server and hence, **not** valid.'
+        emb.description = f'❌ The word **{word}** is **blacklisted** in this server and hence, **not** valid.'
         await interaction.followup.send(embed=emb)
         conn.close()
         return
 
     if Bot.is_word_in_cache(word, cursor):
-        emb.description = f'✅ The word *{word}* is valid.'
+        emb.description = f'✅ The word **{word}** is valid.'
         await interaction.followup.send(embed=emb)
         conn.close()
         return
@@ -974,7 +914,7 @@ async def check_word(interaction: discord.Interaction, word: str):
     match Bot.get_query_response(future):
         case Bot.RESPONSE_WORD_EXISTS:
 
-            emb.description = f'✅ The word *{word}* is valid.'
+            emb.description = f'✅ The word **{word}** is valid.'
 
             if bot._cached_words is None:
                 bot._cached_words = {word, }
@@ -983,7 +923,7 @@ async def check_word(interaction: discord.Interaction, word: str):
             bot.add_to_cache()
 
         case Bot.RESPONSE_WORD_DOESNT_EXIST:
-            emb.description = f'❌ The word *{word}* is **not** valid.'
+            emb.description = f'❌ **{word}** is **not** a valid word.'
         case _:
             emb.description = f'⚠️ There was an issue in fetching the result.'
 
@@ -1103,7 +1043,7 @@ async def force_dump(interaction: discord.Interaction):
 async def prune(interaction: discord.Interaction):
     await interaction.response.defer()
 
-    conn: sqlite3.Connection = sqlite3.connect('database.sqlite3')
+    conn: sqlite3.Connection = sqlite3.connect(Bot.DB_FILE)
     cursor: sqlite3.Cursor = conn.cursor()
 
     cursor.execute(f'SELECT member_id FROM {Bot.TABLE_MEMBERS} WHERE server_id = {interaction.guild.id}')
@@ -1133,6 +1073,75 @@ async def prune(interaction: discord.Interaction):
     conn.close()
 
 
+class StatsCmdGroup(app_commands.Group):
+
+    def __init__(self):
+        super().__init__(name='stats')
+
+    @app_commands.command(description='Show the server stats for the word chain game')
+    async def server(self, interaction: discord.Interaction) -> None:
+        """Command to show the stats of the server"""
+        # Use the bot's config variable, do not re-read file as it may not have been updated yet
+        config: Config = bot._config
+
+        if config.channel_id is None:  # channel not set yet
+            await interaction.response.send_message("Counting channel not set yet!")
+            return
+
+        server_stats_embed = discord.Embed(
+            description=f'''Current Chain Length: {config.current_count}
+        Longest chain length: {config.high_score}
+        {f"**Last word:** {config.current_word}" if config.current_word else ""}
+        {f"Last word by: <@{config.current_member_id}>" if config.current_member_id else ""}''',
+            color=discord.Color.blurple()
+        )
+        server_stats_embed.set_author(name=interaction.guild, icon_url=interaction.guild.icon)
+
+        await interaction.response.send_message(embed=server_stats_embed)
+
+    @app_commands.command(description='Get the word chain game stats of a user')
+    @app_commands.describe(member="The user whose stats you want to see")
+    async def user(self, interaction: discord.Interaction, member: Optional[discord.Member]) -> None:
+        """Command to show the stats of a specific user"""
+        await interaction.response.defer()
+
+        if member is None:
+            member = interaction.user
+
+        conn: sqlite3.Connection = sqlite3.connect(Bot.DB_FILE)
+        cursor: sqlite3.Cursor = conn.cursor()
+
+        cursor.execute(f'SELECT score, correct, wrong, karma '
+                       f'FROM {Bot.TABLE_MEMBERS} WHERE member_id = {member.id} AND server_id = {member.guild.id}')
+        stats: Optional[tuple[int, int, int, float]] = cursor.fetchone()
+
+        if stats is None:
+            await interaction.followup.send('You have never played in this server!')
+            conn.close()
+            return
+
+        score, correct, wrong, karma = stats
+
+        cursor.execute(
+            f'SELECT COUNT(member_id) FROM {Bot.TABLE_MEMBERS} WHERE score >= {score} AND server_id = {member.guild.id}')
+        pos_by_score: int = cursor.fetchone()[0]
+        cursor.execute(
+            f'SELECT COUNT(member_id) FROM {Bot.TABLE_MEMBERS} WHERE karma >= {karma} AND server_id = {member.guild.id}')
+        pos_by_karma: float = cursor.fetchone()[0]
+        conn.close()
+
+        emb = discord.Embed(
+            color=discord.Color.blue(),
+            description=f'''**Score:** {score} (#{pos_by_score})
+        **🌟Karma:** {karma:.2f} (#{pos_by_karma})
+        **✅Correct:** {correct}
+        **❌Wrong:** {wrong}
+        **Accuracy:** {(correct / (correct + wrong)):.2%}'''
+        ).set_author(name=f"{member} | stats", icon_url=member.avatar)
+
+        await interaction.followup.send(embed=emb)
+
+
 @app_commands.default_permissions(ban_members=True)
 class BlacklistCmdGroup(app_commands.Group):
 
@@ -1152,7 +1161,7 @@ class BlacklistCmdGroup(app_commands.Group):
             await interaction.followup.send(embed=emb)
             return
 
-        conn: sqlite3.Connection = sqlite3.connect('database.sqlite3')
+        conn: sqlite3.Connection = sqlite3.connect(Bot.DB_FILE)
         cursor: sqlite3.Cursor = conn.cursor()
 
         cursor.execute(f'INSERT OR IGNORE INTO {Bot.TABLE_BLACKLIST} '
@@ -1175,7 +1184,7 @@ class BlacklistCmdGroup(app_commands.Group):
             await interaction.followup.send(embed=emb)
             return
 
-        conn: sqlite3.Connection = sqlite3.connect('database.sqlite3')
+        conn: sqlite3.Connection = sqlite3.connect(Bot.DB_FILE)
         cursor: sqlite3.Cursor = conn.cursor()
 
         cursor.execute(f'DELETE FROM {Bot.TABLE_BLACKLIST} '
@@ -1190,7 +1199,7 @@ class BlacklistCmdGroup(app_commands.Group):
     async def show(self, interaction: discord.Interaction) -> None:
         await interaction.response.defer()
 
-        conn: sqlite3.Connection = sqlite3.connect('database.sqlite3')
+        conn: sqlite3.Connection = sqlite3.connect(Bot.DB_FILE)
         cursor: sqlite3.Cursor = conn.cursor()
 
         cursor.execute(f'SELECT words FROM {Bot.TABLE_BLACKLIST} WHERE server_id = {interaction.guild.id}')
@@ -1211,5 +1220,6 @@ class BlacklistCmdGroup(app_commands.Group):
 
 
 if __name__ == '__main__':
+    bot.tree.add_command(StatsCmdGroup())
     bot.tree.add_command(BlacklistCmdGroup())
-    bot.run(TOKEN)
+    bot.run(os.getenv('TOKEN'))
