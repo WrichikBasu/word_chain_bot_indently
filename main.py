@@ -270,7 +270,7 @@ class Bot(commands.Bot):
         """
         Hierarchy of checking:
         1. Word length must be > 1.
-        2. Is the word blacklisted? (global black/whitelist, THEN server blacklist)
+        2. Is the word blacklisted?
         3. Repetition?
         4. Is the word valid? (Check cache/start query if not found in cache)
         5. Wrong member?
@@ -675,6 +675,10 @@ The above entered word is **NOT** being taken into account.''')
         """
         Checks if a word is blacklisted.
 
+        Checking hierarchy:
+        1. Global blacklists/whitelists, THEN
+        2. Server blacklist.
+
         Parameters
         ----------
         server_id : int
@@ -687,13 +691,13 @@ The above entered word is **NOT** being taken into account.''')
         Returns
         -------
         bool
-            `True` if the word is blacklisted, otherwise `False`.
+            `True` if the word IS blacklisted, otherwise `False`.
         """
-        # Check global blacklist for 2-letter words
-        if len(word) == 2 and word in GLOBAL_BLACKLIST_2_LETTER_WORDS:
+        # Check global blacklists
+        if word in GLOBAL_BLACKLIST_2_LETTER_WORDS or word in GLOBAL_BLACKLIST_N_LETTER_WORDS:
             return True
 
-        # Check global WHITElist for 3-letter words
+        # Check global 3-letter words whitelist
         if len(word) == 3 and word not in GLOBAL_WHITELIST_3_LETTER_WORDS:
             return True
 
@@ -883,10 +887,9 @@ async def check_word(interaction: discord.Interaction, word: str):
     Hierarchy followed:
     1. Legal characters.
     2. Length of word must be > 1.
-    3. Global blacklist/whitelist.
-    4. Server blacklist.
-    5. Check word cache.
-    6. Query API.
+    3. Blacklists
+    4. Check word cache.
+    5. Query API.
     """
     await interaction.response.defer()
 
