@@ -90,7 +90,7 @@ class Config:
 
 
 class Bot(commands.Bot):
-    """Counting Discord bot for Indently discord server."""
+    """Word chain bot for Indently discord server."""
 
     CONFIG_FILE: str = 'config_word_chain.json'
     DB_FILE: str = 'database_word_chain.sqlite3'
@@ -270,7 +270,7 @@ class Bot(commands.Bot):
         """
         Hierarchy of checking:
         1. Word length must be > 1.
-        2. Is the word blacklisted?
+        2. Is the word blacklisted? (global black/whitelist, THEN server blacklist)
         3. Repetition?
         4. Is the word valid? (Check cache/start query if not found in cache)
         5. Wrong member?
@@ -689,6 +689,15 @@ The above entered word is **NOT** being taken into account.''')
         bool
             `True` if the word is blacklisted, otherwise `False`.
         """
+        # Check global blacklist for 2-letter words
+        if len(word) == 2 and word in GLOBAL_BLACKLIST_2_LETTER_WORDS:
+            return True
+
+        # Check global WHITElist for 3-letter words
+        if len(word) == 3 and word not in GLOBAL_WHITELIST_3_LETTER_WORDS:
+            return True
+
+        # Check server blacklist
         cursor.execute(f'SELECT EXISTS(SELECT 1 FROM {Bot.TABLE_BLACKLIST} WHERE '
                        f'server_id = {server_id} AND words = \'{word}\')')
         result: int = (cursor.fetchone())[0]
@@ -872,11 +881,12 @@ async def check_word(interaction: discord.Interaction, word: str):
     Checks if a word is valid.
 
     Hierarchy followed:
-    1. The input must have all legal characters.
+    1. Legal characters.
     2. Length of word must be > 1.
-    3. The word must not be blacklisted in the server in which the command was run.
-    4. Check word cache.
-    5. Query API.
+    3. Global blacklist/whitelist.
+    4. Server blacklist.
+    5. Check word cache.
+    6. Query API.
     """
     await interaction.response.defer()
 
@@ -897,7 +907,7 @@ async def check_word(interaction: discord.Interaction, word: str):
     cursor: sqlite3.Cursor = conn.cursor()
 
     if Bot.is_word_blacklisted(interaction.guild.id, word, cursor):
-        emb.description = f'❌ The word **{word}** is **blacklisted** in this server and hence, **not** valid.'
+        emb.description = f'❌ The word **{word}** is **blacklisted** and hence, **not** valid.'
         await interaction.followup.send(embed=emb)
         conn.close()
         return
