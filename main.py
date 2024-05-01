@@ -100,9 +100,9 @@ class Bot(commands.Bot):
     TABLE_CACHE: str = "word_cache"
     TABLE_BLACKLIST: str = "blacklist"
 
-    RESPONSE_WORD_EXISTS: int = 1
-    RESPONSE_WORD_DOESNT_EXIST: int = 0
-    RESPONSE_ERROR: int = -1
+    API_RESPONSE_WORD_EXISTS: int = 1
+    API_RESPONSE_WORD_DOESNT_EXIST: int = 0
+    API_RESPONSE_ERROR: int = -1
 
     def __init__(self) -> None:
         intents = discord.Intents.default()
@@ -399,7 +399,7 @@ current high score of **{self._config.high_score}**!'''
         if future:
             result: int = self.get_query_response(future)
 
-            if result == Bot.RESPONSE_WORD_DOESNT_EXIST:
+            if result == Bot.API_RESPONSE_WORD_DOESNT_EXIST:
 
                 if self._config.current_word:
                     response: str = f'''{message.author.mention} messed up the chain! \
@@ -416,7 +416,7 @@ Restart and try to beat the current high score of **{self._config.high_score}**!
                 await self.handle_mistake(message=message, response=response, conn=conn)
                 return
 
-            elif result == Bot.RESPONSE_ERROR:
+            elif result == Bot.API_RESPONSE_ERROR:
 
                 await message.add_reaction('⚠️')
                 await message.channel.send(''':octagonal_sign: There was an issue in the backend.
@@ -540,15 +540,15 @@ The above entered word is **NOT** being taken into account.''')
         Returns
         -------
         int
-            `Bot.RESPONSE_WORD_EXISTS` is the word exists, `Bot.RESPONSE_WORD_DOESNT_EXIST` if the word does not exist,
-            or `Bot.RESPONSE_ERROR` if an error (of any type) was raised in the query.
+            `Bot.API_RESPONSE_WORD_EXISTS` is the word exists, `Bot.API_RESPONSE_WORD_DOESNT_EXIST` if the word
+            does not exist, or `Bot.API_RESPONSE_ERROR` if an error (of any type) was raised in the query.
         """
         try:
             response = future.result(timeout=5)
 
             if response.status_code >= 400:
                 print(f'Received status code {response.status_code} from Wiktionary API query.')
-                return Bot.RESPONSE_ERROR
+                return Bot.API_RESPONSE_ERROR
 
             data = response.json()
 
@@ -556,21 +556,21 @@ The above entered word is **NOT** being taken into account.''')
             best_match: str = data[1][0]  # Should raise an IndexError if no match is returned
 
             if best_match.lower() == word.lower():
-                return Bot.RESPONSE_WORD_EXISTS
+                return Bot.API_RESPONSE_WORD_EXISTS
             else:
                 # Normally, the control should not reach this else statement.
                 # If, however, some word is returned by chance, and it doesn't match the entered word,
                 # this else will take care of it
-                return Bot.RESPONSE_WORD_DOESNT_EXIST
+                return Bot.API_RESPONSE_WORD_DOESNT_EXIST
 
-        except TimeoutError:  # Send Bot.RESPONSE_ERROR
+        except TimeoutError:  # Send Bot.API_RESPONSE_ERROR
             print('Timeout error raised when trying to get the query result.')
         except IndexError:
-            return Bot.RESPONSE_WORD_DOESNT_EXIST
+            return Bot.API_RESPONSE_WORD_DOESNT_EXIST
         except Exception as ex:
             print(f'An exception was raised while getting the query result:\n{ex}')
 
-        return Bot.RESPONSE_ERROR
+        return Bot.API_RESPONSE_ERROR
 
     # ------------------------------------------------------------------------------------------------
 
@@ -922,7 +922,7 @@ async def check_word(interaction: discord.Interaction, word: str):
     conn.close()
 
     match Bot.get_query_response(future):
-        case Bot.RESPONSE_WORD_EXISTS:
+        case Bot.API_RESPONSE_WORD_EXISTS:
 
             emb.description = f'✅ The word **{word}** is valid.'
 
@@ -932,7 +932,7 @@ async def check_word(interaction: discord.Interaction, word: str):
                 bot._cached_words.add(word)
             bot.add_to_cache()
 
-        case Bot.RESPONSE_WORD_DOESNT_EXIST:
+        case Bot.API_RESPONSE_WORD_DOESNT_EXIST:
             emb.description = f'❌ **{word}** is **not** a valid word.'
         case _:
             emb.description = f'⚠️ There was an issue in fetching the result.'

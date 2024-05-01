@@ -284,7 +284,6 @@ GLOBAL_BLACKLIST_2_LETTER_WORDS: set[str] = {
     'aj',
     'ak',
     'al',
-    'an',
     'ao',
     'ap',
     'aq',
