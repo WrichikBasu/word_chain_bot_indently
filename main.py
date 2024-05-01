@@ -99,6 +99,7 @@ class Bot(commands.Bot):
     TABLE_MEMBERS: str = "members"
     TABLE_CACHE: str = "word_cache"
     TABLE_BLACKLIST: str = "blacklist"
+    TABLE_WHITELIST: str = "whitelist"
 
     API_RESPONSE_WORD_EXISTS: int = 1
     API_RESPONSE_WORD_DOESNT_EXIST: int = 0
@@ -270,11 +271,12 @@ class Bot(commands.Bot):
         """
         Hierarchy of checking:
         1. Word length must be > 1.
-        2. Is the word blacklisted?
-        3. Repetition?
+        2. Is word whitelisted? --> If yes, skip to #5.
+        3. Is the word blacklisted?
         4. Is the word valid? (Check cache/start query if not found in cache)
-        5. Wrong member?
-        6. Wrong starting letter?
+        5. Repetition?
+        6. Wrong member?
+        7. Wrong starting letter?
         """
 
         if message.author == self.user:
@@ -310,6 +312,9 @@ The chain has **not** been broken. Please enter another word.''')
         else:
             self._participating_users.add(message.author.id)
 
+        # ----------------------------------------------------------------------------------------
+        # ADD USER TO THE DATABASE
+        # ----------------------------------------------------------------------------------------
         # We need to check whether the current user already has an entry in the database.
         # If not, we have to add an entry.
         # Code courtesy: https://stackoverflow.com/a/9756276/8387076
@@ -323,9 +328,15 @@ The chain has **not** been broken. Please enter another word.''')
             conn.commit()
 
         # -------------------------------
-        # Check if word is blacklisted
+        # Check if word is whitelisted
         # -------------------------------
-        if Bot.is_word_blacklisted(message.guild.id, word, cursor):
+        word_whitelisted: bool = Bot.is_word_whitelisted(message.guild.id, word, cursor)
+
+        # -------------------------------
+        # Check if word is blacklisted
+        # (iff not whitelisted)
+        # -------------------------------
+        if not word_whitelisted and Bot.is_word_blacklisted(message.guild.id, word, cursor):
             await message.add_reaction('⚠️')
             await message.channel.send(f'''This word has been **blacklisted**. Please do not use it.
 The chain has **not** been broken. Please enter another word.''')
@@ -336,9 +347,24 @@ The chain has **not** been broken. Please enter another word.''')
             return
 
         # ------------------------------
+        # Check if word is valid
+        # (iff not whitelisted)
+        # ------------------------------
+        future: Optional[concurrent.futures.Future]
+
+        # First check the whitelist or the word cache
+        if word_whitelisted or self.is_word_in_cache(word, cursor):
+            # Word found in cache. No need to query API
+            future = None
+        else:
+            # Word neither whitelisted, nor found in cache.
+            # Start the API request, but deal with it later
+            future = self.start_api_query(word)
+
+        # -----------------------------------
         # Check repetitions
         # (Repetitions are not mistakes)
-        # ------------------------------
+        # -----------------------------------
         cursor.execute(f'SELECT EXISTS(SELECT 1 FROM {Bot.TABLE_USED_WORDS} '
                        f'WHERE server_id = {message.guild.id} AND words = "{word}")')
         used: int = cursor.fetchone()[0]
@@ -352,20 +378,6 @@ Please enter another word.''')
             # Just decrement the variable.
             self._busy -= 1
             return
-
-        # --------------------------
-        # Check if word is valid
-        # --------------------------
-        future: Optional[concurrent.futures.Future]
-
-        # First check the word cache
-        if self.is_word_in_cache(word, cursor):
-            # Word found in cache. No need to query API
-            future = None
-        else:
-            # Word not found in cache.
-            # Start the API request, but deal with it later
-            future = self.start_api_query(word)
 
         # -------------
         # Wrong member
@@ -708,6 +720,33 @@ The above entered word is **NOT** being taken into account.''')
         return result == 1
 
     @staticmethod
+    def is_word_whitelisted(server_id: int, word: str, cursor: sqlite3.Cursor) -> bool:
+        """
+        Checks if a word is whitelisted.
+
+        Note that whitelist has higher priority than blacklist.
+
+        Parameters
+        ----------
+        server_id : int
+            The guild which is calling this function.
+        word : str
+            The word that is to be checked.
+        cursor : sqlite3.Cursor
+            An instance of Cursor through which the DB will be accessed.
+
+        Returns
+        -------
+        bool
+            `True` if the word is whitelisted, otherwise `False`.
+        """
+        # Check server whitelisted
+        cursor.execute(f'SELECT EXISTS(SELECT 1 FROM {Bot.TABLE_WHITELIST} WHERE '
+                       f'server_id = {server_id} AND words = \'{word}\')')
+        result: int = (cursor.fetchone())[0]
+        return result == 1
+
+    @staticmethod
     def calculate_karma(word: str, last_char_bias: float = .7) -> float:
         """
         Calculates the karma gain or loss for given word.
@@ -758,6 +797,11 @@ The above entered word is **NOT** being taken into account.''')
                        f'(words TEXT PRIMARY KEY)')
 
         cursor.execute(f'CREATE TABLE IF NOT EXISTS {Bot.TABLE_BLACKLIST} '
+                       f'(server_id INT NOT NULL, '
+                       f'words TEXT NOT NULL, '
+                       f'PRIMARY KEY (server_id, words))')
+
+        cursor.execute(f'CREATE TABLE IF NOT EXISTS {Bot.TABLE_WHITELIST} '
                        f'(server_id INT NOT NULL, '
                        f'words TEXT NOT NULL, '
                        f'PRIMARY KEY (server_id, words))')
@@ -824,7 +868,10 @@ __Restricted commands__ (Admin-only)
 **prune** - Remove data for users who are no longer in the server.
 **blacklist add** - Add a word to the blacklist for this server.
 **blacklist remove** - Remove a word from the blacklist of this server.
-**blacklist show** - Show the blacklisted words for this server.'''
+**blacklist show** - Show the blacklisted words for this server.
+**whitelist add** - Add a word to the whitelist for this server.
+**whitelist remove** - Remove a word from the whitelist of this server.
+**whitelist show** - Show the whitelist words for this server.'''
 
     await interaction.response.send_message(embed=emb, ephemeral=ephemeral)
 
@@ -887,9 +934,10 @@ async def check_word(interaction: discord.Interaction, word: str):
     Hierarchy followed:
     1. Legal characters.
     2. Length of word must be > 1.
-    3. Blacklists
-    4. Check word cache.
-    5. Query API.
+    3. Whitelist.
+    4. Blacklists
+    5. Check word cache.
+    6. Query API.
     """
     await interaction.response.defer()
 
@@ -908,6 +956,12 @@ async def check_word(interaction: discord.Interaction, word: str):
     word = word.lower()
     conn: sqlite3.Connection = sqlite3.connect(Bot.DB_FILE)
     cursor: sqlite3.Cursor = conn.cursor()
+
+    if Bot.is_word_whitelisted(interaction.guild.id, word, cursor):
+        emb.description = f'✅ The word **{word}** is valid.'
+        await interaction.followup.send(embed=emb)
+        conn.close()
+        return
 
     if Bot.is_word_blacklisted(interaction.guild.id, word, cursor):
         emb.description = f'❌ The word **{word}** is **blacklisted** and hence, **not** valid.'
@@ -1154,6 +1208,8 @@ class StatsCmdGroup(app_commands.Group):
 
         await interaction.followup.send(embed=emb)
 
+# ---------------------------------------------------------------------------------------------------------------
+
 
 @app_commands.default_permissions(ban_members=True)
 class BlacklistCmdGroup(app_commands.Group):
@@ -1231,8 +1287,93 @@ class BlacklistCmdGroup(app_commands.Group):
 
             await interaction.followup.send(embed=emb)
 
+# ---------------------------------------------------------------------------------------------------------------
+
+
+@app_commands.default_permissions(ban_members=True)
+class WhitelistCmdGroup(app_commands.Group):
+    """
+    Whitelisting a word will make the bot skip the blacklist check and the valid word check for that word.
+    Whitelist has higher priority than blacklist.
+    This feature can also be used to include words which are not present in the English dictionary.
+    """
+
+    def __init__(self):
+        super().__init__(name='whitelist')
+
+    # subcommand of Group
+    @app_commands.command(description='Add a word to the whitelist')
+    @app_commands.describe(word="The word to be added")
+    async def add(self, interaction: discord.Interaction, word: str) -> None:
+        await interaction.response.defer()
+
+        emb: discord.Embed = discord.Embed(colour=discord.Color.blurple())
+
+        if not all(c in POSSIBLE_CHARACTERS for c in word.lower()):
+            emb.description = f'⚠️ The word *{word.lower()}* is not a legal word.'
+            await interaction.followup.send(embed=emb)
+            return
+
+        conn: sqlite3.Connection = sqlite3.connect(Bot.DB_FILE)
+        cursor: sqlite3.Cursor = conn.cursor()
+
+        cursor.execute(f'INSERT OR IGNORE INTO {Bot.TABLE_WHITELIST} '
+                       f'VALUES ({interaction.guild.id}, \'{word.lower()}\')')
+        conn.commit()
+        conn.close()
+
+        emb.description = f'✅ The word *{word.lower()}* was successfully added to the whitelist.'
+        await interaction.followup.send(embed=emb)
+
+    @app_commands.command(description='Remove a word from the whitelist')
+    @app_commands.describe(word='The word to be removed')
+    async def remove(self, interaction: discord.Interaction, word: str) -> None:
+        await interaction.response.defer()
+
+        emb: discord.Embed = discord.Embed(colour=discord.Color.blurple())
+
+        if not all(c in POSSIBLE_CHARACTERS for c in word.lower()):
+            emb.description = f'⚠️ The word *{word.lower()}* is not a legal word.'
+            await interaction.followup.send(embed=emb)
+            return
+
+        conn: sqlite3.Connection = sqlite3.connect(Bot.DB_FILE)
+        cursor: sqlite3.Cursor = conn.cursor()
+
+        cursor.execute(f'DELETE FROM {Bot.TABLE_WHITELIST} '
+                       f'WHERE server_id = {interaction.guild.id} AND words = \'{word.lower()}\'')
+        conn.commit()
+        conn.close()
+
+        emb.description = f'✅ The word *{word.lower()}* has been removed from the whitelist.'
+        await interaction.followup.send(embed=emb)
+
+    @app_commands.command(description='List the whitelisted words')
+    async def show(self, interaction: discord.Interaction) -> None:
+        await interaction.response.defer()
+
+        conn: sqlite3.Connection = sqlite3.connect(Bot.DB_FILE)
+        cursor: sqlite3.Cursor = conn.cursor()
+
+        cursor.execute(f'SELECT words FROM {Bot.TABLE_WHITELIST} WHERE server_id = {interaction.guild.id}')
+        result: list[tuple[int]] = cursor.fetchall()  # Structure: [(word1,), (word2,), (word3,), ...] or [] if empty
+
+        emb = discord.Embed(title=f'Whitelisted words', description='', colour=discord.Color.dark_orange())
+
+        if len(result) == 0:
+            emb.description = f'No word has been whitelisted in this server.'
+            await interaction.followup.send(embed=emb)
+        else:
+            i: int = 0
+            for word in result:
+                i += 1
+                emb.description += f'{i}. {word[0]}\n'
+
+            await interaction.followup.send(embed=emb)
+
 
 if __name__ == '__main__':
     bot.tree.add_command(StatsCmdGroup())
     bot.tree.add_command(BlacklistCmdGroup())
+    bot.tree.add_command(WhitelistCmdGroup())
     bot.run(os.getenv('TOKEN'))
