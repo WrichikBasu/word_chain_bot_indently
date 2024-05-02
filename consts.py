@@ -929,6 +929,10 @@ A global whitelist containing all LEGAL three letter words.
 NOTE: This is a WHITElist, i.e. an inverted blacklist.
 """
 GLOBAL_WHITELIST_3_LETTER_WORDS: set[str] = {
+    'taj',
+    'www',
+    'usa',
+    'hop',
     'end',
     'vim',
     'mow',
