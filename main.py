@@ -336,7 +336,7 @@ The chain has **not** been broken. Please enter another word.''')
         # Check if word is blacklisted
         # (iff not whitelisted)
         # -------------------------------
-        if not word_whitelisted and Bot.is_word_blacklisted(message.guild.id, word, cursor):
+        if not word_whitelisted and Bot.is_word_blacklisted(word, message.guild.id, cursor):
             await message.add_reaction('⚠️')
             await message.channel.send(f'''This word has been **blacklisted**. Please do not use it.
 The chain has **not** been broken. Please enter another word.''')
@@ -676,14 +676,16 @@ The above entered word is **NOT** being taken into account.''')
             cursor: sqlite3.Cursor = conn.cursor()
 
             for word in tuple(words):
-                # Code courtesy: https://stackoverflow.com/a/45299979/8387076
-                cursor.execute(f'INSERT OR IGNORE INTO {Bot.TABLE_CACHE} VALUES (\'{word}\')')
+                if not Bot.is_word_blacklisted(word):  # Do NOT insert globally blacklisted words into the cache
+                    # Code courtesy: https://stackoverflow.com/a/45299979/8387076
+                    cursor.execute(f'INSERT OR IGNORE INTO {Bot.TABLE_CACHE} VALUES (\'{word}\')')
 
             conn.commit()
             conn.close()
 
     @staticmethod
-    def is_word_blacklisted(server_id: int, word: str, cursor: sqlite3.Cursor) -> bool:
+    def is_word_blacklisted(word: str, server_id: Optional[int] = None,
+                            cursor: Optional[sqlite3.Cursor] = None) -> bool:
         """
         Checks if a word is blacklisted.
 
@@ -691,27 +693,35 @@ The above entered word is **NOT** being taken into account.''')
         1. Global blacklists/whitelists, THEN
         2. Server blacklist.
 
+        Do not pass the `server_id` or `cursor` instance if you want to query the global blacklists only.
+
         Parameters
         ----------
-        server_id : int
-            The guild which is calling this function.
         word : str
             The word that is to be checked.
-        cursor : sqlite3.Cursor
-            An instance of Cursor through which the DB will be accessed.
+        server_id : Optional[int] = None
+            The guild which is calling this function. Default: `None`.
+        cursor : Optional[sqlite3.Cursor] = None
+            An instance of Cursor through which the DB will be accessed. Default: `None`.
 
         Returns
         -------
         bool
-            `True` if the word IS blacklisted, otherwise `False`.
+            `True` if the word is blacklisted, otherwise `False`.
         """
         # Check global blacklists
         if word in GLOBAL_BLACKLIST_2_LETTER_WORDS or word in GLOBAL_BLACKLIST_N_LETTER_WORDS:
             return True
 
-        # Check global 3-letter words whitelist
+        # Check global 3-letter words WHITElist
         if len(word) == 3 and word not in GLOBAL_WHITELIST_3_LETTER_WORDS:
             return True
+
+        # Either of these two params being null implies only the global blacklists should be checked
+        if server_id is None or cursor is None:
+            # Global blacklists have already been checked. If the control is here, it means that
+            # the word is not globally blacklisted. So, return False.
+            return False
 
         # Check server blacklist
         cursor.execute(f'SELECT EXISTS(SELECT 1 FROM {Bot.TABLE_BLACKLIST} WHERE '
@@ -963,7 +973,7 @@ async def check_word(interaction: discord.Interaction, word: str):
         conn.close()
         return
 
-    if Bot.is_word_blacklisted(interaction.guild.id, word, cursor):
+    if Bot.is_word_blacklisted(word, interaction.guild.id, cursor):
         emb.description = f'❌ The word **{word}** is **blacklisted** and hence, **not** valid.'
         await interaction.followup.send(embed=emb)
         conn.close()
