@@ -456,7 +456,7 @@ The above entered word is **NOT** being taken into account.''')
         karma: float = self.calculate_karma(word)
 
         cursor.execute(f'UPDATE {Bot.TABLE_MEMBERS} '
-                       f'SET score = score + 1, correct = correct + 1, karma = karma + {karma} '
+                       f'SET score = score + 1, correct = correct + 1, karma = MAX(0, karma + {karma}) '
                        f'WHERE member_id = {message.author.id} AND server_id = {message.guild.id}')
 
         cursor.execute(f'INSERT INTO {Bot.TABLE_USED_WORDS} VALUES ({message.guild.id}, "{word}")')
@@ -498,7 +498,7 @@ The above entered word is **NOT** being taken into account.''')
 
         cursor: sqlite3.Cursor = conn.cursor()
         cursor.execute(f'UPDATE {Bot.TABLE_MEMBERS} '
-                       f'SET score = score - 1, wrong = wrong + 1, karma = karma - {MISTAKE_PENALTY} '
+                       f'SET score = score - 1, wrong = wrong + 1, karma = MAX(0, karma - {MISTAKE_PENALTY}) '
                        f'WHERE member_id = {message.author.id} AND '
                        f'server_id = {message.guild.id}')
         # Clear used words schema
