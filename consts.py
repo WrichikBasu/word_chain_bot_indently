@@ -42,7 +42,7 @@ FIRST_CHAR_SCORE = {
 }
 
 """Amount of karma subtracted for a mistake """
-MISTAKE_PENALTY = 10
+MISTAKE_PENALTY = 5
 
 """Minimum karma needed for the reliable role """
 RELIABLE_ROLE_KARMA_THRESHOLD = 50
