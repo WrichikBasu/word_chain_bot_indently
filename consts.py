@@ -265,7 +265,8 @@ SPECIAL_REACTION_EMOJIS: dict[str, str] = {
     'vietnam': '🇻🇳',
     'yemen': '🇾🇪',
     'zambia': '🇿🇲',
-    'zimbabwe': '🇿🇼'
+    'zimbabwe': '🇿🇼',
+    'russia': '🇷🇺'
 }
 
 """
@@ -929,6 +930,9 @@ A global whitelist containing all LEGAL three letter words.
 NOTE: This is a WHITElist, i.e. an inverted blacklist.
 """
 GLOBAL_WHITELIST_3_LETTER_WORDS: set[str] = {
+    'eve',
+    'ewe',
+    'sap',
     'taj',
     'www',
     'usa',
