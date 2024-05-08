@@ -1167,9 +1167,9 @@ class StatsCmdGroup(app_commands.Group):
 
         server_stats_embed = discord.Embed(
             description=f'''Current Chain Length: {config.current_count}
-        Longest chain length: {config.high_score}
-        {f"**Last word:** {config.current_word}" if config.current_word else ""}
-        {f"Last word by: <@{config.current_member_id}>" if config.current_member_id else ""}''',
+Longest chain length: {config.high_score}
+{f"**Last word:** {config.current_word}" if config.current_word else ""}
+{f"Last word by: <@{config.current_member_id}>" if config.current_member_id else ""}''',
             color=discord.Color.blurple()
         )
         server_stats_embed.set_author(name=interaction.guild, icon_url=interaction.guild.icon)
@@ -1210,10 +1210,10 @@ class StatsCmdGroup(app_commands.Group):
         emb = discord.Embed(
             color=discord.Color.blue(),
             description=f'''**Score:** {score} (#{pos_by_score})
-        **🌟Karma:** {karma:.2f} (#{pos_by_karma})
-        **✅Correct:** {correct}
-        **❌Wrong:** {wrong}
-        **Accuracy:** {(correct / (correct + wrong)):.2%}'''
+**🌟Karma:** {karma:.2f} (#{pos_by_karma})
+**✅Correct:** {correct}
+**❌Wrong:** {wrong}
+**Accuracy:** {(correct / (correct + wrong)):.2%}'''
         ).set_author(name=f"{member} | stats", icon_url=member.avatar)
 
         await interaction.followup.send(embed=emb)
