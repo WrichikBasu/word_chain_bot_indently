@@ -2,6 +2,7 @@
 import asyncio
 import concurrent.futures
 import json
+import math
 import os
 import sqlite3
 from dataclasses import dataclass
@@ -12,6 +13,7 @@ from discord import app_commands
 from discord.ext import commands
 from dotenv import load_dotenv
 from consts import *
+from data import History
 
 load_dotenv('.env')
 
@@ -113,6 +115,7 @@ class Bot(commands.Bot):
         self._busy: int = 0
         self._cached_words: Optional[set[str]] = None
         self._participating_users: Optional[set[int]] = None
+        self._history = History()
         self.failed_role: Optional[discord.Role] = None
         self.reliable_role: Optional[discord.Role] = None
         super().__init__(command_prefix='!', intents=intents)
@@ -348,7 +351,7 @@ The chain has **not** been broken. Please enter another word.''')
 
         # ------------------------------
         # Check if word is valid
-        # (iff not whitelisted)
+        # (if not whitelisted)
         # ------------------------------
         future: Optional[concurrent.futures.Future]
 
@@ -453,7 +456,14 @@ The above entered word is **NOT** being taken into account.''')
         else:
             await message.add_reaction(self._config.reaction_emoji())
 
-        karma: float = self.calculate_karma(word)
+        # find occurrences and push used word
+        end_letter: str = word[-1]
+        n: int = sum(1 for e in self._history[message.author.id] if e[-1] == end_letter)
+        self._history[message.author.id].append(word)
+
+        decay: float = self.calculate_decay(n)
+        base_karma: float = self.calculate_karma(word)
+        karma = decay * base_karma if base_karma > 0 else base_karma
 
         cursor.execute(f'UPDATE {Bot.TABLE_MEMBERS} '
                        f'SET score = score + 1, correct = correct + 1, karma = MAX(0, karma + {karma}) '
@@ -757,6 +767,25 @@ The above entered word is **NOT** being taken into account.''')
         return result == 1
 
     @staticmethod
+    def calculate_decay(n: int, drop_rate: float = .33) -> float:
+        """
+        Calculates a decay factor based on n occurrences of similar words in history.
+
+        Parameters
+        ----------
+        n : int
+            Positive number of similar words in history.
+        drop_rate : float
+            Positive rate of change to approach the lower boundary.
+
+        Returns
+        -------
+        float
+            A decay factor that can be multiplied with the karma between 1 and -1.
+        """
+        return (2 * math.e ** (-n * drop_rate)) - 1
+
+    @staticmethod
     def calculate_karma(word: str, last_char_bias: float = .7) -> float:
         """
         Calculates the karma gain or loss for given word.
@@ -771,7 +800,7 @@ The above entered word is **NOT** being taken into account.''')
         Returns
         -------
         float
-            The change in Karma, usually closely around 0.
+            The change in karma, usually closely around 0.
         """
         first_char_score: float = FIRST_CHAR_SCORE[word[0]]  # indicates how difficult it is to find this word
         last_char_score: float = FIRST_CHAR_SCORE[word[-1]]  # indicates how difficult it is for the next player
