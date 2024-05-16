@@ -781,7 +781,7 @@ The above entered word is **NOT** being taken into account.''')
         Returns
         -------
         float
-            A decay factor that can be multiplied with the karma between 1 and -1.
+            A decay factor between 1 and -1 that can be multiplied with the karma.
         """
         return (2 * math.e ** (-n * drop_rate)) - 1
 
