@@ -351,7 +351,7 @@ The chain has **not** been broken. Please enter another word.''')
 
         # ------------------------------
         # Check if word is valid
-        # (if not whitelisted)
+        # (if and only if not whitelisted)
         # ------------------------------
         future: Optional[concurrent.futures.Future]
 
