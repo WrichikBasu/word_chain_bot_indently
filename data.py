@@ -13,7 +13,7 @@ class LimitedLengthList(deque):
 
 
 class History(dict[int, LimitedLengthList[str]]):
-    def __init__(self, history_length: int = 5, *args, **kwargs):
+    def __init__(self, history_length: int = 10, *args, **kwargs):
         self.__history_length = history_length
         super().__init__(*args, **kwargs)
 

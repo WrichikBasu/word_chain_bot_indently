@@ -13,7 +13,7 @@ from discord import app_commands
 from discord.ext import commands
 from dotenv import load_dotenv
 from consts import *
-from data import History
+from data import History, LimitedLengthList
 
 load_dotenv('.env')
 
@@ -458,12 +458,16 @@ The above entered word is **NOT** being taken into account.''')
 
         # find occurrences and push used word
         end_letter: str = word[-1]
-        n: int = sum(1 for e in self._history[message.author.id] if e[-1] == end_letter)
-        self._history[message.author.id].append(word)
+        last_words: LimitedLengthList[str] = self._history[message.author.id]
+        weighted_words: list[tuple[float, str]] = [((len(last_words) - index) / len(last_words), e) for index, e in
+                                                   enumerate(last_words)]
+        n: float = sum(weight for weight, e in weighted_words if e[-1] == end_letter)
 
         decay: float = self.calculate_decay(n)
         base_karma: float = self.calculate_karma(word)
         karma = decay * base_karma if base_karma > 0 else base_karma
+
+        self._history[message.author.id].append(word)
 
         cursor.execute(f'UPDATE {Bot.TABLE_MEMBERS} '
                        f'SET score = score + 1, correct = correct + 1, karma = MAX(0, karma + {karma}) '
@@ -767,14 +771,14 @@ The above entered word is **NOT** being taken into account.''')
         return result == 1
 
     @staticmethod
-    def calculate_decay(n: int, drop_rate: float = .33) -> float:
+    def calculate_decay(n: float, drop_rate: float = .33) -> float:
         """
-        Calculates a decay factor based on n occurrences of similar words in history.
+        Calculates a decay factor based on an occurrence score of same letter ending words in history.
 
         Parameters
         ----------
-        n : int
-            Positive number of similar words in history.
+        n : float
+            Positive score of occurrences in history.
         drop_rate : float
             Positive rate of change to approach the lower boundary.
 
@@ -802,8 +806,12 @@ The above entered word is **NOT** being taken into account.''')
         float
             The change in karma, usually closely around 0.
         """
-        first_char_score: float = FIRST_CHAR_SCORE[word[0]]  # indicates how difficult it is to find this word
-        last_char_score: float = FIRST_CHAR_SCORE[word[-1]]  # indicates how difficult it is for the next player
+
+        def score_adaption(score: float, exponent: float = .5, rise: float = .025) -> float:
+            return score ** exponent + rise
+
+        first_char_score: float = score_adaption(FIRST_CHAR_SCORE[word[0]])  # how difficult is it to find this word
+        last_char_score: float = score_adaption(FIRST_CHAR_SCORE[word[-1]])  # how difficult is it for the next player
 
         first_char_karma: float = (first_char_score - 1) * -1  # distance to average, inverted
         last_char_karma: float = (last_char_score - 1)  # distance to average
