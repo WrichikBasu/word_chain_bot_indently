@@ -97,5 +97,4 @@ def calculate_total_karma(word: str, last_words: LimitedLengthList) -> float:
 
     decay: float = calculate_decay(n)
     base_karma: float = calculate_base_karma(word)
-    karma = decay * base_karma if base_karma > 0 else base_karma
-    return karma
+    return decay * base_karma if base_karma > 0 else base_karma
