@@ -863,18 +863,18 @@ __Restricted commands__ (Admin-only)
     await interaction.response.send_message(embed=emb, ephemeral=ephemeral)
 
 
-@bot.tree.command(name='leaderboard', description='Shows the first 10 users with the highest score')
-@app_commands.describe(option='The type of the leaderboard')
-@app_commands.choices(option=[
+@bot.tree.command(name='leaderboard', description='Shows the first 10 users with the highest score/karma')
+@app_commands.describe(type='The type of the leaderboard')
+@app_commands.choices(type=[
     app_commands.Choice(name='score', value=1),
     app_commands.Choice(name='karma', value=2)
 ])
-async def leaderboard(interaction: discord.Interaction, option: Optional[app_commands.Choice[int]]):
+async def leaderboard(interaction: discord.Interaction, type: Optional[app_commands.Choice[int]]):
     """Command to show the top 10 users with the highest score in Indently"""
     await interaction.response.defer()
 
-    value: int = 1 if option is None else option.value
-    name: str = 'score' if option is None else option.name
+    value: int = 1 if type is None else type.value
+    name: str = 'score' if type is None else type.name
 
     emb = discord.Embed(
         title=f'Top 10 users by {name}',
