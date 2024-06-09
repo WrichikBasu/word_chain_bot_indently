@@ -70,12 +70,17 @@ def test_positive_score_on_unused(positive_scoring_words: list[str], mixed_score
         assert karma > 0
 
 
-def test_positive_score_on_already_used(positive_scoring_words: list[str], positive_score_history: LimitedLengthList):
+def test_reduced_score_on_already_used(positive_scoring_words: list[str],
+                                       positive_score_history: LimitedLengthList,
+                                       negative_score_history: LimitedLengthList):
     for word in positive_scoring_words:
         assert word in positive_score_history
-        karma = calculate_total_karma(word, positive_score_history)
+        karma_on_positive_history = calculate_total_karma(word, positive_score_history)
+        karma_on_negative_history = calculate_total_karma(word, negative_score_history)
         positive_score_history.append(word)
-        assert karma > 0
+        negative_score_history.append(word)
+        assert karma_on_positive_history > 0
+        assert karma_on_positive_history < karma_on_negative_history
 
 
 def test_negative_score_irrelevant_history(negative_scoring_words: list[str],
