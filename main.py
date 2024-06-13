@@ -450,10 +450,8 @@ The above entered word is **NOT** being taken into account.''')
 
         if word == 'indently' and self._config.indently_emoji:  # Special reaction for 'Indently'
             await message.add_reaction(self._config.indently_emoji)
-        elif word in SPECIAL_REACTION_EMOJIS:
-            await message.add_reaction(SPECIAL_REACTION_EMOJIS[word])
         else:
-            await message.add_reaction(self._config.reaction_emoji())
+            await message.add_reaction(SPECIAL_REACTION_EMOJIS.get(word, self._config.reaction_emoji()))
 
         last_words: LimitedLengthList[str] = self._history[message.author.id]
         karma: float = calculate_total_karma(word, last_words)
