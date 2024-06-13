@@ -452,7 +452,6 @@ GLOBAL_BLACKLIST_2_LETTER_WORDS: set[str] = {
     'hb',
     'hc',
     'hd',
-    'he',
     'hf',
     'hg',
     'hh',
@@ -1272,7 +1271,14 @@ GLOBAL_WHITELIST_3_LETTER_WORDS: set[str] = {
     'dab',
     'eye',
     'vet',
-    'ice'
+    'ice',
+    'elk',
+    'goa',
+    'kia',
+    'non',
+    'rig',
+    'sag',
+    'ups'
 }
 
 """
