@@ -30,7 +30,6 @@ class Config:
     reliable_role_id: Optional[int] = None
     failed_member_id: Optional[int] = None
     correct_inputs_by_failed_member: int = 0
-    indently_emoji: Optional[str] = None
 
     @staticmethod
     def read():
@@ -448,10 +447,7 @@ The above entered word is **NOT** being taken into account.''')
 
         self._config.update_current(message.author.id, current_word=word)  # config dump at the end of the method
 
-        if word == 'indently' and self._config.indently_emoji:  # Special reaction for 'Indently'
-            await message.add_reaction(self._config.indently_emoji)
-        else:
-            await message.add_reaction(SPECIAL_REACTION_EMOJIS.get(word, self._config.reaction_emoji()))
+        await message.add_reaction(SPECIAL_REACTION_EMOJIS.get(word, self._config.reaction_emoji()))
 
         last_words: LimitedLengthList[str] = self._history[message.author.id]
         karma: float = calculate_total_karma(word, last_words)
@@ -980,46 +976,6 @@ async def check_word(interaction: discord.Interaction, word: str):
             emb.description = f'⚠️ There was an issue in fetching the result.'
 
     await interaction.followup.send(embed=emb)
-
-
-@bot.tree.command(name='set_indently_emoji', description='Set the special reaction emoji for Indently')
-@app_commands.describe(emoji='The emoji')
-@app_commands.default_permissions(ban_members=True)
-async def set_indently_emoji(interaction: discord.Interaction, emoji: str):
-    """
-    Set a special emoji which the bot will use if someone enters 'Indently'.
-    """
-    await interaction.response.defer()
-
-    bot._config.indently_emoji = emoji
-    bot._config.dump_data()
-
-    emb: discord.Embed = discord.Embed(description=f'✅ Successfully set the reaction emoji for Indently to {emoji}',
-                                       colour=discord.Colour.green())
-
-    await interaction.followup.send(embed=emb)
-
-
-@bot.tree.command(name='remove_indently_emoji', description='Removes the special reaction emoji for Indently')
-@app_commands.default_permissions(ban_members=True)
-async def remove_indently_emoji(interaction: discord.Interaction):
-    """
-    Removes the special emoji for 'Indently'.
-    """
-    await interaction.response.defer()
-
-    if bot._config.indently_emoji:
-
-        bot._config.indently_emoji = None
-        bot._config.dump_data()
-
-        emb: discord.Embed = discord.Embed(description=f'✅ Successfully removed the reaction emoji for Indently',
-                                           colour=discord.Colour.green())
-        await interaction.followup.send(embed=emb)
-    else:
-        emb: discord.Embed = discord.Embed(description=f'⚠️ Emoji not set, so nothing to removed.',
-                                           colour=discord.Colour.dark_teal())
-        await interaction.followup.send(embed=emb)
 
 
 @bot.tree.command(name='set_failed_role',

@@ -266,7 +266,8 @@ SPECIAL_REACTION_EMOJIS: dict[str, str] = {
     'yemen': '🇾🇪',
     'zambia': '🇿🇲',
     'zimbabwe': '🇿🇼',
-    'russia': '🇷🇺'
+    'russia': '🇷🇺',
+    'indently': '<:python:1041232509628850247>'
 }
 
 """
