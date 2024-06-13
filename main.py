@@ -839,12 +839,10 @@ async def list_commands(interaction: discord.Interaction, ephemeral: bool = True
 __Restricted commands__ (Admin-only)
 **sync** - Syncs the slash commands to the bot.
 **set_channel** - Sets the channel to chain words.
-**set_indently_emoji** - Sets the special reaction emoji for Indently
 **set_failed_role** - Sets the role to give when a user fails.
 **set_reliable_role** - Sets the reliable role.
 **remove_failed_role** - Unsets the role to give when a user fails.
 **remove_reliable_role** - Unset the reliable role.
-**remove_indently_emoji** - Removes the special reaction emoji for Indently
 **force_dump** - Forcibly dump bot config data. Use only when no one is actively playing.
 **prune** - Remove data for users who are no longer in the server.
 **blacklist add** - Add a word to the blacklist for this server.
