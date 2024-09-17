@@ -862,7 +862,7 @@ __Restricted commands__ (Admin-only)
     app_commands.Choice(name='karma', value=2)
 ])
 async def leaderboard(interaction: discord.Interaction, type: Optional[app_commands.Choice[int]]):
-    """Command to show the top 10 users with the highest score in Indently"""
+    """Command to show the top 10 users with the highest score/karma."""
     await interaction.response.defer()
 
     value: int = 1 if type is None else type.value
@@ -877,27 +877,40 @@ async def leaderboard(interaction: discord.Interaction, type: Optional[app_comma
     conn: sqlite3.Connection = sqlite3.connect(Bot.DB_FILE)
     cursor: sqlite3.Cursor = conn.cursor()
 
-    match value:
-        case 1:
-            cursor.execute(f'SELECT member_id, score FROM {Bot.TABLE_MEMBERS} '
-                           f'WHERE server_id = {interaction.guild.id} '
-                           f'ORDER BY score DESC LIMIT 10')
-            users: list[tuple[int, int]] = cursor.fetchall()
-            for i, user in enumerate(users, 1):
-                member_id, score = user
-                user_obj = await interaction.guild.fetch_member(member_id)
-                emb.description += f'{i}. {user_obj.mention} **{score}**\n'
-        case 2:
-            cursor.execute(f'SELECT member_id, karma FROM {Bot.TABLE_MEMBERS} '
-                           f'WHERE server_id = {interaction.guild.id} '
-                           f'ORDER BY karma DESC LIMIT 10')
-            users: list[tuple[int, float]] = cursor.fetchall()
-            for i, user in enumerate(users, 1):
-                member_id, karma = user
-                user_obj = await interaction.guild.fetch_member(member_id)
-                emb.description += f'{i}. {user_obj.mention} **{karma:.2f}**\n'
-        case _:
-            raise ValueError(f'invalid option value')
+    async def list_users(offset: int = 0, limit: int = 10) -> None:
+
+        unavailable_users: int = 0  # Denotes no. of users who were not found
+
+        # Retrieve from the database
+        cursor.execute(f'SELECT member_id, {name} FROM {Bot.TABLE_MEMBERS} '
+                       f'WHERE server_id = {interaction.guild.id} '
+                       f'ORDER BY {name} DESC LIMIT {limit} OFFSET {offset}')
+
+        data: list[tuple[int, float]] = cursor.fetchall()  # Structure: [(user_id1, score_or_karma),... ]
+
+        if len(data) == 0:  # Stop when no users could be retrieved.
+            if offset == 0 and limit == 10:  # Show a message if no users were found the first time itself
+                emb.description = ':warning: No users have played in this server yet!'
+            return
+
+        for i, user_data in enumerate(data, 1):
+            member_id, score_or_karma = user_data
+
+            try:
+                user: discord.Member = await interaction.guild.fetch_member(member_id)
+
+                if name == 'karma':
+                    emb.description += f'{i}. {user.mention} **{score_or_karma:.2f}**\n'
+                else:
+                    emb.description += f'{i}. {user.mention} **{score_or_karma}**\n'
+
+            except discord.NotFound:  # Member not found as they are no longer in the server
+                unavailable_users += 1
+
+        if unavailable_users > 0:  # Recursively call if 10 members could not be retrieved
+            await list_users(offset=offset + limit, limit=unavailable_users)
+
+    await list_users()
 
     conn.close()
 
