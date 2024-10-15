@@ -4,15 +4,18 @@ import concurrent.futures
 import json
 import os
 import sqlite3
+from collections import deque
 from dataclasses import dataclass
-from typing import Optional, NoReturn
-from requests_futures.sessions import FuturesSession
+from typing import NoReturn, Optional
+
 import discord
 from discord import app_commands
 from discord.ext import commands
 from dotenv import load_dotenv
+from requests_futures.sessions import FuturesSession
+
 from consts import *
-from data import History, LimitedLengthList, calculate_total_karma
+from data import History, calculate_total_karma
 
 load_dotenv('.env')
 
@@ -455,7 +458,7 @@ The above entered word is **NOT** being taken into account.''')
         else:
             await message.add_reaction(self._config.reaction_emoji())
 
-        last_words: LimitedLengthList[str] = self._history[message.author.id]
+        last_words: deque[str] = self._history[message.author.id]
         karma: float = calculate_total_karma(word, last_words)
         self._history[message.author.id].append(word)
 
