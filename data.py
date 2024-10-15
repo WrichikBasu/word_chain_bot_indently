@@ -4,16 +4,6 @@ from collections import deque
 from consts import FIRST_CHAR_SCORE
 
 
-class History(dict[int, deque[str]]):
-    def __init__(self, history_length: int = 5, *args, **kwargs):
-        self.__history_length = history_length
-        super().__init__(*args, **kwargs)
-
-    def __missing__(self, key):
-        self[key] = deque(maxlen=self.__history_length)
-        return self[key]
-
-
 def calculate_decay(n: float, drop_rate: float = .33) -> float:
     """
     Calculates a decay factor based on an occurrence score of same letter ending words in history.

@@ -4,7 +4,7 @@ import concurrent.futures
 import json
 import os
 import sqlite3
-from collections import deque
+from collections import deque, defaultdict
 from dataclasses import dataclass
 from typing import NoReturn, Optional
 
@@ -15,7 +15,7 @@ from dotenv import load_dotenv
 from requests_futures.sessions import FuturesSession
 
 from consts import *
-from data import History, calculate_total_karma
+from data import calculate_total_karma
 
 load_dotenv('.env')
 
@@ -116,7 +116,7 @@ class Bot(commands.Bot):
         self._busy: int = 0
         self._cached_words: Optional[set[str]] = None
         self._participating_users: Optional[set[int]] = None
-        self._history = History()
+        self._history = defaultdict(default_factory=deque(maxlen=HISTORY_LENGTH))
         self.failed_role: Optional[discord.Role] = None
         self.reliable_role: Optional[discord.Role] = None
         super().__init__(command_prefix='!', intents=intents)

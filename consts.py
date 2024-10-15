@@ -41,13 +41,16 @@ FIRST_CHAR_SCORE = {
     "z": 0.09743721376366166
 }
 
-"""Amount of karma subtracted for a mistake """
+"""Amount of words kept in history per user"""
+HISTORY_LENGTH = 5
+
+"""Amount of karma subtracted for a mistake"""
 MISTAKE_PENALTY = 5
 
-"""Minimum karma needed for the reliable role """
+"""Minimum karma needed for the reliable role"""
 RELIABLE_ROLE_KARMA_THRESHOLD = 50
 
-"""Minimum accuracy needed for the reliable role """
+"""Minimum accuracy needed for the reliable role"""
 RELIABLE_ROLE_ACCURACY_THRESHOLD = .99
 
 """
