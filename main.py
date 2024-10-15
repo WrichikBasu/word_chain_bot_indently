@@ -33,7 +33,6 @@ class Config:
     reliable_role_id: Optional[int] = None
     failed_member_id: Optional[int] = None
     correct_inputs_by_failed_member: int = 0
-    indently_emoji: Optional[str] = None
 
     @staticmethod
     def read():
@@ -451,12 +450,7 @@ The above entered word is **NOT** being taken into account.''')
 
         self._config.update_current(message.author.id, current_word=word)  # config dump at the end of the method
 
-        if word == 'indently' and self._config.indently_emoji:  # Special reaction for 'Indently'
-            await message.add_reaction(self._config.indently_emoji)
-        elif word in SPECIAL_REACTION_EMOJIS:
-            await message.add_reaction(SPECIAL_REACTION_EMOJIS[word])
-        else:
-            await message.add_reaction(self._config.reaction_emoji())
+        await message.add_reaction(SPECIAL_REACTION_EMOJIS.get(word, self._config.reaction_emoji()))
 
         last_words: deque[str] = self._history[message.author.id]
         karma: float = calculate_total_karma(word, last_words)
@@ -848,12 +842,10 @@ async def list_commands(interaction: discord.Interaction, ephemeral: bool = True
 __Restricted commands__ (Admin-only)
 **sync** - Syncs the slash commands to the bot.
 **set_channel** - Sets the channel to chain words.
-**set_indently_emoji** - Sets the special reaction emoji for Indently
 **set_failed_role** - Sets the role to give when a user fails.
 **set_reliable_role** - Sets the reliable role.
 **remove_failed_role** - Unsets the role to give when a user fails.
 **remove_reliable_role** - Unset the reliable role.
-**remove_indently_emoji** - Removes the special reaction emoji for Indently
 **force_dump** - Forcibly dump bot config data. Use only when no one is actively playing.
 **prune** - Remove data for users who are no longer in the server.
 **blacklist add** - Add a word to the blacklist for this server.
@@ -866,18 +858,18 @@ __Restricted commands__ (Admin-only)
     await interaction.response.send_message(embed=emb, ephemeral=ephemeral)
 
 
-@bot.tree.command(name='leaderboard', description='Shows the first 10 users with the highest score')
-@app_commands.describe(option='The type of the leaderboard')
-@app_commands.choices(option=[
+@bot.tree.command(name='leaderboard', description='Shows the first 10 users with the highest score/karma')
+@app_commands.describe(type='The type of the leaderboard')
+@app_commands.choices(type=[
     app_commands.Choice(name='score', value=1),
     app_commands.Choice(name='karma', value=2)
 ])
-async def leaderboard(interaction: discord.Interaction, option: Optional[app_commands.Choice[int]]):
-    """Command to show the top 10 users with the highest score in Indently"""
+async def leaderboard(interaction: discord.Interaction, type: Optional[app_commands.Choice[int]]):
+    """Command to show the top 10 users with the highest score/karma."""
     await interaction.response.defer()
 
-    value: int = 1 if option is None else option.value
-    name: str = 'score' if option is None else option.name
+    value: int = 1 if type is None else type.value
+    name: str = 'score' if type is None else type.name
 
     emb = discord.Embed(
         title=f'Top 10 users by {name}',
@@ -888,27 +880,40 @@ async def leaderboard(interaction: discord.Interaction, option: Optional[app_com
     conn: sqlite3.Connection = sqlite3.connect(Bot.DB_FILE)
     cursor: sqlite3.Cursor = conn.cursor()
 
-    match value:
-        case 1:
-            cursor.execute(f'SELECT member_id, score FROM {Bot.TABLE_MEMBERS} '
-                           f'WHERE server_id = {interaction.guild.id} '
-                           f'ORDER BY score DESC LIMIT 10')
-            users: list[tuple[int, int]] = cursor.fetchall()
-            for i, user in enumerate(users, 1):
-                member_id, score = user
-                user_obj = await interaction.guild.fetch_member(member_id)
-                emb.description += f'{i}. {user_obj.mention} **{score}**\n'
-        case 2:
-            cursor.execute(f'SELECT member_id, karma FROM {Bot.TABLE_MEMBERS} '
-                           f'WHERE server_id = {interaction.guild.id} '
-                           f'ORDER BY karma DESC LIMIT 10')
-            users: list[tuple[int, float]] = cursor.fetchall()
-            for i, user in enumerate(users, 1):
-                member_id, karma = user
-                user_obj = await interaction.guild.fetch_member(member_id)
-                emb.description += f'{i}. {user_obj.mention} **{karma:.2f}**\n'
-        case _:
-            raise ValueError(f'invalid option value')
+    async def list_users(offset: int = 0, limit: int = 10) -> None:
+
+        unavailable_users: int = 0  # Denotes no. of users who were not found
+
+        # Retrieve from the database
+        cursor.execute(f'SELECT member_id, {name} FROM {Bot.TABLE_MEMBERS} '
+                       f'WHERE server_id = {interaction.guild.id} '
+                       f'ORDER BY {name} DESC LIMIT {limit} OFFSET {offset}')
+
+        data: list[tuple[int, float]] = cursor.fetchall()  # Structure: [(user_id1, score_or_karma),... ]
+
+        if len(data) == 0:  # Stop when no users could be retrieved.
+            if offset == 0 and limit == 10:  # Show a message if no users were found the first time itself
+                emb.description = ':warning: No users have played in this server yet!'
+            return
+
+        for i, user_data in enumerate(data, 1):
+            member_id, score_or_karma = user_data
+
+            try:
+                user: discord.Member = await interaction.guild.fetch_member(member_id)
+
+                if name == 'karma':
+                    emb.description += f'{i}. {user.mention} **{score_or_karma:.2f}**\n'
+                else:
+                    emb.description += f'{i}. {user.mention} **{score_or_karma}**\n'
+
+            except discord.NotFound:  # Member not found as they are no longer in the server
+                unavailable_users += 1
+
+        if unavailable_users > 0:  # Recursively call if 10 members could not be retrieved
+            await list_users(offset=offset + limit, limit=unavailable_users)
+
+    await list_users()
 
     conn.close()
 
@@ -985,46 +990,6 @@ async def check_word(interaction: discord.Interaction, word: str):
             emb.description = f'⚠️ There was an issue in fetching the result.'
 
     await interaction.followup.send(embed=emb)
-
-
-@bot.tree.command(name='set_indently_emoji', description='Set the special reaction emoji for Indently')
-@app_commands.describe(emoji='The emoji')
-@app_commands.default_permissions(ban_members=True)
-async def set_indently_emoji(interaction: discord.Interaction, emoji: str):
-    """
-    Set a special emoji which the bot will use if someone enters 'Indently'.
-    """
-    await interaction.response.defer()
-
-    bot._config.indently_emoji = emoji
-    bot._config.dump_data()
-
-    emb: discord.Embed = discord.Embed(description=f'✅ Successfully set the reaction emoji for Indently to {emoji}',
-                                       colour=discord.Colour.green())
-
-    await interaction.followup.send(embed=emb)
-
-
-@bot.tree.command(name='remove_indently_emoji', description='Removes the special reaction emoji for Indently')
-@app_commands.default_permissions(ban_members=True)
-async def remove_indently_emoji(interaction: discord.Interaction):
-    """
-    Removes the special emoji for 'Indently'.
-    """
-    await interaction.response.defer()
-
-    if bot._config.indently_emoji:
-
-        bot._config.indently_emoji = None
-        bot._config.dump_data()
-
-        emb: discord.Embed = discord.Embed(description=f'✅ Successfully removed the reaction emoji for Indently',
-                                           colour=discord.Colour.green())
-        await interaction.followup.send(embed=emb)
-    else:
-        emb: discord.Embed = discord.Embed(description=f'⚠️ Emoji not set, so nothing to removed.',
-                                           colour=discord.Colour.dark_teal())
-        await interaction.followup.send(embed=emb)
 
 
 @bot.tree.command(name='set_failed_role',

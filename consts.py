@@ -253,9 +253,9 @@ SPECIAL_REACTION_EMOJIS: dict[str, str] = {
     'emirates': '🇦🇪',
     'uk': '🇬🇧',
     'britain': '🇬🇧',
-    'england': '🇬🇧',
-    'scotland': '🇬🇧',
-    'wales': '🇬🇧',
+    'england': "🏴󠁧󠁢󠁥󠁮󠁧󠁿",
+    'scotland': "🏴󠁧󠁢󠁳󠁣󠁴󠁿",
+    'wales': "🏴󠁧󠁢󠁷󠁬󠁳󠁿",
     'usa': '🇺🇸',
     'america': '🇺🇸',
     'uruguay': '🇺🇾',
@@ -266,7 +266,8 @@ SPECIAL_REACTION_EMOJIS: dict[str, str] = {
     'yemen': '🇾🇪',
     'zambia': '🇿🇲',
     'zimbabwe': '🇿🇼',
-    'russia': '🇷🇺'
+    'russia': '🇷🇺',
+    'indently': '<:python:1041232509628850247>'
 }
 
 """
@@ -451,7 +452,6 @@ GLOBAL_BLACKLIST_2_LETTER_WORDS: set[str] = {
     'hb',
     'hc',
     'hd',
-    'he',
     'hf',
     'hg',
     'hh',
@@ -1271,7 +1271,14 @@ GLOBAL_WHITELIST_3_LETTER_WORDS: set[str] = {
     'dab',
     'eye',
     'vet',
-    'ice'
+    'ice',
+    'elk',
+    'goa',
+    'kia',
+    'non',
+    'rig',
+    'sag',
+    'ups'
 }
 
 """
