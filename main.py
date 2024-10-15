@@ -18,9 +18,9 @@ from consts import *
 from data import calculate_total_karma
 
 load_dotenv('.env')
-# running in dev mode changes some game rules - you can chain words alone now
+# running in single player mode changes some game rules - you can chain words alone now
 # getenv reads always strings, which are truthy if not empty - thus checking for common false-ish tokens
-DEV_MODE = os.getenv('DEV_MODE', False) not in [False, 'False', 'false', '0']
+SINGLE_PLAYER = os.getenv('DEV_MODE', False) not in [False, 'False', 'false', '0']
 
 
 @dataclass
@@ -389,7 +389,7 @@ Please enter another word.''')
         # -------------
         # Wrong member
         # -------------
-        if not DEV_MODE and self._config.current_member_id and self._config.current_member_id == message.author.id:
+        if not SINGLE_PLAYER and self._config.current_member_id and self._config.current_member_id == message.author.id:
             response: str = f'''{message.author.mention} messed up the count! \
 *You cannot send two words in a row!*
 {f'The chain length was {self._config.current_count} when it was broken. :sob:\n' if self._config.current_count > 0 else ''}\
