@@ -116,7 +116,7 @@ class Bot(commands.Bot):
         self._busy: int = 0
         self._cached_words: Optional[set[str]] = None
         self._participating_users: Optional[set[int]] = None
-        self._history = defaultdict(default_factory=deque(maxlen=HISTORY_LENGTH))
+        self._history = defaultdict(lambda: deque(maxlen=HISTORY_LENGTH))
         self.failed_role: Optional[discord.Role] = None
         self.reliable_role: Optional[discord.Role] = None
         super().__init__(command_prefix='!', intents=intents)
