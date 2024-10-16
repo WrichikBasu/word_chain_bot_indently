@@ -14,9 +14,12 @@ from discord import app_commands
 from discord.ext import commands
 from dotenv import load_dotenv
 from requests_futures.sessions import FuturesSession
+from sqlalchemy.ext.asyncio import create_async_engine
+from sqlalchemy import select, CursorResult
 
 from consts import *
 from data import calculate_total_karma
+from model import MemberModel, Member
 
 load_dotenv('.env')
 # running in single player mode changes some game rules - you can chain words alone now
@@ -103,6 +106,7 @@ class Bot(commands.Bot):
 
     CONFIG_FILE: str = 'config_word_chain.json'
     DB_FILE: str = 'database_word_chain.sqlite3'
+    SQL_ENGINE = create_async_engine('sqlite+aiosqlite:///database_word_chain.sqlite3')
 
     TABLE_USED_WORDS: str = "used_words"
     TABLE_MEMBERS: str = "members"
@@ -197,34 +201,28 @@ class Bot(commands.Bot):
             users: set[int] = self._participating_users.copy()
             self._participating_users = None
 
-            conn: sqlite3.Connection = sqlite3.connect(Bot.DB_FILE)
-            cursor: sqlite3.Cursor = conn.cursor()
-
             guild_id: int = self.reliable_role.guild.id
 
-            if len(users) == 1:
-                sql_stmt: str = (f'SELECT member_id, correct, wrong, karma FROM {Bot.TABLE_MEMBERS} '
-                                 f'WHERE member_id = {tuple(users)[0]} AND server_id = {guild_id}')
-            else:
-                sql_stmt: str = (f'SELECT member_id, correct, wrong, karma FROM {Bot.TABLE_MEMBERS} '
-                                 f'WHERE server_id = {guild_id} AND member_id IN {tuple(users)}')
-
-            cursor.execute(sql_stmt)
-            result: Optional[list[tuple[int, int, int, float]]] = cursor.fetchall()
-            conn.close()
+            db_members: list[Member] = []
+            async with self.SQL_ENGINE.begin() as connection:
+                stmt = select(MemberModel).where(
+                    MemberModel.server_id == guild_id,
+                    MemberModel.member_id.in_(tuple(users))
+                )
+                result: CursorResult = await connection.execute(stmt)
+                db_members = [Member.model_validate(row) for row in result]
 
             def truncate(value: float, decimals: int = 4):
                 t = 10.0 ** decimals
                 return (value * t) // 1 / t
 
-            if result:
-                for data in result:
-                    member_id, correct, wrong, karma = data
-                    karma = truncate(karma)
+            if db_members:
+                for db_member in db_members:
+                    karma = truncate(db_member.karma)
                     if karma != 0:
-                        member: Optional[discord.Member] = self.reliable_role.guild.get_member(member_id)
+                        member: Optional[discord.Member] = self.reliable_role.guild.get_member(db_member.member_id)
                         if member:
-                            accuracy: float = truncate(correct / (correct + wrong))
+                            accuracy: float = truncate(db_member.correct / (db_member.correct + db_member.wrong))
                             if karma >= RELIABLE_ROLE_KARMA_THRESHOLD and accuracy >= RELIABLE_ROLE_ACCURACY_THRESHOLD:
                                 await member.add_roles(self.reliable_role)
                             else:
