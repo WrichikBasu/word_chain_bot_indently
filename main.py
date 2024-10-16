@@ -2,9 +2,10 @@
 import asyncio
 import concurrent.futures
 import json
+import logging
 import os
 import sqlite3
-from collections import deque, defaultdict
+from collections import defaultdict, deque
 from dataclasses import dataclass
 from typing import NoReturn, Optional
 
@@ -22,6 +23,8 @@ load_dotenv('.env')
 # getenv reads always strings, which are truthy if not empty - thus checking for common false-ish tokens
 SINGLE_PLAYER = os.getenv('DEV_MODE', False) not in [False, 'False', 'false', '0']
 
+logging.basicConfig(level=logging.INFO, format='[%(asctime)s] [%(levelname)s] %(name)s: %(message)s')
+logger = logging.getLogger(__name__)
 
 @dataclass
 class Config:
@@ -133,7 +136,7 @@ class Bot(commands.Bot):
 
     async def on_ready(self) -> None:
         """Override the on_ready method"""
-        print(f'Bot is ready as {self.user.name}#{self.user.discriminator}')
+        logger.info(f'Bot is ready as {self.user.name}#{self.user.discriminator}')
 
         if self._config.channel_id:
 
@@ -563,7 +566,7 @@ The above entered word is **NOT** being taken into account.''')
             response = future.result(timeout=5)
 
             if response.status_code >= 400:
-                print(f'Received status code {response.status_code} from Wiktionary API query.')
+                logger.error(f'Received status code {response.status_code} from Wiktionary API query.')
                 return Bot.API_RESPONSE_ERROR
 
             data = response.json()
@@ -580,11 +583,11 @@ The above entered word is **NOT** being taken into account.''')
                 return Bot.API_RESPONSE_WORD_DOESNT_EXIST
 
         except TimeoutError:  # Send Bot.API_RESPONSE_ERROR
-            print('Timeout error raised when trying to get the query result.')
+            logger.error('Timeout error raised when trying to get the query result.')
         except IndexError:
             return Bot.API_RESPONSE_WORD_DOESNT_EXIST
         except Exception as ex:
-            print(f'An exception was raised while getting the query result:\n{ex}')
+            logger.error(f'An exception was raised while getting the query result:\n{ex}')
 
         return Bot.API_RESPONSE_ERROR
 
@@ -762,6 +765,7 @@ The above entered word is **NOT** being taken into account.''')
 
     async def setup_hook(self) -> NoReturn:
         await self.tree.sync()
+        logger.info('Commands synchronized')
 
         conn: sqlite3.Connection = sqlite3.connect(Bot.DB_FILE)
         cursor: sqlite3.Cursor = conn.cursor()
@@ -1084,7 +1088,7 @@ async def prune(interaction: discord.Interaction):
                 cursor.execute(f'DELETE FROM {Bot.TABLE_MEMBERS} WHERE member_id = {user_id} '
                                f'AND server_id = {interaction.guild.id}')
                 count += 1
-                print(f'Removed data for user {user_id}.')
+                logger.info(f'Removed data for user {user_id}.')
 
         if count > 0:
             conn.commit()
@@ -1334,4 +1338,4 @@ if __name__ == '__main__':
     bot.tree.add_command(StatsCmdGroup())
     bot.tree.add_command(BlacklistCmdGroup())
     bot.tree.add_command(WhitelistCmdGroup())
-    bot.run(os.getenv('TOKEN'))
+    bot.run(os.getenv('TOKEN'), log_handler=None)
