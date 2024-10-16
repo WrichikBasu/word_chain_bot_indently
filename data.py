@@ -1,27 +1,7 @@
 import math
 from collections import deque
+
 from consts import FIRST_CHAR_SCORE
-
-
-class LimitedLengthList(deque):
-    def __init__(self, list_length, *args, **kwargs):
-        self.list_length = list_length
-        super().__init__(*args, **kwargs)
-
-    def append(self, item: any):
-        super().append(item)
-        while len(self) > self.list_length:
-            self.popleft()
-
-
-class History(dict[int, LimitedLengthList[str]]):
-    def __init__(self, history_length: int = 5, *args, **kwargs):
-        self.__history_length = history_length
-        super().__init__(*args, **kwargs)
-
-    def __missing__(self, key):
-        self[key] = LimitedLengthList(self.__history_length)
-        return self[key]
 
 
 def calculate_decay(n: float, drop_rate: float = .33) -> float:
@@ -74,7 +54,7 @@ def calculate_base_karma(word: str, last_char_bias: float = .7) -> float:
     return (first_char_karma if first_char_karma > 0 else 0) + (last_char_karma * last_char_bias)
 
 
-def calculate_total_karma(word: str, last_words: LimitedLengthList) -> float:
+def calculate_total_karma(word: str, last_words: deque[str]) -> float:
     """
     Calculates the total karma gain or loss for given word and history.
 
@@ -82,7 +62,7 @@ def calculate_total_karma(word: str, last_words: LimitedLengthList) -> float:
     ----------
     word : str
         The word to calculate the karma change from.
-    last_words : LimitedLengthList
+    last_words : deque[str]
         The history to include in the karma calculation.
 
     Returns
