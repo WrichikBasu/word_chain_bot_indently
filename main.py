@@ -18,9 +18,9 @@ from requests_futures.sessions import FuturesSession
 from sqlalchemy import Column, CursorResult, delete, exists, func, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection, create_async_engine
 from sqlalchemy.sql.functions import count
-from alembic.config import Config as AlembicConfig
-from alembic import command as alembic_command
 
+from alembic import command as alembic_command
+from alembic.config import Config as AlembicConfig
 from consts import *
 from data import calculate_total_karma
 from model import BlacklistModel, Member, MemberModel, UsedWordsModel, WhitelistModel, WordCacheModel
