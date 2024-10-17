@@ -14,12 +14,12 @@ from discord import app_commands
 from discord.ext import commands
 from dotenv import load_dotenv
 from requests_futures.sessions import FuturesSession
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncConnection
-from sqlalchemy import select, insert, exists, update, func, CursorResult, Column, delete
+from sqlalchemy import Column, CursorResult, delete, exists, func, insert, select, update
+from sqlalchemy.ext.asyncio import AsyncConnection, create_async_engine
 
 from consts import *
 from data import calculate_total_karma
-from model import MemberModel, Member, WhitelistModel, BlacklistModel, UsedWordsModel, WordCacheModel
+from model import BlacklistModel, Member, MemberModel, UsedWordsModel, WhitelistModel, WordCacheModel
 
 load_dotenv('.env')
 # running in single player mode changes some game rules - you can chain words alone now

@@ -1,7 +1,6 @@
 from pydantic import BaseModel
-from sqlalchemy import Column, TEXT, REAL, Integer
+from sqlalchemy import REAL, TEXT, Column, Integer
 from sqlalchemy.ext.declarative import declarative_base
-
 
 Base = declarative_base()
 
