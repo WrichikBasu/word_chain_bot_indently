@@ -717,7 +717,7 @@ The above entered word is **NOT** being taken into account.''')
         1. Global blacklists/whitelists, THEN
         2. Server blacklist.
 
-        Do not pass the `server_id` or `cursor` instance if you want to query the global blacklists only.
+        Do not pass the `server_id` or `connection` instance if you want to query the global blacklists only.
 
         Parameters
         ----------
