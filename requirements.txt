@@ -4,3 +4,4 @@ requests-futures>=1.0.1
 pydantic>=2.9.2
 SQLAlchemy>=2.0.36
 aiosqlite>=0.20.0
+alembic>=1.13.3

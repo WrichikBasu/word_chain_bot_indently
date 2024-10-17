@@ -18,6 +18,8 @@ from requests_futures.sessions import FuturesSession
 from sqlalchemy import Column, CursorResult, delete, exists, func, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection, create_async_engine
 from sqlalchemy.sql.functions import count
+from alembic.config import Config as AlembicConfig
+from alembic import command as alembic_command
 
 from consts import *
 from data import calculate_total_karma
@@ -788,39 +790,8 @@ The above entered word is **NOT** being taken into account.''')
         await self.tree.sync()
         logger.info('Commands synchronized')
 
-        conn: sqlite3.Connection = sqlite3.connect(Bot.DB_FILE)
-        cursor: sqlite3.Cursor = conn.cursor()
-
-        cursor.execute(f'CREATE TABLE IF NOT EXISTS {Bot.TABLE_MEMBERS} '
-                       '(server_id INTEGER NOT NULL, '
-                       'member_id INTEGER NOT NULL, '
-                       'score INTEGER NOT NULL, '
-                       'correct INTEGER NOT NULL, '
-                       'wrong INTEGER NOT NULL, '
-                       'karma REAL NOT NULL, '
-                       'PRIMARY KEY (server_id, member_id))')
-
-        cursor.execute(f'CREATE TABLE IF NOT EXISTS {Bot.TABLE_USED_WORDS} '
-                       f'(server_id INTEGER NOT NULL, '
-                       'words TEXT NOT NULL, '
-                       'PRIMARY KEY (server_id, words))')
-
-        cursor.execute(f'CREATE TABLE IF NOT EXISTS {Bot.TABLE_CACHE} '
-                       f'(words TEXT PRIMARY KEY)')
-
-        cursor.execute(f'CREATE TABLE IF NOT EXISTS {Bot.TABLE_BLACKLIST} '
-                       f'(server_id INT NOT NULL, '
-                       f'words TEXT NOT NULL, '
-                       f'PRIMARY KEY (server_id, words))')
-
-        cursor.execute(f'CREATE TABLE IF NOT EXISTS {Bot.TABLE_WHITELIST} '
-                       f'(server_id INT NOT NULL, '
-                       f'words TEXT NOT NULL, '
-                       f'PRIMARY KEY (server_id, words))')
-
-        conn.commit()
-        conn.close()
-
+        alembic_cfg = AlembicConfig('alembic.ini')
+        alembic_command.upgrade(alembic_cfg, 'head')
 
 bot = Bot()
 
