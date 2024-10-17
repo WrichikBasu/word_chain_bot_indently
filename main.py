@@ -15,7 +15,7 @@ from discord.ext import commands
 from dotenv import load_dotenv
 from requests_futures.sessions import FuturesSession
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncConnection
-from sqlalchemy import select, insert, exists, update, func, CursorResult, Column
+from sqlalchemy import select, insert, exists, update, func, CursorResult, Column, delete
 
 from consts import *
 from data import calculate_total_karma
@@ -1097,34 +1097,35 @@ async def force_dump(interaction: discord.Interaction):
 async def prune(interaction: discord.Interaction):
     await interaction.response.defer()
 
-    conn: sqlite3.Connection = sqlite3.connect(Bot.DB_FILE)
-    cursor: sqlite3.Cursor = conn.cursor()
+    async with Bot.SQL_ENGINE.begin() as connection:
+        stmt = select(MemberModel.member_id).where(MemberModel.server_id == interaction.guild.id)
+        result: CursorResult = await connection.execute(stmt)
+        data: list[tuple[int]] = result.fetchall()
 
-    cursor.execute(f'SELECT member_id FROM {Bot.TABLE_MEMBERS} WHERE server_id = {interaction.guild.id}')
-    result: Optional[list[tuple[int]]] = cursor.fetchall()
+        if data:
+            count: int = 0
 
-    if result:
-        count: int = 0
+            for entry in data:
+                user_id: int = entry[0]
 
-        for res in result:
-            user_id: int = res[0]
+                if interaction.guild.get_member(user_id) is None:
+                    stmt = delete(MemberModel).where(
+                        MemberModel.server_id == interaction.guild.id,
+                        MemberModel.member_id == user_id
+                    )
+                    await connection.execute(stmt)
+                    count += 1
+                    logger.info(f'Removed data for user {user_id}.')
 
-            if interaction.guild.get_member(user_id) is None:
-                cursor.execute(f'DELETE FROM {Bot.TABLE_MEMBERS} WHERE member_id = {user_id} '
-                               f'AND server_id = {interaction.guild.id}')
-                count += 1
-                logger.info(f'Removed data for user {user_id}.')
+            if count > 0:
+                await connection.commit()
+                await interaction.followup.send(f'Successfully removed data for {count} user(s).')
+            else:
+                await interaction.followup.send('No users met the criteria to be removed.')
 
-        if count > 0:
-            conn.commit()
-            await interaction.followup.send(f'Successfully removed data for {count} user(s).')
         else:
-            await interaction.followup.send('No users met the criteria to be removed.')
+            await interaction.followup.send('No users found in the database.')
 
-    else:
-        await interaction.followup.send('No users found in the database.')
-
-    conn.close()
 
 
 class StatsCmdGroup(app_commands.Group):
