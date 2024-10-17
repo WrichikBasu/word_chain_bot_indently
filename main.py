@@ -24,7 +24,7 @@ from model import MemberModel, Member, WhitelistModel, BlacklistModel, UsedWords
 load_dotenv('.env')
 # running in single player mode changes some game rules - you can chain words alone now
 # getenv reads always strings, which are truthy if not empty - thus checking for common false-ish tokens
-SINGLE_PLAYER = os.getenv('SINGLE_PLAYER', False) not in [False, 'False', 'false', '0']
+SINGLE_PLAYER = os.getenv('SINGLE_PLAYER', False) not in {False, 'False', 'false', '0'}
 
 logging.basicConfig(level=logging.INFO, format='[%(asctime)s] [%(levelname)s] %(name)s: %(message)s')
 logger = logging.getLogger(__name__)
