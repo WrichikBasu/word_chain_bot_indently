@@ -369,7 +369,7 @@ The chain has **not** been broken. Please enter another word.''')
             future: Optional[concurrent.futures.Future]
 
             # First check the whitelist or the word cache
-            if word_whitelisted or self.is_word_in_cache(word, cursor):
+            if word_whitelisted or self.is_word_in_cache(word, connection):
                 # Word found in cache. No need to query API
                 future = None
             else:
@@ -658,7 +658,7 @@ The above entered word is **NOT** being taken into account.''')
     # -------------------------------------------------------------------------------------------------------
 
     @staticmethod
-    def is_word_in_cache(word: str, cursor: sqlite3.Cursor) -> bool:
+    def is_word_in_cache(word: str, connection: AsyncConnection) -> bool:
         """
         Check if a word is in the correct word cache schema.
 
@@ -669,7 +669,7 @@ The above entered word is **NOT** being taken into account.''')
         ----------
         word : str
             The word to be searched for in the schema.
-        cursor : sqlite3.Cursor
+        connection : AsyncConnection
             The Cursor object to access the schema.
 
         Returns
@@ -677,10 +677,9 @@ The above entered word is **NOT** being taken into account.''')
         bool
             `True` if the word exists in the cache, otherwise `False`.
         """
-
-        cursor.execute(f'SELECT EXISTS(SELECT 1 FROM {Bot.TABLE_CACHE} WHERE words = \'{word}\')')
-        result: int = (cursor.fetchone())[0]
-        return result == 1
+        stmt = select(exists(WordCacheModel).where(WordCacheModel.words == word))
+        result: CursorResult = connection.execute(stmt)
+        return result.scalar()
 
     async def add_to_cache(self) -> NoReturn:
         """
@@ -985,7 +984,7 @@ async def check_word(interaction: discord.Interaction, word: str):
             conn.close()
             return
 
-        if Bot.is_word_in_cache(word, cursor):
+        if Bot.is_word_in_cache(word, connection):
             emb.description = f'✅ The word **{word}** is valid.'
             await interaction.followup.send(embed=emb)
             conn.close()
