@@ -387,7 +387,7 @@ The chain has **not** been broken. Please enter another word.''')
             # -----------------------------------
             stmt = select(exists(UsedWordsModel).where(
                 UsedWordsModel.server_id == message.guild.id,
-                UsedWordsModel.words == word
+                UsedWordsModel.word == word
             ))
             result: CursorResult = await connection.execute(stmt)
             word_already_used = result.scalar()
@@ -487,7 +487,7 @@ The above entered word is **NOT** being taken into account.''')
 
             stmt = insert(UsedWordsModel).values(
                 server_id = message.guild.id,
-                words = word
+                word = word
             )
             await connection.execute(stmt)
 
@@ -688,7 +688,7 @@ The above entered word is **NOT** being taken into account.''')
         bool
             `True` if the word exists in the cache, otherwise `False`.
         """
-        stmt = select(exists(WordCacheModel).where(WordCacheModel.words == word))
+        stmt = select(exists(WordCacheModel).where(WordCacheModel.word == word))
         result: CursorResult = await connection.execute(stmt)
         return result.scalar()
 
@@ -752,7 +752,7 @@ The above entered word is **NOT** being taken into account.''')
         # Check server blacklist
         stmt = select(exists(BlacklistModel).where(
             BlacklistModel.server_id == server_id,
-            BlacklistModel.words == word
+            BlacklistModel.word == word
         ))
         result: CursorResult = await connection.execute(stmt)
         return result.scalar()
@@ -781,7 +781,7 @@ The above entered word is **NOT** being taken into account.''')
         # Check server whitelisted
         stmt = select(exists(WhitelistModel).where(
             WhitelistModel.server_id == server_id,
-            WhitelistModel.words == word
+            WhitelistModel.word == word
         ))
         result: CursorResult = await connection.execute(stmt)
         return result.scalar()
@@ -1205,7 +1205,7 @@ class BlacklistCmdGroup(app_commands.Group):
         async with Bot.SQL_ENGINE.begin() as connection:
             stmt = insert(BlacklistModel).values(
                 server_id = interaction.guild.id,
-                words = word.lower()
+                word = word.lower()
             ).prefix_with('OR IGNORE')
             await connection.execute(stmt)
             await connection.commit()
@@ -1228,7 +1228,7 @@ class BlacklistCmdGroup(app_commands.Group):
         async with Bot.SQL_ENGINE.begin() as connection:
             stmt = delete(BlacklistModel).where(
                 BlacklistModel.server_id == interaction.guild.id,
-                BlacklistModel.words == word.lower()
+                BlacklistModel.word == word.lower()
             )
             await connection.execute(stmt)
             await connection.commit()
@@ -1241,7 +1241,7 @@ class BlacklistCmdGroup(app_commands.Group):
         await interaction.response.defer()
 
         async with Bot.SQL_ENGINE.begin() as connection:
-            stmt = select(BlacklistModel.words).where(BlacklistModel.server_id == interaction.guild.id)
+            stmt = select(BlacklistModel.word).where(BlacklistModel.server_id == interaction.guild.id)
             result: CursorResult = await connection.execute(stmt)
             words = [row[0] for row in result]
 
@@ -1288,7 +1288,7 @@ class WhitelistCmdGroup(app_commands.Group):
         async with Bot.SQL_ENGINE.begin() as connection:
             stmt = insert(WhitelistModel).values(
                 server_id = interaction.guild.id,
-                words = word.lower()
+                word = word.lower()
             ).prefix_with('OR IGNORE')
             await connection.execute(stmt)
             await connection.commit()
@@ -1311,7 +1311,7 @@ class WhitelistCmdGroup(app_commands.Group):
         async with Bot.SQL_ENGINE.begin() as connection:
             stmt = delete(WhitelistModel).where(
                 WhitelistModel.server_id == interaction.guild.id,
-                WhitelistModel.words == word.lower()
+                WhitelistModel.word == word.lower()
             )
             await connection.execute(stmt)
             await connection.commit()
@@ -1324,7 +1324,7 @@ class WhitelistCmdGroup(app_commands.Group):
         await interaction.response.defer()
 
         async with Bot.SQL_ENGINE.begin() as connection:
-            stmt = select(WhitelistModel.words).where(WhitelistModel.server_id == interaction.guild.id)
+            stmt = select(WhitelistModel.word).where(WhitelistModel.server_id == interaction.guild.id)
             result: CursorResult = await connection.execute(stmt)
             words = [row[0] for row in result]
 

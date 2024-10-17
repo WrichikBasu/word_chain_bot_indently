@@ -6,15 +6,15 @@ Base = declarative_base()
 
 class WordCacheModel(Base):
     __tablename__ = 'word_cache'
-    words = Column(TEXT, primary_key=True)
+    word = Column(TEXT, primary_key=True)
 
 class UsedWordsModel(Base):
     __tablename__ = 'used_words'
     server_id = Column(Integer, primary_key=True)
-    words = Column(TEXT, primary_key=True)
+    word = Column(TEXT, primary_key=True)
 
 class MemberModel(Base):
-    __tablename__ = 'members'
+    __tablename__ = 'member'
     server_id = Column(Integer, primary_key=True)
     member_id = Column(Integer, primary_key=True)
     score = Column(Integer, nullable=False)
@@ -25,12 +25,12 @@ class MemberModel(Base):
 class BlacklistModel(Base):
     __tablename__ = 'blacklist'
     server_id = Column(Integer, primary_key=True)
-    words = Column(TEXT, primary_key=True)
+    word = Column(TEXT, primary_key=True)
 
 class WhitelistModel(Base):
     __tablename__ = 'whitelist'
     server_id = Column(Integer, primary_key=True)
-    words = Column(TEXT, primary_key=True)
+    word = Column(TEXT, primary_key=True)
 
 class Member(BaseModel):
     server_id: int
