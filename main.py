@@ -481,6 +481,13 @@ The above entered word is **NOT** being taken into account.''')
                 karma = func.max(0, MemberModel.karma + karma)
             )
             await connection.execute(stmt)
+
+            stmt = insert(UsedWordsModel).values(
+                server_id = message.guild.id,
+                words = word
+            )
+            await connection.execute(stmt)
+            
             await connection.commit()
 
             if self._cached_words is None:
