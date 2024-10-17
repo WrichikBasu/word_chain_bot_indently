@@ -15,7 +15,7 @@ from discord.ext import commands
 from dotenv import load_dotenv
 from requests_futures.sessions import FuturesSession
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncConnection
-from sqlalchemy import select, insert, exists, update, func, CursorResult
+from sqlalchemy import select, insert, exists, update, func, CursorResult, Column
 
 from consts import *
 from data import calculate_total_karma
@@ -882,63 +882,76 @@ __Restricted commands__ (Admin-only)
 @bot.tree.command(name='leaderboard', description='Shows the first 10 users with the highest score/karma')
 @app_commands.describe(type='The type of the leaderboard')
 @app_commands.choices(type=[
-    app_commands.Choice(name='score', value=1),
-    app_commands.Choice(name='karma', value=2)
+    app_commands.Choice(name='score', value='score'),
+    app_commands.Choice(name='karma', value='karma')
 ])
-async def leaderboard(interaction: discord.Interaction, type: Optional[app_commands.Choice[int]]):
+async def leaderboard(interaction: discord.Interaction, type: Optional[app_commands.Choice[str]]):
     """Command to show the top 10 users with the highest score/karma."""
     await interaction.response.defer()
 
-    value: int = 1 if type is None else type.value
-    name: str = 'score' if type is None else type.name
+    board_metric: str = 'score' if type is None else type.value
 
     emb = discord.Embed(
-        title=f'Top 10 users by {name}',
+        title=f'Top 10 users by {board_metric}',
         color=discord.Color.blue(),
         description=''
     ).set_author(name=interaction.guild.name, icon_url=interaction.guild.icon.url)
 
-    conn: sqlite3.Connection = sqlite3.connect(Bot.DB_FILE)
-    cursor: sqlite3.Cursor = conn.cursor()
+    async with Bot.SQL_ENGINE.begin() as connection:
+        async def fill_with_users(offset: int = 0, limit: int = 10) -> None:
 
-    async def list_users(offset: int = 0, limit: int = 10) -> None:
+            unavailable_users: int = 0  # Denotes no. of users who were not found
+            data: list[tuple[int, float]] = []
 
-        unavailable_users: int = 0  # Denotes no. of users who were not found
+            # Retrieve from the database
+            match board_metric:
+                case 'score':
+                    stmt = (select(MemberModel.member_id, MemberModel.score)
+                            .where(MemberModel.server_id == interaction.guild.id)
+                            .order_by(MemberModel.score.desc())
+                            .limit(limit)
+                            .offset(offset))
+                    result: CursorResult = await connection.execute(stmt)
+                    data = result.fetchall()
+                case 'karma':
+                    stmt = (select(MemberModel.member_id, MemberModel.karma)
+                            .where(MemberModel.server_id == interaction.guild.id)
+                            .order_by(MemberModel.karma.desc())
+                            .limit(limit)
+                            .offset(offset))
+                    result: CursorResult = await connection.execute(stmt)
+                    data = result.fetchall()
+                case _:
+                    raise ValueError(f'Unknown metric {board_metric}')
 
-        # Retrieve from the database
-        cursor.execute(f'SELECT member_id, {name} FROM {Bot.TABLE_MEMBERS} '
-                       f'WHERE server_id = {interaction.guild.id} '
-                       f'ORDER BY {name} DESC LIMIT {limit} OFFSET {offset}')
+            if len(data) == 0:  # Stop when no users could be retrieved.
+                if offset == 0 and limit == 10:  # Show a message if no users were found the first time itself
+                    emb.description = ':warning: No users have played in this server yet!'
+                return
 
-        data: list[tuple[int, float]] = cursor.fetchall()  # Structure: [(user_id1, score_or_karma),... ]
+            for i, user_data in enumerate(data, 1):
+                member_id, score_or_karma = user_data
 
-        if len(data) == 0:  # Stop when no users could be retrieved.
-            if offset == 0 and limit == 10:  # Show a message if no users were found the first time itself
-                emb.description = ':warning: No users have played in this server yet!'
-            return
+                try:
+                    user: discord.Member = await interaction.guild.fetch_member(member_id)
 
-        for i, user_data in enumerate(data, 1):
-            member_id, score_or_karma = user_data
+                    match board_metric:
+                        case 'score':
+                            emb.description += f'{i}. {user.mention} **{score_or_karma}**\n'
+                        case 'karma':
+                            emb.description += f'{i}. {user.mention} **{score_or_karma:.2f}**\n'
+                        case _:
+                            raise ValueError(f'Unknown metric {board_metric}')
 
-            try:
-                user: discord.Member = await interaction.guild.fetch_member(member_id)
+                except discord.NotFound:  # Member not found as they are no longer in the server
+                    unavailable_users += 1
 
-                if name == 'karma':
-                    emb.description += f'{i}. {user.mention} **{score_or_karma:.2f}**\n'
-                else:
-                    emb.description += f'{i}. {user.mention} **{score_or_karma}**\n'
+            if unavailable_users > 0:  # Recursively call if 10 members could not be retrieved
+                await fill_with_users(offset=offset + limit, limit=unavailable_users)
 
-            except discord.NotFound:  # Member not found as they are no longer in the server
-                unavailable_users += 1
+        await fill_with_users()
 
-        if unavailable_users > 0:  # Recursively call if 10 members could not be retrieved
-            await list_users(offset=offset + limit, limit=unavailable_users)
-
-    await list_users()
-
-    conn.close()
-
-    await interaction.followup.send(embed=emb)
+        await interaction.followup.send(embed=emb)
 
 
 @bot.tree.command(name='check_word', description='Check if a word is correct')
