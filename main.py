@@ -16,6 +16,7 @@ from dotenv import load_dotenv
 from requests_futures.sessions import FuturesSession
 from sqlalchemy import Column, CursorResult, delete, exists, func, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection, create_async_engine
+from sqlalchemy.sql.functions import count
 
 from consts import *
 from data import calculate_total_karma
@@ -369,7 +370,7 @@ The chain has **not** been broken. Please enter another word.''')
             future: Optional[concurrent.futures.Future]
 
             # First check the whitelist or the word cache
-            if word_whitelisted or self.is_word_in_cache(word, connection):
+            if word_whitelisted or await self.is_word_in_cache(word, connection):
                 # Word found in cache. No need to query API
                 future = None
             else:
@@ -387,7 +388,7 @@ The chain has **not** been broken. Please enter another word.''')
             ))
             result: CursorResult = await connection.execute(stmt)
             word_already_used = result.scalar()
-            if word_already_used == 1:
+            if word_already_used:
                 await message.add_reaction('⚠️')
                 await message.channel.send(f'''The word *{word}* has already been used before. \
 The chain has **not** been broken.
@@ -658,7 +659,7 @@ The above entered word is **NOT** being taken into account.''')
     # -------------------------------------------------------------------------------------------------------
 
     @staticmethod
-    def is_word_in_cache(word: str, connection: AsyncConnection) -> bool:
+    async def is_word_in_cache(word: str, connection: AsyncConnection) -> bool:
         """
         Check if a word is in the correct word cache schema.
 
@@ -678,7 +679,7 @@ The above entered word is **NOT** being taken into account.''')
             `True` if the word exists in the cache, otherwise `False`.
         """
         stmt = select(exists(WordCacheModel).where(WordCacheModel.words == word))
-        result: CursorResult = connection.execute(stmt)
+        result: CursorResult = await connection.execute(stmt)
         return result.scalar()
 
     async def add_to_cache(self) -> NoReturn:
@@ -691,14 +692,12 @@ The above entered word is **NOT** being taken into account.''')
             words = self._cached_words
             self._cached_words = None
 
-            conn: sqlite3.Connection = sqlite3.connect(Bot.DB_FILE)
-            cursor: sqlite3.Cursor = conn.cursor()
             async with Bot.SQL_ENGINE.begin() as connection:
                 for word in tuple(words):
                     if not await Bot.is_word_blacklisted(word):  # Do NOT insert globally blacklisted words into the cache
-                        stmt = insert(WordCacheModel).values(word=word).prefix_with('OR IGNORE')
+                        stmt = insert(WordCacheModel).values(words=word).prefix_with('OR IGNORE')
                         await connection.execute(stmt)
-                connection.commit()
+                await connection.commit()
 
     @staticmethod
     async def is_word_blacklisted(word: str, server_id: Optional[int] = None,
@@ -997,7 +996,7 @@ async def check_word(interaction: discord.Interaction, word: str):
             conn.close()
             return
 
-        if Bot.is_word_in_cache(word, connection):
+        if await Bot.is_word_in_cache(word, connection):
             emb.description = f'✅ The word **{word}** is valid.'
             await interaction.followup.send(embed=emb)
             conn.close()
@@ -1163,38 +1162,44 @@ Longest chain length: {config.high_score}
         if member is None:
             member = interaction.user
 
-        conn: sqlite3.Connection = sqlite3.connect(Bot.DB_FILE)
-        cursor: sqlite3.Cursor = conn.cursor()
+        async with Bot.SQL_ENGINE.begin() as connection:
+            stmt = select(MemberModel).where(
+                MemberModel.server_id == member.guild.id,
+                MemberModel.member_id == member.id
+            )
+            result: CursorResult = await connection.execute(stmt)
+            row = result.fetchone()
 
-        cursor.execute(f'SELECT score, correct, wrong, karma '
-                       f'FROM {Bot.TABLE_MEMBERS} WHERE member_id = {member.id} AND server_id = {member.guild.id}')
-        stats: Optional[tuple[int, int, int, float]] = cursor.fetchone()
+            if row is None:
+                await interaction.followup.send('You have never played in this server!')
+                return
 
-        if stats is None:
-            await interaction.followup.send('You have never played in this server!')
-            conn.close()
-            return
+            db_member = Member.model_validate(row)
 
-        score, correct, wrong, karma = stats
+            stmt = select(count(MemberModel.member_id)).where(
+                MemberModel.server_id == member.guild.id,
+                MemberModel.score >= db_member.score
+            )
+            result: CursorResult = await connection.execute(stmt)
+            pos_by_score = result.scalar()
 
-        cursor.execute(
-            f'SELECT COUNT(member_id) FROM {Bot.TABLE_MEMBERS} WHERE score >= {score} AND server_id = {member.guild.id}')
-        pos_by_score: int = cursor.fetchone()[0]
-        cursor.execute(
-            f'SELECT COUNT(member_id) FROM {Bot.TABLE_MEMBERS} WHERE karma >= {karma} AND server_id = {member.guild.id}')
-        pos_by_karma: float = cursor.fetchone()[0]
-        conn.close()
+            stmt = select(count(MemberModel.member_id)).where(
+                MemberModel.server_id == member.guild.id,
+                MemberModel.karma >= db_member.karma
+            )
+            result: CursorResult = await connection.execute(stmt)
+            pos_by_karma= result.scalar()
 
-        emb = discord.Embed(
-            color=discord.Color.blue(),
-            description=f'''**Score:** {score} (#{pos_by_score})
-**🌟Karma:** {karma:.2f} (#{pos_by_karma})
-**✅Correct:** {correct}
-**❌Wrong:** {wrong}
-**Accuracy:** {(correct / (correct + wrong)):.2%}'''
-        ).set_author(name=f"{member} | stats", icon_url=member.avatar)
+            emb = discord.Embed(
+                color=discord.Color.blue(),
+                description=f'''**Score:** {db_member.score} (#{pos_by_score})
+**🌟Karma:** {db_member.karma:.2f} (#{pos_by_karma})
+**✅Correct:** {db_member.correct}
+**❌Wrong:** {db_member.wrong}
+**Accuracy:** {(db_member.correct / (db_member.correct + db_member.wrong)):.2%}'''
+            ).set_author(name=f"{member} | stats", icon_url=member.avatar)
 
-        await interaction.followup.send(embed=emb)
+            await interaction.followup.send(embed=emb)
 
 # ---------------------------------------------------------------------------------------------------------------
 
