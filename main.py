@@ -1314,13 +1314,13 @@ class WhitelistCmdGroup(app_commands.Group):
             await interaction.followup.send(embed=emb)
             return
 
-        conn: sqlite3.Connection = sqlite3.connect(Bot.DB_FILE)
-        cursor: sqlite3.Cursor = conn.cursor()
-
-        cursor.execute(f'INSERT OR IGNORE INTO {Bot.TABLE_WHITELIST} '
-                       f'VALUES ({interaction.guild.id}, \'{word.lower()}\')')
-        conn.commit()
-        conn.close()
+        async with Bot.SQL_ENGINE.begin() as connection:
+            stmt = insert(WhitelistModel).values(
+                server_id = interaction.guild.id,
+                words = word.lower()
+            ).prefix_with('OR IGNORE')
+            await connection.execute(stmt)
+            await connection.commit()
 
         emb.description = f'✅ The word *{word.lower()}* was successfully added to the whitelist.'
         await interaction.followup.send(embed=emb)
@@ -1337,13 +1337,13 @@ class WhitelistCmdGroup(app_commands.Group):
             await interaction.followup.send(embed=emb)
             return
 
-        conn: sqlite3.Connection = sqlite3.connect(Bot.DB_FILE)
-        cursor: sqlite3.Cursor = conn.cursor()
-
-        cursor.execute(f'DELETE FROM {Bot.TABLE_WHITELIST} '
-                       f'WHERE server_id = {interaction.guild.id} AND words = \'{word.lower()}\'')
-        conn.commit()
-        conn.close()
+        async with Bot.SQL_ENGINE.begin() as connection:
+            stmt = delete(WhitelistModel).where(
+                WhitelistModel.server_id == interaction.guild.id,
+                WhitelistModel.words == word.lower()
+            )
+            await connection.execute(stmt)
+            await connection.commit()
 
         emb.description = f'✅ The word *{word.lower()}* has been removed from the whitelist.'
         await interaction.followup.send(embed=emb)
@@ -1352,24 +1352,23 @@ class WhitelistCmdGroup(app_commands.Group):
     async def show(self, interaction: discord.Interaction) -> None:
         await interaction.response.defer()
 
-        conn: sqlite3.Connection = sqlite3.connect(Bot.DB_FILE)
-        cursor: sqlite3.Cursor = conn.cursor()
+        async with Bot.SQL_ENGINE.begin() as connection:
+            stmt = select(WhitelistModel.words).where(WhitelistModel.server_id == interaction.guild.id)
+            result: CursorResult = await connection.execute(stmt)
+            words = [row[0] for row in result]
 
-        cursor.execute(f'SELECT words FROM {Bot.TABLE_WHITELIST} WHERE server_id = {interaction.guild.id}')
-        result: list[tuple[int]] = cursor.fetchall()  # Structure: [(word1,), (word2,), (word3,), ...] or [] if empty
+            emb = discord.Embed(title=f'Whitelisted words', description='', colour=discord.Color.dark_orange())
 
-        emb = discord.Embed(title=f'Whitelisted words', description='', colour=discord.Color.dark_orange())
+            if len(words) == 0:
+                emb.description = f'No word has been whitelisted in this server.'
+                await interaction.followup.send(embed=emb)
+            else:
+                i: int = 0
+                for word in words:
+                    i += 1
+                    emb.description += f'{i}. {word}\n'
 
-        if len(result) == 0:
-            emb.description = f'No word has been whitelisted in this server.'
-            await interaction.followup.send(embed=emb)
-        else:
-            i: int = 0
-            for word in result:
-                i += 1
-                emb.description += f'{i}. {word[0]}\n'
-
-            await interaction.followup.send(embed=emb)
+                await interaction.followup.send(embed=emb)
 
 
 if __name__ == '__main__':
