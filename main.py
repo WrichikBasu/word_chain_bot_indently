@@ -5,6 +5,7 @@ import json
 import logging
 import os
 import sqlite3
+from code import interact
 from collections import defaultdict, deque
 from dataclasses import dataclass
 from typing import NoReturn, Optional
@@ -487,7 +488,7 @@ The above entered word is **NOT** being taken into account.''')
                 words = word
             )
             await connection.execute(stmt)
-            
+
             await connection.commit()
 
             if self._cached_words is None:
@@ -1230,13 +1231,13 @@ class BlacklistCmdGroup(app_commands.Group):
             await interaction.followup.send(embed=emb)
             return
 
-        conn: sqlite3.Connection = sqlite3.connect(Bot.DB_FILE)
-        cursor: sqlite3.Cursor = conn.cursor()
-
-        cursor.execute(f'INSERT OR IGNORE INTO {Bot.TABLE_BLACKLIST} '
-                       f'VALUES ({interaction.guild.id}, \'{word.lower()}\')')
-        conn.commit()
-        conn.close()
+        async with Bot.SQL_ENGINE.begin() as connection:
+            stmt = insert(BlacklistModel).values(
+                server_id = interaction.guild.id,
+                words = word.lower()
+            ).prefix_with('OR IGNORE')
+            await connection.execute(stmt)
+            await connection.commit()
 
         emb.description = f'✅ The word *{word.lower()}* was successfully added to the blacklist.'
         await interaction.followup.send(embed=emb)
@@ -1253,13 +1254,13 @@ class BlacklistCmdGroup(app_commands.Group):
             await interaction.followup.send(embed=emb)
             return
 
-        conn: sqlite3.Connection = sqlite3.connect(Bot.DB_FILE)
-        cursor: sqlite3.Cursor = conn.cursor()
-
-        cursor.execute(f'DELETE FROM {Bot.TABLE_BLACKLIST} '
-                       f'WHERE server_id = {interaction.guild.id} AND words = \'{word.lower()}\'')
-        conn.commit()
-        conn.close()
+        async with Bot.SQL_ENGINE.begin() as connection:
+            stmt = delete(BlacklistModel).where(
+                BlacklistModel.server_id == interaction.guild.id,
+                BlacklistModel.words == word.lower()
+            )
+            await connection.execute(stmt)
+            await connection.commit()
 
         emb.description = f'✅ The word *{word.lower()}* was successfully removed from the blacklist.'
         await interaction.followup.send(embed=emb)
@@ -1268,24 +1269,23 @@ class BlacklistCmdGroup(app_commands.Group):
     async def show(self, interaction: discord.Interaction) -> None:
         await interaction.response.defer()
 
-        conn: sqlite3.Connection = sqlite3.connect(Bot.DB_FILE)
-        cursor: sqlite3.Cursor = conn.cursor()
+        async with Bot.SQL_ENGINE.begin() as connection:
+            stmt = select(BlacklistModel.words).where(BlacklistModel.server_id == interaction.guild.id)
+            result: CursorResult = await connection.execute(stmt)
+            words = [row[0] for row in result]
 
-        cursor.execute(f'SELECT words FROM {Bot.TABLE_BLACKLIST} WHERE server_id = {interaction.guild.id}')
-        result: list[tuple[int]] = cursor.fetchall()  # Structure: [(word1,), (word2,), (word3,), ...] or [] if empty
+            emb = discord.Embed(title=f'Blacklisted words', description='', colour=discord.Color.dark_orange())
 
-        emb = discord.Embed(title=f'Blacklisted words', description='', colour=discord.Color.dark_orange())
+            if len(words) == 0:
+                emb.description = f'No word has been blacklisted in this server.'
+                await interaction.followup.send(embed=emb)
+            else:
+                i: int = 0
+                for word in words:
+                    i += 1
+                    emb.description += f'{i}. {word}\n'
 
-        if len(result) == 0:
-            emb.description = f'No word has been blacklisted in this server.'
-            await interaction.followup.send(embed=emb)
-        else:
-            i: int = 0
-            for word in result:
-                i += 1
-                emb.description += f'{i}. {word[0]}\n'
-
-            await interaction.followup.send(embed=emb)
+                await interaction.followup.send(embed=emb)
 
 # ---------------------------------------------------------------------------------------------------------------
 
