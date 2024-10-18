@@ -4,7 +4,6 @@ import concurrent.futures
 import json
 import logging
 import os
-import sqlite3
 from code import interact
 from collections import defaultdict, deque
 from dataclasses import dataclass
@@ -109,14 +108,7 @@ class Bot(commands.Bot):
     """Word chain bot for Indently discord server."""
 
     CONFIG_FILE: str = 'config_word_chain.json'
-    DB_FILE: str = 'database_word_chain.sqlite3'
     SQL_ENGINE = create_async_engine('sqlite+aiosqlite:///database_word_chain.sqlite3')
-
-    TABLE_USED_WORDS: str = "used_words"
-    TABLE_MEMBERS: str = "members"
-    TABLE_CACHE: str = "word_cache"
-    TABLE_BLACKLIST: str = "blacklist"
-    TABLE_WHITELIST: str = "whitelist"
 
     API_RESPONSE_WORD_EXISTS: int = 1
     API_RESPONSE_WORD_DOESNT_EXIST: int = 0
