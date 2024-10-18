@@ -4,7 +4,7 @@ import concurrent.futures
 import json
 import logging
 import os
-import sqlite3
+from code import interact
 from collections import defaultdict, deque
 from dataclasses import dataclass
 from typing import NoReturn, Optional
@@ -14,14 +14,20 @@ from discord import app_commands
 from discord.ext import commands
 from dotenv import load_dotenv
 from requests_futures.sessions import FuturesSession
+from sqlalchemy import Column, CursorResult, delete, exists, func, insert, select, update
+from sqlalchemy.ext.asyncio import AsyncConnection, create_async_engine
+from sqlalchemy.sql.functions import count
 
+from alembic import command as alembic_command
+from alembic.config import Config as AlembicConfig
 from consts import *
 from data import calculate_total_karma
+from model import BlacklistModel, Member, MemberModel, UsedWordsModel, WhitelistModel, WordCacheModel
 
 load_dotenv('.env')
 # running in single player mode changes some game rules - you can chain words alone now
 # getenv reads always strings, which are truthy if not empty - thus checking for common false-ish tokens
-SINGLE_PLAYER = os.getenv('DEV_MODE', False) not in [False, 'False', 'false', '0']
+SINGLE_PLAYER = os.getenv('SINGLE_PLAYER', False) not in {False, 'False', 'false', '0'}
 
 logging.basicConfig(level=logging.INFO, format='[%(asctime)s] [%(levelname)s] %(name)s: %(message)s')
 logger = logging.getLogger(__name__)
@@ -102,13 +108,7 @@ class Bot(commands.Bot):
     """Word chain bot for Indently discord server."""
 
     CONFIG_FILE: str = 'config_word_chain.json'
-    DB_FILE: str = 'database_word_chain.sqlite3'
-
-    TABLE_USED_WORDS: str = "used_words"
-    TABLE_MEMBERS: str = "members"
-    TABLE_CACHE: str = "word_cache"
-    TABLE_BLACKLIST: str = "blacklist"
-    TABLE_WHITELIST: str = "whitelist"
+    SQL_ENGINE = create_async_engine('sqlite+aiosqlite:///database_word_chain.sqlite3')
 
     API_RESPONSE_WORD_EXISTS: int = 1
     API_RESPONSE_WORD_DOESNT_EXIST: int = 0
@@ -197,34 +197,28 @@ class Bot(commands.Bot):
             users: set[int] = self._participating_users.copy()
             self._participating_users = None
 
-            conn: sqlite3.Connection = sqlite3.connect(Bot.DB_FILE)
-            cursor: sqlite3.Cursor = conn.cursor()
-
             guild_id: int = self.reliable_role.guild.id
 
-            if len(users) == 1:
-                sql_stmt: str = (f'SELECT member_id, correct, wrong, karma FROM {Bot.TABLE_MEMBERS} '
-                                 f'WHERE member_id = {tuple(users)[0]} AND server_id = {guild_id}')
-            else:
-                sql_stmt: str = (f'SELECT member_id, correct, wrong, karma FROM {Bot.TABLE_MEMBERS} '
-                                 f'WHERE server_id = {guild_id} AND member_id IN {tuple(users)}')
-
-            cursor.execute(sql_stmt)
-            result: Optional[list[tuple[int, int, int, float]]] = cursor.fetchall()
-            conn.close()
+            db_members: list[Member] = []
+            async with self.SQL_ENGINE.begin() as connection:
+                stmt = select(MemberModel).where(
+                    MemberModel.server_id == guild_id,
+                    MemberModel.member_id.in_(tuple(users))
+                )
+                result: CursorResult = await connection.execute(stmt)
+                db_members = [Member.model_validate(row) for row in result]
 
             def truncate(value: float, decimals: int = 4):
                 t = 10.0 ** decimals
                 return (value * t) // 1 / t
 
-            if result:
-                for data in result:
-                    member_id, correct, wrong, karma = data
-                    karma = truncate(karma)
+            if db_members:
+                for db_member in db_members:
+                    karma = truncate(db_member.karma)
                     if karma != 0:
-                        member: Optional[discord.Member] = self.reliable_role.guild.get_member(member_id)
+                        member: Optional[discord.Member] = self.reliable_role.guild.get_member(db_member.member_id)
                         if member:
-                            accuracy: float = truncate(correct / (correct + wrong))
+                            accuracy: float = truncate(db_member.correct / (db_member.correct + db_member.wrong))
                             if karma >= RELIABLE_ROLE_KARMA_THRESHOLD and accuracy >= RELIABLE_ROLE_ACCURACY_THRESHOLD:
                                 await member.add_roles(self.reliable_role)
                             else:
@@ -275,7 +269,7 @@ class Bot(commands.Bot):
             self._config.dump_data()
             await self.add_remove_failed_role()
             await self.add_remove_reliable_role()
-            self.add_to_cache()
+            await self.add_to_cache()
 
     async def on_message(self, message: discord.Message) -> None:
         """
@@ -312,9 +306,6 @@ class Bot(commands.Bot):
 The chain has **not** been broken. Please enter another word.''')
             return
 
-        conn: sqlite3.Connection = sqlite3.connect(Bot.DB_FILE)
-        cursor: sqlite3.Cursor = conn.cursor()
-
         self._busy += 1
 
         if self._participating_users is None:
@@ -322,176 +313,200 @@ The chain has **not** been broken. Please enter another word.''')
         else:
             self._participating_users.add(message.author.id)
 
-        # ----------------------------------------------------------------------------------------
-        # ADD USER TO THE DATABASE
-        # ----------------------------------------------------------------------------------------
-        # We need to check whether the current user already has an entry in the database.
-        # If not, we have to add an entry.
-        # Code courtesy: https://stackoverflow.com/a/9756276/8387076
-        cursor.execute(f'SELECT EXISTS(SELECT 1 FROM {Bot.TABLE_MEMBERS} WHERE member_id = {message.author.id} '
-                       f'AND server_id = {message.guild.id})')
-        exists: int = (cursor.fetchone())[0]  # Will be either 0 or 1
+        async with self.SQL_ENGINE.begin() as connection:
+            # ----------------------------------------------------------------------------------------
+            # ADD USER TO THE DATABASE
+            # ----------------------------------------------------------------------------------------
+            # We need to check whether the current user already has an entry in the database.
+            # If not, we have to add an entry.
+            stmt = select(exists(MemberModel).where(
+                MemberModel.member_id == message.author.id,
+                MemberModel.server_id == message.guild.id
+            ))
+            result: CursorResult = await connection.execute(stmt)
+            member_exists = result.scalar()
 
-        if exists == 0:
-            cursor.execute(f'INSERT INTO {Bot.TABLE_MEMBERS} '
-                           f'VALUES({message.guild.id}, {message.author.id}, 0, 0, 0, 0)')
-            conn.commit()
+            if not member_exists:
+                stmt = insert(MemberModel).values(
+                    server_id=message.guild.id,
+                    member_id=message.author.id,
+                    score=0,
+                    correct=0,
+                    wrong=0,
+                    karma=0.0
+                )
+                await connection.execute(stmt)
+                await connection.commit()
 
-        # -------------------------------
-        # Check if word is whitelisted
-        # -------------------------------
-        word_whitelisted: bool = Bot.is_word_whitelisted(message.guild.id, word, cursor)
+        async with self.SQL_ENGINE.begin() as connection:
+            # -------------------------------
+            # Check if word is whitelisted
+            # -------------------------------
+            word_whitelisted: bool = await self.is_word_whitelisted(word, message.guild.id, connection)
 
-        # -------------------------------
-        # Check if word is blacklisted
-        # (iff not whitelisted)
-        # -------------------------------
-        if not word_whitelisted and Bot.is_word_blacklisted(word, message.guild.id, cursor):
-            await message.add_reaction('⚠️')
-            await message.channel.send(f'''This word has been **blacklisted**. Please do not use it.
-The chain has **not** been broken. Please enter another word.''')
-
-            # No need to schedule busy work as nothing has changed.
-            # Just decrement the variable.
-            self._busy -= 1
-            return
-
-        # ------------------------------
-        # Check if word is valid
-        # (if and only if not whitelisted)
-        # ------------------------------
-        future: Optional[concurrent.futures.Future]
-
-        # First check the whitelist or the word cache
-        if word_whitelisted or self.is_word_in_cache(word, cursor):
-            # Word found in cache. No need to query API
-            future = None
-        else:
-            # Word neither whitelisted, nor found in cache.
-            # Start the API request, but deal with it later
-            future = self.start_api_query(word)
-
-        # -----------------------------------
-        # Check repetitions
-        # (Repetitions are not mistakes)
-        # -----------------------------------
-        cursor.execute(f'SELECT EXISTS(SELECT 1 FROM {Bot.TABLE_USED_WORDS} '
-                       f'WHERE server_id = {message.guild.id} AND words = "{word}")')
-        used: int = cursor.fetchone()[0]
-        if used == 1:
-            await message.add_reaction('⚠️')
-            await message.channel.send(f'''The word *{word}* has already been used before. \
-The chain has **not** been broken.
-Please enter another word.''')
-
-            # No need to schedule busy work as nothing has changed.
-            # Just decrement the variable.
-            self._busy -= 1
-            return
-
-        # -------------
-        # Wrong member
-        # -------------
-        if not SINGLE_PLAYER and self._config.current_member_id and self._config.current_member_id == message.author.id:
-            response: str = f'''{message.author.mention} messed up the count! \
-*You cannot send two words in a row!*
-{f'The chain length was {self._config.current_count} when it was broken. :sob:\n' if self._config.current_count > 0 else ''}\
-Restart with a word starting with **{self._config.current_word[-1]}** and \
-try to beat the current high score of **{self._config.high_score}**!'''
-
-            await self.handle_mistake(message=message, response=response, conn=conn)
-            return
-
-        # -------------------------
-        # Wrong starting letter
-        # -------------------------
-        if self._config.current_word and word[0] != self._config.current_word[-1]:
-            response: str = f'''{message.author.mention} messed up the chain! \
-*The word you entered did not begin with the last letter of the previous word* (**{self._config.current_word[-1]}**).
-{f'The chain length was {self._config.current_count} when it was broken. :sob:\n' if self._config.current_count > 0 else ''}\
-Restart with a word starting with **{self._config.current_word[-1]}** and try to beat the \
-current high score of **{self._config.high_score}**!'''
-
-            await self.handle_mistake(message, response, conn)
-            return
-
-        # ----------------------------------
-        # Check if word is valid (contd.)
-        # ----------------------------------
-        if future:
-            result: int = self.get_query_response(future)
-
-            if result == Bot.API_RESPONSE_WORD_DOESNT_EXIST:
-
-                if self._config.current_word:
-                    response: str = f'''{message.author.mention} messed up the chain! \
-*The word you entered does not exist.*
-{f'The chain length was {self._config.current_count} when it was broken. :sob:\n' if self._config.current_count > 0 else ''}\
-Restart with a word starting with **{self._config.current_word[-1]}** and try to beat the \
-current high score of **{self._config.high_score}**!'''
-
-                else:
-                    response: str = f'''{message.author.mention} messed up the chain! \
-*The word you entered does not exist.*
-Restart and try to beat the current high score of **{self._config.high_score}**!'''
-
-                await self.handle_mistake(message=message, response=response, conn=conn)
-                return
-
-            elif result == Bot.API_RESPONSE_ERROR:
-
+            # -------------------------------
+            # Check if word is blacklisted
+            # (iff not whitelisted)
+            # -------------------------------
+            if not word_whitelisted and await self.is_word_blacklisted(word, message.guild.id, connection):
                 await message.add_reaction('⚠️')
-                await message.channel.send(''':octagonal_sign: There was an issue in the backend.
-The above entered word is **NOT** being taken into account.''')
+                await message.channel.send(f'''This word has been **blacklisted**. Please do not use it.
+The chain has **not** been broken. Please enter another word.''')
 
                 # No need to schedule busy work as nothing has changed.
                 # Just decrement the variable.
                 self._busy -= 1
                 return
 
-        # --------------------
-        # Everything is fine
-        # ---------------------
-        current_count: int = self._config.current_count + 1
+            # ------------------------------
+            # Check if word is valid
+            # (if and only if not whitelisted)
+            # ------------------------------
+            future: Optional[concurrent.futures.Future]
 
-        self._config.update_current(message.author.id, current_word=word)  # config dump at the end of the method
+            # First check the whitelist or the word cache
+            if word_whitelisted or await self.is_word_in_cache(word, connection):
+                # Word found in cache. No need to query API
+                future = None
+            else:
+                # Word neither whitelisted, nor found in cache.
+                # Start the API request, but deal with it later
+                future = self.start_api_query(word)
 
-        await message.add_reaction(SPECIAL_REACTION_EMOJIS.get(word, self._config.reaction_emoji()))
+            # -----------------------------------
+            # Check repetitions
+            # (Repetitions are not mistakes)
+            # -----------------------------------
+            stmt = select(exists(UsedWordsModel).where(
+                UsedWordsModel.server_id == message.guild.id,
+                UsedWordsModel.word == word
+            ))
+            result: CursorResult = await connection.execute(stmt)
+            word_already_used = result.scalar()
+            if word_already_used:
+                await message.add_reaction('⚠️')
+                await message.channel.send(f'''The word *{word}* has already been used before. \
+The chain has **not** been broken.
+Please enter another word.''')
 
-        last_words: deque[str] = self._history[message.author.id]
-        karma: float = calculate_total_karma(word, last_words)
-        self._history[message.author.id].append(word)
+                # No need to schedule busy work as nothing has changed.
+                # Just decrement the variable.
+                self._busy -= 1
+                return
 
-        cursor.execute(f'UPDATE {Bot.TABLE_MEMBERS} '
-                       f'SET score = score + 1, correct = correct + 1, karma = MAX(0, karma + {karma}) '
-                       f'WHERE member_id = {message.author.id} AND server_id = {message.guild.id}')
+            # -------------
+            # Wrong member
+            # -------------
+            if not SINGLE_PLAYER and self._config.current_member_id and self._config.current_member_id == message.author.id:
+                response: str = f'''{message.author.mention} messed up the count! \
+*You cannot send two words in a row!*
+{f'The chain length was {self._config.current_count} when it was broken. :sob:\n' if self._config.current_count > 0 else ''}\
+Restart with a word starting with **{self._config.current_word[-1]}** and \
+try to beat the current high score of **{self._config.high_score}**!'''
 
-        cursor.execute(f'INSERT INTO {Bot.TABLE_USED_WORDS} VALUES ({message.guild.id}, "{word}")')
-        conn.commit()
-        conn.close()
+                await self.handle_mistake(message, response, connection)
+                return
 
-        if self._cached_words is None:
-            self._cached_words = {word, }
-        else:
-            self._cached_words.add(word)
+            # -------------------------
+            # Wrong starting letter
+            # -------------------------
+            if self._config.current_word and word[0] != self._config.current_word[-1]:
+                response: str = f'''{message.author.mention} messed up the chain! \
+*The word you entered did not begin with the last letter of the previous word* (**{self._config.current_word[-1]}**).
+{f'The chain length was {self._config.current_count} when it was broken. :sob:\n' if self._config.current_count > 0 else ''}\
+Restart with a word starting with **{self._config.current_word[-1]}** and try to beat the \
+current high score of **{self._config.high_score}**!'''
 
-        if current_count > 0 and current_count % 100 == 0:
-            await message.channel.send(f'{current_count} words! Nice work, keep it up!')
+                await self.handle_mistake(message, response, connection)
+                return
 
-        # Check and reset the self._config.failed_member_id to None.
-        # No need to remove the role itself, it will be done later when not busy
-        if self.failed_role and self._config.failed_member_id == message.author.id:
-            self._config.correct_inputs_by_failed_member += 1
-            if self._config.correct_inputs_by_failed_member >= 30:
-                self._config.failed_member_id = None
-                self._config.correct_inputs_by_failed_member = 0
+            # ----------------------------------
+            # Check if word is valid (contd.)
+            # ----------------------------------
+            if future:
+                result: int = self.get_query_response(future)
 
-        await self.schedule_busy_work()
+                if result == Bot.API_RESPONSE_WORD_DOESNT_EXIST:
+
+                    if self._config.current_word:
+                        response: str = f'''{message.author.mention} messed up the chain! \
+*The word you entered does not exist.*
+{f'The chain length was {self._config.current_count} when it was broken. :sob:\n' if self._config.current_count > 0 else ''}\
+Restart with a word starting with **{self._config.current_word[-1]}** and try to beat the \
+current high score of **{self._config.high_score}**!'''
+
+                    else:
+                        response: str = f'''{message.author.mention} messed up the chain! \
+*The word you entered does not exist.*
+Restart and try to beat the current high score of **{self._config.high_score}**!'''
+
+                    await self.handle_mistake(message, response, connection)
+                    return
+
+                elif result == Bot.API_RESPONSE_ERROR:
+
+                    await message.add_reaction('⚠️')
+                    await message.channel.send(''':octagonal_sign: There was an issue in the backend.
+The above entered word is **NOT** being taken into account.''')
+
+                    # No need to schedule busy work as nothing has changed.
+                    # Just decrement the variable.
+                    self._busy -= 1
+                    return
+
+            # --------------------
+            # Everything is fine
+            # ---------------------
+            current_count: int = self._config.current_count + 1
+
+            self._config.update_current(message.author.id, current_word=word)  # config dump at the end of the method
+
+            await message.add_reaction(SPECIAL_REACTION_EMOJIS.get(word, self._config.reaction_emoji()))
+
+            last_words: deque[str] = self._history[message.author.id]
+            karma: float = calculate_total_karma(word, last_words)
+            self._history[message.author.id].append(word)
+
+            stmt = update(MemberModel).where(
+                MemberModel.server_id == message.guild.id,
+                MemberModel.member_id == message.author.id
+            ).values(
+                score = MemberModel.score + 1,
+                correct = MemberModel.correct + 1,
+                karma = func.max(0, MemberModel.karma + karma)
+            )
+            await connection.execute(stmt)
+
+            stmt = insert(UsedWordsModel).values(
+                server_id = message.guild.id,
+                word = word
+            )
+            await connection.execute(stmt)
+
+            await connection.commit()
+
+            if self._cached_words is None:
+                self._cached_words = {word, }
+            else:
+                self._cached_words.add(word)
+
+            if current_count > 0 and current_count % 100 == 0:
+                await message.channel.send(f'{current_count} words! Nice work, keep it up!')
+
+            # Check and reset the self._config.failed_member_id to None.
+            # No need to remove the role itself, it will be done later when not busy
+            if self.failed_role and self._config.failed_member_id == message.author.id:
+                self._config.correct_inputs_by_failed_member += 1
+                if self._config.correct_inputs_by_failed_member >= 30:
+                    self._config.failed_member_id = None
+                    self._config.correct_inputs_by_failed_member = 0
+
+            await self.schedule_busy_work()
 
     # ---------------------------------------------------------------------------------------
 
     async def handle_mistake(self, message: discord.Message,
-                             response: str, conn: sqlite3.Connection) -> None:
+                             response: str, connection: AsyncConnection) -> None:
         """Handles when someone messes up the count with a wrong number"""
 
         if self.failed_role:
@@ -503,15 +518,16 @@ The above entered word is **NOT** being taken into account.''')
         await message.channel.send(response)
         await message.add_reaction('❌')
 
-        cursor: sqlite3.Cursor = conn.cursor()
-        cursor.execute(f'UPDATE {Bot.TABLE_MEMBERS} '
-                       f'SET score = score - 1, wrong = wrong + 1, karma = MAX(0, karma - {MISTAKE_PENALTY}) '
-                       f'WHERE member_id = {message.author.id} AND '
-                       f'server_id = {message.guild.id}')
-        # Clear used words schema
-        cursor.execute(f'DELETE FROM {Bot.TABLE_USED_WORDS} WHERE server_id = {message.guild.id}')
-        conn.commit()
-        conn.close()
+        stmt = update(MemberModel).where(
+            MemberModel.server_id == message.guild.id,
+            MemberModel.member_id == message.author.id
+        ).values(
+            score = MemberModel.score - 1,
+            wrong = MemberModel.wrong + 1,
+            karma = func.max(0, MemberModel.karma - MISTAKE_PENALTY)
+        )
+        await connection.execute(stmt)
+        await connection.commit()
 
         await self.schedule_busy_work()
 
@@ -645,7 +661,7 @@ The above entered word is **NOT** being taken into account.''')
     # -------------------------------------------------------------------------------------------------------
 
     @staticmethod
-    def is_word_in_cache(word: str, cursor: sqlite3.Cursor) -> bool:
+    async def is_word_in_cache(word: str, connection: AsyncConnection) -> bool:
         """
         Check if a word is in the correct word cache schema.
 
@@ -656,7 +672,7 @@ The above entered word is **NOT** being taken into account.''')
         ----------
         word : str
             The word to be searched for in the schema.
-        cursor : sqlite3.Cursor
+        connection : AsyncConnection
             The Cursor object to access the schema.
 
         Returns
@@ -664,12 +680,11 @@ The above entered word is **NOT** being taken into account.''')
         bool
             `True` if the word exists in the cache, otherwise `False`.
         """
+        stmt = select(exists(WordCacheModel).where(WordCacheModel.word == word))
+        result: CursorResult = await connection.execute(stmt)
+        return result.scalar()
 
-        cursor.execute(f'SELECT EXISTS(SELECT 1 FROM {Bot.TABLE_CACHE} WHERE words = \'{word}\')')
-        result: int = (cursor.fetchone())[0]
-        return result == 1
-
-    def add_to_cache(self) -> NoReturn:
+    async def add_to_cache(self) -> NoReturn:
         """
         Add words from `self._cached_words` into the `Bot.TABLE_CACHE` schema.
         Should be executed when not busy.
@@ -679,20 +694,16 @@ The above entered word is **NOT** being taken into account.''')
             words = self._cached_words
             self._cached_words = None
 
-            conn: sqlite3.Connection = sqlite3.connect(Bot.DB_FILE)
-            cursor: sqlite3.Cursor = conn.cursor()
-
-            for word in tuple(words):
-                if not Bot.is_word_blacklisted(word):  # Do NOT insert globally blacklisted words into the cache
-                    # Code courtesy: https://stackoverflow.com/a/45299979/8387076
-                    cursor.execute(f'INSERT OR IGNORE INTO {Bot.TABLE_CACHE} VALUES (\'{word}\')')
-
-            conn.commit()
-            conn.close()
+            async with Bot.SQL_ENGINE.begin() as connection:
+                for word in tuple(words):
+                    if not await Bot.is_word_blacklisted(word):  # Do NOT insert globally blacklisted words into the cache
+                        stmt = insert(WordCacheModel).values(words=word).prefix_with('OR IGNORE')
+                        await connection.execute(stmt)
+                await connection.commit()
 
     @staticmethod
-    def is_word_blacklisted(word: str, server_id: Optional[int] = None,
-                            cursor: Optional[sqlite3.Cursor] = None) -> bool:
+    async def is_word_blacklisted(word: str, server_id: Optional[int] = None,
+                            connection: Optional[AsyncConnection] = None) -> bool:
         """
         Checks if a word is blacklisted.
 
@@ -700,7 +711,7 @@ The above entered word is **NOT** being taken into account.''')
         1. Global blacklists/whitelists, THEN
         2. Server blacklist.
 
-        Do not pass the `server_id` or `cursor` instance if you want to query the global blacklists only.
+        Do not pass the `server_id` or `connection` instance if you want to query the global blacklists only.
 
         Parameters
         ----------
@@ -708,8 +719,8 @@ The above entered word is **NOT** being taken into account.''')
             The word that is to be checked.
         server_id : Optional[int] = None
             The guild which is calling this function. Default: `None`.
-        cursor : Optional[sqlite3.Cursor] = None
-            An instance of Cursor through which the DB will be accessed. Default: `None`.
+        connection : Optional[AsyncConnection] = None
+            An instance of AsyncConnection through which the DB will be accessed. Default: `None`.
 
         Returns
         -------
@@ -725,19 +736,21 @@ The above entered word is **NOT** being taken into account.''')
             return True
 
         # Either of these two params being null implies only the global blacklists should be checked
-        if server_id is None or cursor is None:
+        if server_id is None or connection is None:
             # Global blacklists have already been checked. If the control is here, it means that
             # the word is not globally blacklisted. So, return False.
             return False
 
         # Check server blacklist
-        cursor.execute(f'SELECT EXISTS(SELECT 1 FROM {Bot.TABLE_BLACKLIST} WHERE '
-                       f'server_id = {server_id} AND words = \'{word}\')')
-        result: int = (cursor.fetchone())[0]
-        return result == 1
+        stmt = select(exists(BlacklistModel).where(
+            BlacklistModel.server_id == server_id,
+            BlacklistModel.word == word
+        ))
+        result: CursorResult = await connection.execute(stmt)
+        return result.scalar()
 
     @staticmethod
-    def is_word_whitelisted(server_id: int, word: str, cursor: sqlite3.Cursor) -> bool:
+    async def is_word_whitelisted(word: str, server_id: int, connection: AsyncConnection) -> bool:
         """
         Checks if a word is whitelisted.
 
@@ -745,12 +758,12 @@ The above entered word is **NOT** being taken into account.''')
 
         Parameters
         ----------
-        server_id : int
-            The guild which is calling this function.
         word : str
             The word that is to be checked.
-        cursor : sqlite3.Cursor
-            An instance of Cursor through which the DB will be accessed.
+        server_id : int
+            The guild which is calling this function.
+        connection : AsyncConnection
+            An instance of AsyncConnection through which the DB will be accessed.
 
         Returns
         -------
@@ -758,48 +771,19 @@ The above entered word is **NOT** being taken into account.''')
             `True` if the word is whitelisted, otherwise `False`.
         """
         # Check server whitelisted
-        cursor.execute(f'SELECT EXISTS(SELECT 1 FROM {Bot.TABLE_WHITELIST} WHERE '
-                       f'server_id = {server_id} AND words = \'{word}\')')
-        result: int = (cursor.fetchone())[0]
-        return result == 1
+        stmt = select(exists(WhitelistModel).where(
+            WhitelistModel.server_id == server_id,
+            WhitelistModel.word == word
+        ))
+        result: CursorResult = await connection.execute(stmt)
+        return result.scalar()
 
     async def setup_hook(self) -> NoReturn:
         await self.tree.sync()
         logger.info('Commands synchronized')
 
-        conn: sqlite3.Connection = sqlite3.connect(Bot.DB_FILE)
-        cursor: sqlite3.Cursor = conn.cursor()
-
-        cursor.execute(f'CREATE TABLE IF NOT EXISTS {Bot.TABLE_MEMBERS} '
-                       '(server_id INTEGER NOT NULL, '
-                       'member_id INTEGER NOT NULL, '
-                       'score INTEGER NOT NULL, '
-                       'correct INTEGER NOT NULL, '
-                       'wrong INTEGER NOT NULL, '
-                       'karma REAL NOT NULL, '
-                       'PRIMARY KEY (server_id, member_id))')
-
-        cursor.execute(f'CREATE TABLE IF NOT EXISTS {Bot.TABLE_USED_WORDS} '
-                       f'(server_id INTEGER NOT NULL, '
-                       'words TEXT NOT NULL, '
-                       'PRIMARY KEY (server_id, words))')
-
-        cursor.execute(f'CREATE TABLE IF NOT EXISTS {Bot.TABLE_CACHE} '
-                       f'(words TEXT PRIMARY KEY)')
-
-        cursor.execute(f'CREATE TABLE IF NOT EXISTS {Bot.TABLE_BLACKLIST} '
-                       f'(server_id INT NOT NULL, '
-                       f'words TEXT NOT NULL, '
-                       f'PRIMARY KEY (server_id, words))')
-
-        cursor.execute(f'CREATE TABLE IF NOT EXISTS {Bot.TABLE_WHITELIST} '
-                       f'(server_id INT NOT NULL, '
-                       f'words TEXT NOT NULL, '
-                       f'PRIMARY KEY (server_id, words))')
-
-        conn.commit()
-        conn.close()
-
+        alembic_cfg = AlembicConfig('alembic.ini')
+        alembic_command.upgrade(alembic_cfg, 'head')
 
 bot = Bot()
 
@@ -868,63 +852,76 @@ __Restricted commands__ (Admin-only)
 @bot.tree.command(name='leaderboard', description='Shows the first 10 users with the highest score/karma')
 @app_commands.describe(type='The type of the leaderboard')
 @app_commands.choices(type=[
-    app_commands.Choice(name='score', value=1),
-    app_commands.Choice(name='karma', value=2)
+    app_commands.Choice(name='score', value='score'),
+    app_commands.Choice(name='karma', value='karma')
 ])
-async def leaderboard(interaction: discord.Interaction, type: Optional[app_commands.Choice[int]]):
+async def leaderboard(interaction: discord.Interaction, type: Optional[app_commands.Choice[str]]):
     """Command to show the top 10 users with the highest score/karma."""
     await interaction.response.defer()
 
-    value: int = 1 if type is None else type.value
-    name: str = 'score' if type is None else type.name
+    board_metric: str = 'score' if type is None else type.value
 
     emb = discord.Embed(
-        title=f'Top 10 users by {name}',
+        title=f'Top 10 users by {board_metric}',
         color=discord.Color.blue(),
         description=''
     ).set_author(name=interaction.guild.name, icon_url=interaction.guild.icon.url)
 
-    conn: sqlite3.Connection = sqlite3.connect(Bot.DB_FILE)
-    cursor: sqlite3.Cursor = conn.cursor()
+    async with Bot.SQL_ENGINE.begin() as connection:
+        async def fill_with_users(offset: int = 0, limit: int = 10) -> None:
 
-    async def list_users(offset: int = 0, limit: int = 10) -> None:
+            unavailable_users: int = 0  # Denotes no. of users who were not found
+            data: list[tuple[int, float]] = []
 
-        unavailable_users: int = 0  # Denotes no. of users who were not found
+            # Retrieve from the database
+            match board_metric:
+                case 'score':
+                    stmt = (select(MemberModel.member_id, MemberModel.score)
+                            .where(MemberModel.server_id == interaction.guild.id)
+                            .order_by(MemberModel.score.desc())
+                            .limit(limit)
+                            .offset(offset))
+                    result: CursorResult = await connection.execute(stmt)
+                    data = result.fetchall()
+                case 'karma':
+                    stmt = (select(MemberModel.member_id, MemberModel.karma)
+                            .where(MemberModel.server_id == interaction.guild.id)
+                            .order_by(MemberModel.karma.desc())
+                            .limit(limit)
+                            .offset(offset))
+                    result: CursorResult = await connection.execute(stmt)
+                    data = result.fetchall()
+                case _:
+                    raise ValueError(f'Unknown metric {board_metric}')
 
-        # Retrieve from the database
-        cursor.execute(f'SELECT member_id, {name} FROM {Bot.TABLE_MEMBERS} '
-                       f'WHERE server_id = {interaction.guild.id} '
-                       f'ORDER BY {name} DESC LIMIT {limit} OFFSET {offset}')
+            if len(data) == 0:  # Stop when no users could be retrieved.
+                if offset == 0 and limit == 10:  # Show a message if no users were found the first time itself
+                    emb.description = ':warning: No users have played in this server yet!'
+                return
 
-        data: list[tuple[int, float]] = cursor.fetchall()  # Structure: [(user_id1, score_or_karma),... ]
+            for i, user_data in enumerate(data, 1):
+                member_id, score_or_karma = user_data
 
-        if len(data) == 0:  # Stop when no users could be retrieved.
-            if offset == 0 and limit == 10:  # Show a message if no users were found the first time itself
-                emb.description = ':warning: No users have played in this server yet!'
-            return
+                try:
+                    user: discord.Member = await interaction.guild.fetch_member(member_id)
 
-        for i, user_data in enumerate(data, 1):
-            member_id, score_or_karma = user_data
+                    match board_metric:
+                        case 'score':
+                            emb.description += f'{i}. {user.mention} **{score_or_karma}**\n'
+                        case 'karma':
+                            emb.description += f'{i}. {user.mention} **{score_or_karma:.2f}**\n'
+                        case _:
+                            raise ValueError(f'Unknown metric {board_metric}')
 
-            try:
-                user: discord.Member = await interaction.guild.fetch_member(member_id)
+                except discord.NotFound:  # Member not found as they are no longer in the server
+                    unavailable_users += 1
 
-                if name == 'karma':
-                    emb.description += f'{i}. {user.mention} **{score_or_karma:.2f}**\n'
-                else:
-                    emb.description += f'{i}. {user.mention} **{score_or_karma}**\n'
+            if unavailable_users > 0:  # Recursively call if 10 members could not be retrieved
+                await fill_with_users(offset=offset + limit, limit=unavailable_users)
 
-            except discord.NotFound:  # Member not found as they are no longer in the server
-                unavailable_users += 1
+        await fill_with_users()
 
-        if unavailable_users > 0:  # Recursively call if 10 members could not be retrieved
-            await list_users(offset=offset + limit, limit=unavailable_users)
-
-    await list_users()
-
-    conn.close()
-
-    await interaction.followup.send(embed=emb)
+        await interaction.followup.send(embed=emb)
 
 
 @bot.tree.command(name='check_word', description='Check if a word is correct')
@@ -956,29 +953,27 @@ async def check_word(interaction: discord.Interaction, word: str):
         return
 
     word = word.lower()
-    conn: sqlite3.Connection = sqlite3.connect(Bot.DB_FILE)
-    cursor: sqlite3.Cursor = conn.cursor()
 
-    if Bot.is_word_whitelisted(interaction.guild.id, word, cursor):
-        emb.description = f'✅ The word **{word}** is valid.'
-        await interaction.followup.send(embed=emb)
-        conn.close()
-        return
+    async with Bot.SQL_ENGINE.begin() as connection:
+        if await Bot.is_word_whitelisted(word, interaction.guild.id, connection):
+            emb.description = f'✅ The word **{word}** is valid.'
+            await interaction.followup.send(embed=emb)
+            conn.close()
+            return
 
-    if Bot.is_word_blacklisted(word, interaction.guild.id, cursor):
-        emb.description = f'❌ The word **{word}** is **blacklisted** and hence, **not** valid.'
-        await interaction.followup.send(embed=emb)
-        conn.close()
-        return
+        if await Bot.is_word_blacklisted(word, interaction.guild.id, connection):
+            emb.description = f'❌ The word **{word}** is **blacklisted** and hence, **not** valid.'
+            await interaction.followup.send(embed=emb)
+            conn.close()
+            return
 
-    if Bot.is_word_in_cache(word, cursor):
-        emb.description = f'✅ The word **{word}** is valid.'
-        await interaction.followup.send(embed=emb)
-        conn.close()
-        return
+        if await Bot.is_word_in_cache(word, connection):
+            emb.description = f'✅ The word **{word}** is valid.'
+            await interaction.followup.send(embed=emb)
+            conn.close()
+            return
 
-    future: concurrent.futures.Future = Bot.start_api_query(word)
-    conn.close()
+        future: concurrent.futures.Future = Bot.start_api_query(word)
 
     match Bot.get_query_response(future):
         case Bot.API_RESPONSE_WORD_EXISTS:
@@ -989,7 +984,7 @@ async def check_word(interaction: discord.Interaction, word: str):
                 bot._cached_words = {word, }
             else:
                 bot._cached_words.add(word)
-            bot.add_to_cache()
+            await bot.add_to_cache()
 
         case Bot.API_RESPONSE_WORD_DOESNT_EXIST:
             emb.description = f'❌ **{word}** is **not** a valid word.'
@@ -1072,34 +1067,35 @@ async def force_dump(interaction: discord.Interaction):
 async def prune(interaction: discord.Interaction):
     await interaction.response.defer()
 
-    conn: sqlite3.Connection = sqlite3.connect(Bot.DB_FILE)
-    cursor: sqlite3.Cursor = conn.cursor()
+    async with Bot.SQL_ENGINE.begin() as connection:
+        stmt = select(MemberModel.member_id).where(MemberModel.server_id == interaction.guild.id)
+        result: CursorResult = await connection.execute(stmt)
+        data: list[tuple[int]] = result.fetchall()
 
-    cursor.execute(f'SELECT member_id FROM {Bot.TABLE_MEMBERS} WHERE server_id = {interaction.guild.id}')
-    result: Optional[list[tuple[int]]] = cursor.fetchall()
+        if data:
+            count: int = 0
 
-    if result:
-        count: int = 0
+            for entry in data:
+                user_id: int = entry[0]
 
-        for res in result:
-            user_id: int = res[0]
+                if interaction.guild.get_member(user_id) is None:
+                    stmt = delete(MemberModel).where(
+                        MemberModel.server_id == interaction.guild.id,
+                        MemberModel.member_id == user_id
+                    )
+                    await connection.execute(stmt)
+                    count += 1
+                    logger.info(f'Removed data for user {user_id}.')
 
-            if interaction.guild.get_member(user_id) is None:
-                cursor.execute(f'DELETE FROM {Bot.TABLE_MEMBERS} WHERE member_id = {user_id} '
-                               f'AND server_id = {interaction.guild.id}')
-                count += 1
-                logger.info(f'Removed data for user {user_id}.')
+            if count > 0:
+                await connection.commit()
+                await interaction.followup.send(f'Successfully removed data for {count} user(s).')
+            else:
+                await interaction.followup.send('No users met the criteria to be removed.')
 
-        if count > 0:
-            conn.commit()
-            await interaction.followup.send(f'Successfully removed data for {count} user(s).')
         else:
-            await interaction.followup.send('No users met the criteria to be removed.')
+            await interaction.followup.send('No users found in the database.')
 
-    else:
-        await interaction.followup.send('No users found in the database.')
-
-    conn.close()
 
 
 class StatsCmdGroup(app_commands.Group):
@@ -1137,38 +1133,44 @@ Longest chain length: {config.high_score}
         if member is None:
             member = interaction.user
 
-        conn: sqlite3.Connection = sqlite3.connect(Bot.DB_FILE)
-        cursor: sqlite3.Cursor = conn.cursor()
+        async with Bot.SQL_ENGINE.begin() as connection:
+            stmt = select(MemberModel).where(
+                MemberModel.server_id == member.guild.id,
+                MemberModel.member_id == member.id
+            )
+            result: CursorResult = await connection.execute(stmt)
+            row = result.fetchone()
 
-        cursor.execute(f'SELECT score, correct, wrong, karma '
-                       f'FROM {Bot.TABLE_MEMBERS} WHERE member_id = {member.id} AND server_id = {member.guild.id}')
-        stats: Optional[tuple[int, int, int, float]] = cursor.fetchone()
+            if row is None:
+                await interaction.followup.send('You have never played in this server!')
+                return
 
-        if stats is None:
-            await interaction.followup.send('You have never played in this server!')
-            conn.close()
-            return
+            db_member = Member.model_validate(row)
 
-        score, correct, wrong, karma = stats
+            stmt = select(count(MemberModel.member_id)).where(
+                MemberModel.server_id == member.guild.id,
+                MemberModel.score >= db_member.score
+            )
+            result: CursorResult = await connection.execute(stmt)
+            pos_by_score = result.scalar()
 
-        cursor.execute(
-            f'SELECT COUNT(member_id) FROM {Bot.TABLE_MEMBERS} WHERE score >= {score} AND server_id = {member.guild.id}')
-        pos_by_score: int = cursor.fetchone()[0]
-        cursor.execute(
-            f'SELECT COUNT(member_id) FROM {Bot.TABLE_MEMBERS} WHERE karma >= {karma} AND server_id = {member.guild.id}')
-        pos_by_karma: float = cursor.fetchone()[0]
-        conn.close()
+            stmt = select(count(MemberModel.member_id)).where(
+                MemberModel.server_id == member.guild.id,
+                MemberModel.karma >= db_member.karma
+            )
+            result: CursorResult = await connection.execute(stmt)
+            pos_by_karma= result.scalar()
 
-        emb = discord.Embed(
-            color=discord.Color.blue(),
-            description=f'''**Score:** {score} (#{pos_by_score})
-**🌟Karma:** {karma:.2f} (#{pos_by_karma})
-**✅Correct:** {correct}
-**❌Wrong:** {wrong}
-**Accuracy:** {(correct / (correct + wrong)):.2%}'''
-        ).set_author(name=f"{member} | stats", icon_url=member.avatar)
+            emb = discord.Embed(
+                color=discord.Color.blue(),
+                description=f'''**Score:** {db_member.score} (#{pos_by_score})
+**🌟Karma:** {db_member.karma:.2f} (#{pos_by_karma})
+**✅Correct:** {db_member.correct}
+**❌Wrong:** {db_member.wrong}
+**Accuracy:** {(db_member.correct / (db_member.correct + db_member.wrong)):.2%}'''
+            ).set_author(name=f"{member} | stats", icon_url=member.avatar)
 
-        await interaction.followup.send(embed=emb)
+            await interaction.followup.send(embed=emb)
 
 # ---------------------------------------------------------------------------------------------------------------
 
@@ -1192,13 +1194,13 @@ class BlacklistCmdGroup(app_commands.Group):
             await interaction.followup.send(embed=emb)
             return
 
-        conn: sqlite3.Connection = sqlite3.connect(Bot.DB_FILE)
-        cursor: sqlite3.Cursor = conn.cursor()
-
-        cursor.execute(f'INSERT OR IGNORE INTO {Bot.TABLE_BLACKLIST} '
-                       f'VALUES ({interaction.guild.id}, \'{word.lower()}\')')
-        conn.commit()
-        conn.close()
+        async with Bot.SQL_ENGINE.begin() as connection:
+            stmt = insert(BlacklistModel).values(
+                server_id = interaction.guild.id,
+                word = word.lower()
+            ).prefix_with('OR IGNORE')
+            await connection.execute(stmt)
+            await connection.commit()
 
         emb.description = f'✅ The word *{word.lower()}* was successfully added to the blacklist.'
         await interaction.followup.send(embed=emb)
@@ -1215,13 +1217,13 @@ class BlacklistCmdGroup(app_commands.Group):
             await interaction.followup.send(embed=emb)
             return
 
-        conn: sqlite3.Connection = sqlite3.connect(Bot.DB_FILE)
-        cursor: sqlite3.Cursor = conn.cursor()
-
-        cursor.execute(f'DELETE FROM {Bot.TABLE_BLACKLIST} '
-                       f'WHERE server_id = {interaction.guild.id} AND words = \'{word.lower()}\'')
-        conn.commit()
-        conn.close()
+        async with Bot.SQL_ENGINE.begin() as connection:
+            stmt = delete(BlacklistModel).where(
+                BlacklistModel.server_id == interaction.guild.id,
+                BlacklistModel.word == word.lower()
+            )
+            await connection.execute(stmt)
+            await connection.commit()
 
         emb.description = f'✅ The word *{word.lower()}* was successfully removed from the blacklist.'
         await interaction.followup.send(embed=emb)
@@ -1230,24 +1232,23 @@ class BlacklistCmdGroup(app_commands.Group):
     async def show(self, interaction: discord.Interaction) -> None:
         await interaction.response.defer()
 
-        conn: sqlite3.Connection = sqlite3.connect(Bot.DB_FILE)
-        cursor: sqlite3.Cursor = conn.cursor()
+        async with Bot.SQL_ENGINE.begin() as connection:
+            stmt = select(BlacklistModel.word).where(BlacklistModel.server_id == interaction.guild.id)
+            result: CursorResult = await connection.execute(stmt)
+            words = [row[0] for row in result]
 
-        cursor.execute(f'SELECT words FROM {Bot.TABLE_BLACKLIST} WHERE server_id = {interaction.guild.id}')
-        result: list[tuple[int]] = cursor.fetchall()  # Structure: [(word1,), (word2,), (word3,), ...] or [] if empty
+            emb = discord.Embed(title=f'Blacklisted words', description='', colour=discord.Color.dark_orange())
 
-        emb = discord.Embed(title=f'Blacklisted words', description='', colour=discord.Color.dark_orange())
+            if len(words) == 0:
+                emb.description = f'No word has been blacklisted in this server.'
+                await interaction.followup.send(embed=emb)
+            else:
+                i: int = 0
+                for word in words:
+                    i += 1
+                    emb.description += f'{i}. {word}\n'
 
-        if len(result) == 0:
-            emb.description = f'No word has been blacklisted in this server.'
-            await interaction.followup.send(embed=emb)
-        else:
-            i: int = 0
-            for word in result:
-                i += 1
-                emb.description += f'{i}. {word[0]}\n'
-
-            await interaction.followup.send(embed=emb)
+                await interaction.followup.send(embed=emb)
 
 # ---------------------------------------------------------------------------------------------------------------
 
@@ -1276,13 +1277,13 @@ class WhitelistCmdGroup(app_commands.Group):
             await interaction.followup.send(embed=emb)
             return
 
-        conn: sqlite3.Connection = sqlite3.connect(Bot.DB_FILE)
-        cursor: sqlite3.Cursor = conn.cursor()
-
-        cursor.execute(f'INSERT OR IGNORE INTO {Bot.TABLE_WHITELIST} '
-                       f'VALUES ({interaction.guild.id}, \'{word.lower()}\')')
-        conn.commit()
-        conn.close()
+        async with Bot.SQL_ENGINE.begin() as connection:
+            stmt = insert(WhitelistModel).values(
+                server_id = interaction.guild.id,
+                word = word.lower()
+            ).prefix_with('OR IGNORE')
+            await connection.execute(stmt)
+            await connection.commit()
 
         emb.description = f'✅ The word *{word.lower()}* was successfully added to the whitelist.'
         await interaction.followup.send(embed=emb)
@@ -1299,13 +1300,13 @@ class WhitelistCmdGroup(app_commands.Group):
             await interaction.followup.send(embed=emb)
             return
 
-        conn: sqlite3.Connection = sqlite3.connect(Bot.DB_FILE)
-        cursor: sqlite3.Cursor = conn.cursor()
-
-        cursor.execute(f'DELETE FROM {Bot.TABLE_WHITELIST} '
-                       f'WHERE server_id = {interaction.guild.id} AND words = \'{word.lower()}\'')
-        conn.commit()
-        conn.close()
+        async with Bot.SQL_ENGINE.begin() as connection:
+            stmt = delete(WhitelistModel).where(
+                WhitelistModel.server_id == interaction.guild.id,
+                WhitelistModel.word == word.lower()
+            )
+            await connection.execute(stmt)
+            await connection.commit()
 
         emb.description = f'✅ The word *{word.lower()}* has been removed from the whitelist.'
         await interaction.followup.send(embed=emb)
@@ -1314,24 +1315,23 @@ class WhitelistCmdGroup(app_commands.Group):
     async def show(self, interaction: discord.Interaction) -> None:
         await interaction.response.defer()
 
-        conn: sqlite3.Connection = sqlite3.connect(Bot.DB_FILE)
-        cursor: sqlite3.Cursor = conn.cursor()
+        async with Bot.SQL_ENGINE.begin() as connection:
+            stmt = select(WhitelistModel.word).where(WhitelistModel.server_id == interaction.guild.id)
+            result: CursorResult = await connection.execute(stmt)
+            words = [row[0] for row in result]
 
-        cursor.execute(f'SELECT words FROM {Bot.TABLE_WHITELIST} WHERE server_id = {interaction.guild.id}')
-        result: list[tuple[int]] = cursor.fetchall()  # Structure: [(word1,), (word2,), (word3,), ...] or [] if empty
+            emb = discord.Embed(title=f'Whitelisted words', description='', colour=discord.Color.dark_orange())
 
-        emb = discord.Embed(title=f'Whitelisted words', description='', colour=discord.Color.dark_orange())
+            if len(words) == 0:
+                emb.description = f'No word has been whitelisted in this server.'
+                await interaction.followup.send(embed=emb)
+            else:
+                i: int = 0
+                for word in words:
+                    i += 1
+                    emb.description += f'{i}. {word}\n'
 
-        if len(result) == 0:
-            emb.description = f'No word has been whitelisted in this server.'
-            await interaction.followup.send(embed=emb)
-        else:
-            i: int = 0
-            for word in result:
-                i += 1
-                emb.description += f'{i}. {word[0]}\n'
-
-            await interaction.followup.send(embed=emb)
+                await interaction.followup.send(embed=emb)
 
 
 if __name__ == '__main__':
