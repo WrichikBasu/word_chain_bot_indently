@@ -7,7 +7,7 @@ import os
 from code import interact
 from collections import defaultdict, deque
 from dataclasses import dataclass
-from typing import NoReturn, Optional
+from typing import Optional
 
 import discord
 from discord import app_commands
@@ -22,8 +22,8 @@ from alembic import command as alembic_command
 from alembic.config import Config as AlembicConfig
 from consts import *
 from data import calculate_total_karma
-from model import BlacklistModel, Member, MemberModel, UsedWordsModel, WhitelistModel, WordCacheModel, \
-    ServerConfigModel, ServerConfig
+from model import (BlacklistModel, Member, MemberModel, ServerConfig, ServerConfigModel, UsedWordsModel, WhitelistModel,
+                   WordCacheModel)
 
 load_dotenv('.env')
 # running in single player mode changes some game rules - you can chain words alone now
@@ -720,7 +720,7 @@ The above entered word is **NOT** being taken into account.''')
         result: CursorResult = await connection.execute(stmt)
         return result.scalar()
 
-    async def add_to_cache(self) -> NoReturn:
+    async def add_to_cache(self) -> None:
         """
         Add words from `self._cached_words` into the `Bot.TABLE_CACHE` schema.
         Should be executed when not busy.
@@ -814,7 +814,7 @@ The above entered word is **NOT** being taken into account.''')
         result: CursorResult = await connection.execute(stmt)
         return result.scalar()
 
-    async def setup_hook(self) -> NoReturn:
+    async def setup_hook(self) -> None:
         await self.tree.sync()
         logger.info('Commands synchronized')
 
