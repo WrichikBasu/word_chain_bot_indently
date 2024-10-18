@@ -1,8 +1,24 @@
+from typing import Optional
+
 from pydantic import BaseModel
-from sqlalchemy import Column, Float, Integer, String
+from sqlalchemy import Column, Float, Integer, String, Boolean
 from sqlalchemy.ext.declarative import declarative_base
 
 Base = declarative_base()
+
+class ServerConfigModel(Base):
+    __tablename__ = 'server_config'
+    server_id = Column(Integer, primary_key=True)
+    channel_id = Column(Integer)
+    current_count = Column(Integer, nullable=False)
+    current_word = Column(String)
+    high_score = Column(Integer, nullable=False)
+    put_high_score_emoji = Column(Boolean, nullable=False)
+    reliable_role_id = Column(Integer)
+    failed_role_id = Column(Integer)
+    last_member_id = Column(Integer)
+    failed_member_id = Column(Integer)
+    correct_inputs_by_failed_member = Column(Integer, nullable=False)
 
 class WordCacheModel(Base):
     __tablename__ = 'word_cache'
@@ -31,6 +47,22 @@ class WhitelistModel(Base):
     __tablename__ = 'whitelist'
     server_id = Column(Integer, primary_key=True)
     word = Column(String, primary_key=True)
+
+class ServerConfig(BaseModel):
+    server_id: int
+    channel_id: Optional[int]
+    current_count: Optional[int]
+    current_word: Optional[str]
+    high_score: int
+    put_high_score_emoji: bool
+    reliable_role_id: Optional[int]
+    failed_role_id: Optional[int]
+    last_member_id: Optional[int]
+    failed_member_id: Optional[int]
+    correct_inputs_by_failed_member: int
+
+    class Config:
+        from_attributes = True
 
 class Member(BaseModel):
     server_id: int
