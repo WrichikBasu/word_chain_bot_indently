@@ -192,8 +192,8 @@ class Bot(commands.Bot):
             new_config = ServerConfig(server_id=guild.id)
             stmt = insert(ServerConfigModel).values(**new_config.model_dump()).prefix_with('OR IGNORE')
             await connection.execute(stmt)
-            self._server_configs[new_config.server_id] = new_config
             await connection.commit()
+            self._server_configs[new_config.server_id] = new_config
 
     async def on_guild_remove(self, guild: discord.Guild):
         """Override the on_guild_remove method"""
