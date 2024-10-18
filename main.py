@@ -14,7 +14,7 @@ from discord import app_commands
 from discord.ext import commands
 from dotenv import load_dotenv
 from requests_futures.sessions import FuturesSession
-from sqlalchemy import Column, CursorResult, delete, exists, func, insert, select, update
+from sqlalchemy import Column, CursorResult, delete, exists, func, insert, select, update, values
 from sqlalchemy.ext.asyncio import AsyncConnection, create_async_engine
 from sqlalchemy.sql.functions import count
 
@@ -22,7 +22,8 @@ from alembic import command as alembic_command
 from alembic.config import Config as AlembicConfig
 from consts import *
 from data import calculate_total_karma
-from model import BlacklistModel, Member, MemberModel, UsedWordsModel, WhitelistModel, WordCacheModel
+from model import BlacklistModel, Member, MemberModel, UsedWordsModel, WhitelistModel, WordCacheModel, \
+    ServerConfigModel, ServerConfig
 
 load_dotenv('.env')
 # running in single player mode changes some game rules - you can chain words alone now
@@ -30,7 +31,7 @@ load_dotenv('.env')
 SINGLE_PLAYER = os.getenv('SINGLE_PLAYER', False) not in {False, 'False', 'false', '0'}
 
 logging.basicConfig(level=logging.INFO, format='[%(asctime)s] [%(levelname)s] %(name)s: %(message)s')
-logger = logging.getLogger()
+logger = logging.getLogger(__name__)
 
 @dataclass
 class Config:
@@ -118,6 +119,10 @@ class Bot(commands.Bot):
         intents = discord.Intents.default()
         intents.message_content = True
         intents.members = True
+        self._server_configs: dict[int, ServerConfig] = dict()
+        self.server_failed_roles: dict[int, Optional[int]] = dict()
+        self.server_reliable_roles: dict[int, Optinal[int]] = dict()
+
         self._config: Config = Config.read()
         self._busy: int = 0
         self._cached_words: Optional[set[str]] = None
@@ -138,50 +143,81 @@ class Bot(commands.Bot):
         """Override the on_ready method"""
         logger.info(f'Bot is ready as {self.user.name}#{self.user.discriminator}')
 
-        if self._config.channel_id:
+        # load all configs and make sure each guild has one entry
+        async with self.SQL_ENGINE.begin() as connection:
+            stmt = select(ServerConfigModel)
+            result: CursorResult = await connection.execute(stmt)
+            configs = [ServerConfig.model_validate(row) for row in result]
+            self._server_configs = {config.server_id: config for config in configs}
 
-            channel: Optional[discord.TextChannel] = bot.get_channel(self._config.channel_id)
+            for guild in self.guilds:
+                if guild.id in self._server_configs:
+                    continue
+                new_config = ServerConfig(server_id=guild.id)
+                stmt = insert(ServerConfigModel).values(**new_config.model_dump())
+                await connection.execute(stmt)
+                self._server_configs[new_config.server_id] = new_config
+            await connection.commit()
+
+        for guild in self.guilds:
+            config = self._server_configs[guild.id]
+
+            channel: Optional[discord.TextChannel] = bot.get_channel(config.channel_id)
             if channel:
 
                 emb: discord.Embed = discord.Embed(description='**I\'m now online!**',
                                                    colour=discord.Color.brand_green())
 
-                if self._config.high_score > 0:
-                    emb.description += f'\n\n:fire: Let\'s beat the high score of {self._config.high_score}! :fire:\n'
+                if config.high_score > 0:
+                    emb.description += f'\n\n:fire: Let\'s beat the high score of {config.high_score}! :fire:\n'
 
-                if self._config.current_word:
-                    emb.add_field(name='Last valid word', value=f'{self._config.current_word}', inline=True)
+                if config.current_word:
+                    emb.add_field(name='Last valid word', value=f'{config.current_word}', inline=True)
 
-                    if self._config.current_member_id:
+                    if config.last_member_id:
 
-                        member: Optional[discord.Member] = channel.guild.get_member(self._config.current_member_id)
+                        member: Optional[discord.Member] = channel.guild.get_member(config.last_member_id)
                         if member:
                             emb.add_field(name='Last input by', value=f'{member.mention}', inline=True)
 
                 await channel.send(embed=emb)
+                self.load_discord_roles(guild)
+        logger.info(f'Loaded {len(self._server_configs)} servers')
 
-        self.set_roles()
+    async def on_guild_join(self, guild: discord.Guild):
+        """Override the on_guild_join method"""
+        logger.info(f'Joined guild {guild.name} ({guild.id})')
 
-    def set_roles(self):
+        async with self.SQL_ENGINE.begin() as connection:
+            new_config = ServerConfig(server_id=guild.id)
+            stmt = insert(ServerConfigModel).values(**new_config.model_dump()).prefix_with('OR IGNORE')
+            await connection.execute(stmt)
+            self._server_configs[new_config.server_id] = new_config
+            await connection.commit()
+
+    async def on_guild_remove(self, guild: discord.Guild):
+        """Override the on_guild_remove method"""
+        logger.info(f'Left guild {guild.name} ({guild.id})')
+        async with self.SQL_ENGINE.begin() as connection:
+            stmt = delete(ServerConfigModel).where(ServerConfigModel.server_id == guild.id)
+            await connection.execute(stmt)
+            await connection.commit()
+            self._server_configs.pop(guild.id)
+
+    def load_discord_roles(self, guild: discord.Guild):
         """
-        Sets the `self.failed_role` and `self.reliable_role` variables.
+        Sets the `self.server_failed_roles` and `self.server_reliable_roles` variables.
         """
-        for member in self.get_all_members():
-            guild: discord.Guild = member.guild
+        config = self._server_configs[guild.id]
+        if config.failed_role_id is not None:
+            self.server_failed_roles[guild.id] = discord.utils.get(guild.roles, id=config.failed_role_id)
+        else:
+            self.server_failed_roles[guild.id] = None
 
-            # Set self.failed_role
-            if self._config.failed_role_id is not None:
-                self.failed_role = discord.utils.get(guild.roles, id=self._config.failed_role_id)
-            else:
-                self.failed_role = None
-
-            # Set self.reliable_role
-            if self._config.reliable_role_id is not None:
-                self.reliable_role = discord.utils.get(guild.roles, id=self._config.reliable_role_id)
-            else:
-                self.reliable_role = None
-
-            break
+        if config.reliable_role_id is not None:
+            self.server_reliable_roles[guild.id] = discord.utils.get(guild.roles, id=config.reliable_role_id)
+        else:
+            self.server_reliable_roles[guild.id] = None
 
     async def add_remove_reliable_role(self):
         """
@@ -1007,7 +1043,7 @@ async def set_failed_role(interaction: discord.Interaction, role: discord.Role):
     config.failed_role_id = role.id
     config.dump_data()
     bot.read_config()  # Explicitly ask the bot to re-read the config
-    bot.set_roles()  # Ask the bot to re-load the roles
+    bot.load_discord_roles(interaction.guild)  # Ask the bot to re-load the roles
     await interaction.response.send_message(f'Failed role was set to {role.mention}')
 
 
@@ -1021,7 +1057,7 @@ async def set_reliable_role(interaction: discord.Interaction, role: discord.Role
     config.reliable_role_id = role.id
     config.dump_data()
     bot.read_config()  # Explicitly ask the bot to re-read the config
-    bot.set_roles()  # Ask the bot to re-load the roles
+    bot.load_discord_roles(interaction.guild)  # Ask the bot to re-load the roles
     await interaction.response.send_message(f'Reliable role was set to {role.mention}')
 
 
@@ -1034,7 +1070,7 @@ async def remove_failed_role(interaction: discord.Interaction):
     config.correct_inputs_by_failed_member = 0
     config.dump_data()
     bot.read_config()  # Explicitly ask the bot to re-read the config
-    bot.set_roles()  # Ask the bot to re-load the roles
+    bot.load_discord_roles(interaction.guild)  # Ask the bot to re-load the roles
     await interaction.response.send_message('Failed role removed')
 
 
@@ -1045,7 +1081,7 @@ async def remove_reliable_role(interaction: discord.Interaction):
     config.reliable_role_id = None
     config.dump_data()
     bot.read_config()  # Explicitly ask the bot to re-read the config
-    bot.set_roles()  # Ask the bot to re-load the roles
+    bot.load_discord_roles(interaction.guild)  # Ask the bot to re-load the roles
     await interaction.response.send_message('Reliable role removed')
 
 

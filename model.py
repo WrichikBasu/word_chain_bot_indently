@@ -50,16 +50,16 @@ class WhitelistModel(Base):
 
 class ServerConfig(BaseModel):
     server_id: int
-    channel_id: Optional[int]
-    current_count: Optional[int]
-    current_word: Optional[str]
-    high_score: int
-    put_high_score_emoji: bool
-    reliable_role_id: Optional[int]
-    failed_role_id: Optional[int]
-    last_member_id: Optional[int]
-    failed_member_id: Optional[int]
-    correct_inputs_by_failed_member: int
+    channel_id: Optional[int] = None
+    current_count: int = 0
+    current_word: Optional[str] = None
+    high_score: int = 0
+    put_high_score_emoji: bool = False
+    reliable_role_id: Optional[int] = None
+    failed_role_id: Optional[int] = None
+    last_member_id: Optional[int] = None
+    failed_member_id: Optional[int] = None
+    correct_inputs_by_failed_member: int = 0
 
     class Config:
         from_attributes = True
