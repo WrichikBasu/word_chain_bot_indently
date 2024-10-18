@@ -30,7 +30,7 @@ load_dotenv('.env')
 SINGLE_PLAYER = os.getenv('SINGLE_PLAYER', False) not in {False, 'False', 'false', '0'}
 
 logging.basicConfig(level=logging.INFO, format='[%(asctime)s] [%(levelname)s] %(name)s: %(message)s')
-logger = logging.getLogger(__name__)
+logger = logging.getLogger()
 
 @dataclass
 class Config:
@@ -784,6 +784,9 @@ The above entered word is **NOT** being taken into account.''')
 
         alembic_cfg = AlembicConfig('alembic.ini')
         alembic_command.upgrade(alembic_cfg, 'head')
+        # alembic does some shenenigans and causes our logger to be disabled
+        logger.setLevel(logging.INFO)
+        logger.disabled = False
 
 bot = Bot()
 
