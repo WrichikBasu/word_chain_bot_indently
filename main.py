@@ -322,8 +322,10 @@ class Bot(commands.Bot):
         if message.author == self.user:
             return
 
+        server_id = message.guild.id
+
         # Check if the message is in the channel
-        if message.channel.id != self._config.channel_id:
+        if message.channel.id != self._server_configs[server_id].channel_id:
             return
 
         word: str = message.content.lower()
@@ -433,12 +435,12 @@ Please enter another word.''')
             # -------------
             # Wrong member
             # -------------
-            if not SINGLE_PLAYER and self._config.current_member_id and self._config.current_member_id == message.author.id:
+            if not SINGLE_PLAYER and self._server_configs[server_id].last_member_id == message.author.id:
                 response: str = f'''{message.author.mention} messed up the count! \
 *You cannot send two words in a row!*
-{f'The chain length was {self._config.current_count} when it was broken. :sob:\n' if self._config.current_count > 0 else ''}\
-Restart with a word starting with **{self._config.current_word[-1]}** and \
-try to beat the current high score of **{self._config.high_score}**!'''
+{f'The chain length was {self._server_configs[server_id].current_count} when it was broken. :sob:\n' if self._server_configs[server_id].current_count > 0 else ''}\
+Restart with a word starting with **{self._server_configs[server_id].current_word[-1]}** and \
+try to beat the current high score of **{self._server_configs[server_id].high_score}**!'''
 
                 await self.handle_mistake(message, response, connection)
                 return
@@ -446,12 +448,12 @@ try to beat the current high score of **{self._config.high_score}**!'''
             # -------------------------
             # Wrong starting letter
             # -------------------------
-            if self._config.current_word and word[0] != self._config.current_word[-1]:
+            if self._server_configs[server_id].current_word and word[0] != self._server_configs[server_id].current_word[-1]:
                 response: str = f'''{message.author.mention} messed up the chain! \
-*The word you entered did not begin with the last letter of the previous word* (**{self._config.current_word[-1]}**).
-{f'The chain length was {self._config.current_count} when it was broken. :sob:\n' if self._config.current_count > 0 else ''}\
-Restart with a word starting with **{self._config.current_word[-1]}** and try to beat the \
-current high score of **{self._config.high_score}**!'''
+*The word you entered did not begin with the last letter of the previous word* (**{self._server_configs[server_id].current_word[-1]}**).
+{f'The chain length was {self._server_configs[server_id].current_count} when it was broken. :sob:\n' if self._server_configs[server_id].current_count > 0 else ''}\
+Restart with a word starting with **{self._server_configs[server_id].current_word[-1]}** and try to beat the \
+current high score of **{self._server_configs[server_id].high_score}**!'''
 
                 await self.handle_mistake(message, response, connection)
                 return
@@ -464,17 +466,17 @@ current high score of **{self._config.high_score}**!'''
 
                 if result == Bot.API_RESPONSE_WORD_DOESNT_EXIST:
 
-                    if self._config.current_word:
+                    if self._server_configs[server_id].current_word:
                         response: str = f'''{message.author.mention} messed up the chain! \
 *The word you entered does not exist.*
-{f'The chain length was {self._config.current_count} when it was broken. :sob:\n' if self._config.current_count > 0 else ''}\
-Restart with a word starting with **{self._config.current_word[-1]}** and try to beat the \
-current high score of **{self._config.high_score}**!'''
+{f'The chain length was {self._server_configs[server_id].current_count} when it was broken. :sob:\n' if self._server_configs[server_id].current_count > 0 else ''}\
+Restart with a word starting with **{self._server_configs[server_id].current_word[-1]}** and try to beat the \
+current high score of **{self._server_configs[server_id].high_score}**!'''
 
                     else:
                         response: str = f'''{message.author.mention} messed up the chain! \
 *The word you entered does not exist.*
-Restart and try to beat the current high score of **{self._config.high_score}**!'''
+Restart and try to beat the current high score of **{self._server_configs[server_id].high_score}**!'''
 
                     await self.handle_mistake(message, response, connection)
                     return
@@ -493,9 +495,7 @@ The above entered word is **NOT** being taken into account.''')
             # --------------------
             # Everything is fine
             # ---------------------
-            current_count: int = self._config.current_count + 1
-
-            self._config.update_current(message.author.id, current_word=word)  # config dump at the end of the method
+            self._server_configs[server_id].update_current(member_id=message.author.id, current_word=word)
 
             await message.add_reaction(SPECIAL_REACTION_EMOJIS.get(word, self._config.reaction_emoji()))
 
@@ -526,18 +526,20 @@ The above entered word is **NOT** being taken into account.''')
             else:
                 self._cached_words.add(word)
 
+            current_count = self._server_configs[server_id]
+
             if current_count > 0 and current_count % 100 == 0:
                 await message.channel.send(f'{current_count} words! Nice work, keep it up!')
 
             # Check and reset the self._config.failed_member_id to None.
             # No need to remove the role itself, it will be done later when not busy
-            if self.failed_role and self._config.failed_member_id == message.author.id:
-                self._config.correct_inputs_by_failed_member += 1
-                if self._config.correct_inputs_by_failed_member >= 30:
-                    self._config.failed_member_id = None
-                    self._config.correct_inputs_by_failed_member = 0
+            if self.server_failed_roles[server_id] and self._server_configs[server_id].failed_member_id == message.author.id:
+                self._server_configs[server_id].correct_inputs_by_failed_member += 1
+                if self._server_configs[server_id].correct_inputs_by_failed_member >= 30:
+                    self._server_configs[server_id].failed_member_id = None
+                    self._server_configs[server_id].correct_inputs_by_failed_member = 0
 
-            await self.schedule_busy_work()
+            await self._server_configs[server_id].sync_to_db(connection)
 
     # ---------------------------------------------------------------------------------------
 
