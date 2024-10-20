@@ -547,11 +547,10 @@ The above entered word is **NOT** being taken into account.''')
                              response: str, connection: AsyncConnection) -> None:
         """Handles when someone messes up the count with a wrong number"""
 
-        if self.failed_role:
-            self._config.failed_member_id = message.author.id  # Designate current user as failed member
+        server_id = message.guild.id
+        if self.server_failed_roles[server_id]:
+            self._server_configs[server_id].failed_member_id = message.author.id  # Designate current user as failed member
             # Adding/removing failed role is done when not busy
-
-        self._config.reset()  # config dump is triggered at the end of if-statement
 
         await message.channel.send(response)
         await message.add_reaction('❌')
@@ -567,7 +566,7 @@ The above entered word is **NOT** being taken into account.''')
         await connection.execute(stmt)
         await connection.commit()
 
-        await self.schedule_busy_work()
+        await self._server_configs[server_id].sync_to_db(connection)
 
     # ------------------------------------------------------------------------------------------------
     @staticmethod
