@@ -497,7 +497,7 @@ The above entered word is **NOT** being taken into account.''')
             # ---------------------
             self._server_configs[server_id].update_current(member_id=message.author.id, current_word=word)
 
-            await message.add_reaction(SPECIAL_REACTION_EMOJIS.get(word, self._config.reaction_emoji()))
+            await message.add_reaction(SPECIAL_REACTION_EMOJIS.get(word, self._server_configs[server_id].reaction_emoji()))
 
             last_words: deque[str] = self._history[message.author.id]
             karma: float = calculate_total_karma(word, last_words)
@@ -531,7 +531,7 @@ The above entered word is **NOT** being taken into account.''')
             if current_count > 0 and current_count % 100 == 0:
                 await message.channel.send(f'{current_count} words! Nice work, keep it up!')
 
-            # Check and reset the self._config.failed_member_id to None.
+            # Check and reset the server config.failed_member_id to None.
             # No need to remove the role itself, it will be done later when not busy
             if self.server_failed_roles[server_id] and self._server_configs[server_id].failed_member_id == message.author.id:
                 self._server_configs[server_id].correct_inputs_by_failed_member += 1
