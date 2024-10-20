@@ -125,7 +125,7 @@ class Bot(commands.Bot):
 
         self._config: Config = Config.read()
         self._busy: int = 0
-        self._cached_words: Optional[set[str]] = None
+        self._cached_words: set[str] = {}
         self._participating_users: Optional[set[int]] = None
         self._history = defaultdict(lambda: deque(maxlen=HISTORY_LENGTH))
         self.failed_role: Optional[discord.Role] = None
@@ -521,10 +521,7 @@ The above entered word is **NOT** being taken into account.''')
 
             await connection.commit()
 
-            if self._cached_words is None:
-                self._cached_words = {word, }
-            else:
-                self._cached_words.add(word)
+            self._cached_words.add(word)
 
             current_count = self._server_configs[server_id]
 
@@ -726,17 +723,15 @@ The above entered word is **NOT** being taken into account.''')
         Add words from `self._cached_words` into the `Bot.TABLE_CACHE` schema.
         Should be executed when not busy.
         """
-        if self._cached_words:
+        words = self._cached_words
+        self._cached_words = {}
 
-            words = self._cached_words
-            self._cached_words = None
-
-            async with Bot.SQL_ENGINE.begin() as connection:
-                for word in tuple(words):
-                    if not await Bot.is_word_blacklisted(word):  # Do NOT insert globally blacklisted words into the cache
-                        stmt = insert(WordCacheModel).values(words=word).prefix_with('OR IGNORE')
-                        await connection.execute(stmt)
-                await connection.commit()
+        async with Bot.SQL_ENGINE.begin() as connection:
+            for word in tuple(words):
+                if not await Bot.is_word_blacklisted(word):  # Do NOT insert globally blacklisted words into the cache
+                    stmt = insert(WordCacheModel).values(words=word).prefix_with('OR IGNORE')
+                    await connection.execute(stmt)
+            await connection.commit()
 
     @staticmethod
     async def is_word_blacklisted(word: str, server_id: Optional[int] = None,
