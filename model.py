@@ -76,6 +76,21 @@ class ServerConfig(BaseModel):
         # check the high score
         self.high_score = max(self.high_score, self.current_count)
 
+    def reaction_emoji(self) -> str:
+        """
+        Get the reaction emoji based on the current count.
+        """
+        if self.current_count == self.high_score and not self.put_high_score_emoji:
+            emoji = "🎉"
+            self.put_high_score_emoji = True  # Needs a config data dump
+        else:
+            emoji = {
+                100: "💯",
+                69: "😏",
+                666: "👹",
+            }.get(self.current_count, "✅")
+        return emoji
+
     async def sync_to_db(self, connection: AsyncConnection):
         """
         Synchronized itself with the DB.

@@ -33,82 +33,10 @@ SINGLE_PLAYER = os.getenv('SINGLE_PLAYER', False) not in {False, 'False', 'false
 logging.basicConfig(level=logging.INFO, format='[%(asctime)s] [%(levelname)s] %(name)s: %(message)s')
 logger = logging.getLogger(__name__)
 
-@dataclass
-class Config:
-    """Configuration for the bot"""
-    channel_id: Optional[int] = None
-    current_count: int = 0
-    current_word: Optional[str] = None
-    high_score: int = 0
-    current_member_id: Optional[int] = None
-    put_high_score_emoji: bool = False
-    failed_role_id: Optional[int] = None
-    reliable_role_id: Optional[int] = None
-    failed_member_id: Optional[int] = None
-    correct_inputs_by_failed_member: int = 0
-
-    @staticmethod
-    def read():
-        _config: Optional[Config] = None
-        try:
-            with open(Bot.CONFIG_FILE, "r") as file:
-                _config = Config(**json.load(file))
-        except FileNotFoundError:
-            _config = Config()
-            _config.dump_data()
-        return _config
-
-    def dump_data(self) -> None:
-        """Update the config.json file"""
-        with open(Bot.CONFIG_FILE, "w", encoding='utf-8') as file:
-            json.dump(self.__dict__, file, indent=2)
-
-    def update_current(self, member_id: int, current_word: str) -> None:
-        """
-        Increment the current count.
-        NOTE: config is no longer dumped by default. Explicitly call config.dump().
-        """
-        # increment current count
-        self.current_count += 1
-        self.current_word = current_word
-
-        # update current member id
-        self.current_member_id = member_id
-
-        # check the high score
-        self.high_score = max(self.high_score, self.current_count)
-
-    def reset(self) -> None:
-        """
-        Reset chain stats.
-        Do NOT reset the `current_word` and the `current_member_id`.
-        NOTE: config is no longer dumped by default. Explicitly call config.dump_data().
-        """
-        self.current_count = 0
-        self.correct_inputs_by_failed_member = 0
-        self.put_high_score_emoji = False
-
-    def reaction_emoji(self) -> str:
-        """
-        Get the reaction emoji based on the current count.
-        NOTE: Data is no longer dumped automatically. Explicitly call config.data_dump().
-        """
-        if self.current_count == self.high_score and not self.put_high_score_emoji:
-            emoji = "🎉"
-            self.put_high_score_emoji = True  # Needs a config data dump
-        else:
-            emoji = {
-                100: "💯",
-                69: "😏",
-                666: "👹",
-            }.get(self.current_count, "✅")
-        return emoji
-
 
 class Bot(commands.Bot):
     """Word chain bot for Indently discord server."""
 
-    CONFIG_FILE: str = 'config_word_chain.json'
     SQL_ENGINE = create_async_engine('sqlite+aiosqlite:///database_word_chain.sqlite3')
 
     API_RESPONSE_WORD_EXISTS: int = 1
@@ -262,7 +190,7 @@ class Bot(commands.Bot):
             if not handled_member and self.server_configs[guild.id].failed_member_id:
                 # Current failed member does not yet have the failed role
                 try:
-                    failed_member: discord.Member = await guild.fetch_member(self._config.failed_member_id)
+                    failed_member: discord.Member = await guild.fetch_member(self.server_configs[guild.id].failed_member_id)
                     await failed_member.add_roles(self.server_failed_roles[guild.id])
                 except discord.NotFound:
                     # Member is no longer in the server
