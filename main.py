@@ -1013,10 +1013,7 @@ async def check_word(interaction: discord.Interaction, word: str):
 
             emb.description = f'✅ The word **{word}** is valid.'
 
-            if bot._cached_words is None:
-                bot._cached_words = {word, }
-            else:
-                bot._cached_words.add(word)
+            bot._cached_words.add(word)
             await bot.add_to_cache()
 
         case Bot.API_RESPONSE_WORD_DOESNT_EXIST:
