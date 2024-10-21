@@ -124,9 +124,7 @@ class Bot(commands.Bot):
         self.server_reliable_roles: dict[int, Optinal[discord.Role]] = dict()
 
         self._config: Config = Config.read()
-        self._busy: int = 0
         self._cached_words: set[str] = {}
-        self._participating_users: Optional[set[int]] = None
         self._history = defaultdict(lambda: deque(maxlen=HISTORY_LENGTH))
         self.failed_role: Optional[discord.Role] = None
         self.reliable_role: Optional[discord.Role] = None
@@ -227,11 +225,7 @@ class Bot(commands.Bot):
         1. Accuracy must be >= `RELIABLE_ROLE_ACCURACY_THRESHOLD`. (Accuracy = correct / (correct + wrong))
         2. Karma must be >= `RELIABLE_ROLE_KARMA_THRESHOLD`
         """
-        if self.reliable_role and self._participating_users:
-
-            # Make a copy of the set to prevent runtime errors if the set changes while execution
-            users: set[int] = self._participating_users.copy()
-            self._participating_users = None
+        if self.reliable_role:
 
             guild_id: int = self.reliable_role.guild.id
 
@@ -332,13 +326,6 @@ class Bot(commands.Bot):
 The chain has **not** been broken. Please enter another word.''')
             return
 
-        self._busy += 1
-
-        if self._participating_users is None:
-            self._participating_users = {message.author.id, }
-        else:
-            self._participating_users.add(message.author.id)
-
         async with self.SQL_ENGINE.begin() as connection:
             # ----------------------------------------------------------------------------------------
             # ADD USER TO THE DATABASE
@@ -378,10 +365,6 @@ The chain has **not** been broken. Please enter another word.''')
                 await message.add_reaction('⚠️')
                 await message.channel.send(f'''This word has been **blacklisted**. Please do not use it.
 The chain has **not** been broken. Please enter another word.''')
-
-                # No need to schedule busy work as nothing has changed.
-                # Just decrement the variable.
-                self._busy -= 1
                 return
 
             # ------------------------------
@@ -414,10 +397,6 @@ The chain has **not** been broken. Please enter another word.''')
                 await message.channel.send(f'''The word *{word}* has already been used before. \
 The chain has **not** been broken.
 Please enter another word.''')
-
-                # No need to schedule busy work as nothing has changed.
-                # Just decrement the variable.
-                self._busy -= 1
                 return
 
             # -------------
@@ -474,10 +453,6 @@ Restart and try to beat the current high score of **{self.server_configs[server_
                     await message.add_reaction('⚠️')
                     await message.channel.send(''':octagonal_sign: There was an issue in the backend.
 The above entered word is **NOT** being taken into account.''')
-
-                    # No need to schedule busy work as nothing has changed.
-                    # Just decrement the variable.
-                    self._busy -= 1
                     return
 
             # --------------------
