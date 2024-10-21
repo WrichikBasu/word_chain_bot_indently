@@ -120,8 +120,8 @@ class Bot(commands.Bot):
         intents.message_content = True
         intents.members = True
         self._server_configs: dict[int, ServerConfig] = dict()
-        self.server_failed_roles: dict[int, Optional[int]] = dict()
-        self.server_reliable_roles: dict[int, Optinal[int]] = dict()
+        self.server_failed_roles: dict[int, Optional[discord.Role]] = dict()
+        self.server_reliable_roles: dict[int, Optinal[discord.Role]] = dict()
 
         self._config: Config = Config.read()
         self._busy: int = 0
