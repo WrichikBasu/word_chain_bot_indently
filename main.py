@@ -401,13 +401,14 @@ The above entered word is **NOT** being taken into account.''')
                 await message.channel.send(f'{current_count} words! Nice work, keep it up!')
 
             # Check and reset the server config.failed_member_id to None.
-            # No need to remove the role itself, it will be done later when not busy
             if self.server_failed_roles[server_id] and self.server_configs[server_id].failed_member_id == message.author.id:
                 self.server_configs[server_id].correct_inputs_by_failed_member += 1
                 if self.server_configs[server_id].correct_inputs_by_failed_member >= 30:
                     self.server_configs[server_id].failed_member_id = None
                     self.server_configs[server_id].correct_inputs_by_failed_member = 0
+                    await self.add_remove_failed_role(connection)
 
+            await self.add_remove_reliable_role(connection)
             await self.server_configs[server_id].sync_to_db(connection)
 
     # ---------------------------------------------------------------------------------------
@@ -419,7 +420,7 @@ The above entered word is **NOT** being taken into account.''')
         server_id = message.guild.id
         if self.server_failed_roles[server_id]:
             self.server_configs[server_id].failed_member_id = message.author.id  # Designate current user as failed member
-            # Adding/removing failed role is done when not busy
+            await self.add_remove_failed_role(connection)
 
         await message.channel.send(response)
         await message.add_reaction('❌')
