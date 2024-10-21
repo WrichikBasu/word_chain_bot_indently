@@ -653,17 +653,17 @@ The above entered word is **NOT** being taken into account.''')
             return
 
         # Check if the message is in the channel
-        if message.channel.id != self._config.channel_id:
+        if message.channel.id != self.server_configs[message.guild.id].channel_id:
             return
         if not message.reactions:
             return
         if not all(c in POSSIBLE_CHARACTERS for c in message.content.lower()):
             return
 
-        if self._config.current_word:
+        if self.server_configs[message.guild.id].current_word:
             await message.channel.send(
-                f'{message.author.mention} deleted their word!  '
-                f'The **last** word was **{self._config.current_word}**.')
+                f'{message.author.mention} deleted their word! '
+                f'The **last** word was **{self.server_configs[message.guild.id].current_word}**.')
         else:
             await message.channel.send(f'{message.author.mention} deleted their word!')
 
@@ -677,7 +677,7 @@ The above entered word is **NOT** being taken into account.''')
             return
 
         # Check if the message is in the channel
-        if before.channel.id != self._config.channel_id:
+        if before.channel.id != self.server_configs[message.guild.id].channel_id:
             return
         if not before.reactions:
             return
@@ -686,9 +686,10 @@ The above entered word is **NOT** being taken into account.''')
         if before.content.lower() == after.content.lower():
             return
 
-        if self._config.current_word:
+        if self.server_configs[message.guild.id].current_word:
             await after.channel.send(
-                f'{after.author.mention} edited their word! The **last** word was **{self._config.current_word}**.')
+                f'{after.author.mention} edited their word! '
+                f'The **last** word was **{self.server_configs[message.guild.id].current_word}**.')
         else:
             await after.channel.send(f'{after.author.mention} edited their word!')
 
