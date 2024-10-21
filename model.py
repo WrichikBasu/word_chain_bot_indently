@@ -1,7 +1,7 @@
 from typing import Optional
 
 from pydantic import BaseModel
-from sqlalchemy import Boolean, Column, Float, Integer, String, update, values
+from sqlalchemy import Boolean, Column, Float, Integer, String, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 from sqlalchemy.ext.declarative import declarative_base
 
@@ -14,7 +14,7 @@ class ServerConfigModel(Base):
     current_count = Column(Integer, nullable=False)
     current_word = Column(String)
     high_score = Column(Integer, nullable=False)
-    put_high_score_emoji = Column(Boolean, nullable=False)
+    used_high_score_emoji = Column(Boolean, nullable=False)
     reliable_role_id = Column(Integer)
     failed_role_id = Column(Integer)
     last_member_id = Column(Integer)
@@ -55,7 +55,7 @@ class ServerConfig(BaseModel):
     current_count: int = 0
     current_word: Optional[str] = None
     high_score: int = 0
-    put_high_score_emoji: bool = False
+    used_high_score_emoji: bool = False
     reliable_role_id: Optional[int] = None
     failed_role_id: Optional[int] = None
     last_member_id: Optional[int] = None
@@ -80,9 +80,9 @@ class ServerConfig(BaseModel):
         """
         Get the reaction emoji based on the current count.
         """
-        if self.current_count == self.high_score and not self.put_high_score_emoji:
+        if self.current_count == self.high_score and not self.used_high_score_emoji:
             emoji = "🎉"
-            self.put_high_score_emoji = True  # Needs a config data dump
+            self.used_high_score_emoji = True  # Needs a config data dump
         else:
             emoji = {
                 100: "💯",
@@ -101,7 +101,7 @@ class ServerConfig(BaseModel):
             channel_id = self.channel_id,
             current_count = self.current_count,
             high_score = self.high_score,
-            put_high_score_emoji = self.put_high_score_emoji,
+            put_high_score_emoji = self.used_high_score_emoji,
             reliable_role_id = self.reliable_role_id,
             failed_role_id = self.failed_role_id,
             last_member_id = self.last_member_id,
