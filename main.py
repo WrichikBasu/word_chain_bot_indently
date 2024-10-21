@@ -119,7 +119,7 @@ class Bot(commands.Bot):
         intents = discord.Intents.default()
         intents.message_content = True
         intents.members = True
-        self._server_configs: dict[int, ServerConfig] = dict()
+        self.server_configs: dict[int, ServerConfig] = dict()
         self.server_failed_roles: dict[int, Optional[discord.Role]] = dict()
         self.server_reliable_roles: dict[int, Optinal[discord.Role]] = dict()
 
@@ -148,19 +148,19 @@ class Bot(commands.Bot):
             stmt = select(ServerConfigModel)
             result: CursorResult = await connection.execute(stmt)
             configs = [ServerConfig.model_validate(row) for row in result]
-            self._server_configs = {config.server_id: config for config in configs}
+            self.server_configs = {config.server_id: config for config in configs}
 
             for guild in self.guilds:
-                if guild.id in self._server_configs:
+                if guild.id in self.server_configs:
                     continue
                 new_config = ServerConfig(server_id=guild.id)
                 stmt = insert(ServerConfigModel).values(**new_config.model_dump())
                 await connection.execute(stmt)
-                self._server_configs[new_config.server_id] = new_config
+                self.server_configs[new_config.server_id] = new_config
             await connection.commit()
 
         for guild in self.guilds:
-            config = self._server_configs[guild.id]
+            config = self.server_configs[guild.id]
 
             channel: Optional[discord.TextChannel] = bot.get_channel(config.channel_id)
             if channel:
@@ -182,7 +182,7 @@ class Bot(commands.Bot):
 
                 await channel.send(embed=emb)
                 self.load_discord_roles(guild)
-        logger.info(f'Loaded {len(self._server_configs)} servers')
+        logger.info(f'Loaded {len(self.server_configs)} servers')
 
     async def on_guild_join(self, guild: discord.Guild):
         """Override the on_guild_join method"""
@@ -193,7 +193,7 @@ class Bot(commands.Bot):
             stmt = insert(ServerConfigModel).values(**new_config.model_dump()).prefix_with('OR IGNORE')
             await connection.execute(stmt)
             await connection.commit()
-            self._server_configs[new_config.server_id] = new_config
+            self.server_configs[new_config.server_id] = new_config
 
     async def on_guild_remove(self, guild: discord.Guild):
         """Override the on_guild_remove method"""
@@ -202,13 +202,13 @@ class Bot(commands.Bot):
             stmt = delete(ServerConfigModel).where(ServerConfigModel.server_id == guild.id)
             await connection.execute(stmt)
             await connection.commit()
-            self._server_configs.pop(guild.id)
+            self.server_configs.pop(guild.id)
 
     def load_discord_roles(self, guild: discord.Guild):
         """
         Sets the `self.server_failed_roles` and `self.server_reliable_roles` variables.
         """
-        config = self._server_configs[guild.id]
+        config = self.server_configs[guild.id]
         if config.failed_role_id is not None:
             self.server_failed_roles[guild.id] = discord.utils.get(guild.roles, id=config.failed_role_id)
         else:
@@ -325,7 +325,7 @@ class Bot(commands.Bot):
         server_id = message.guild.id
 
         # Check if the message is in the channel
-        if message.channel.id != self._server_configs[server_id].channel_id:
+        if message.channel.id != self.server_configs[server_id].channel_id:
             return
 
         word: str = message.content.lower()
@@ -435,12 +435,12 @@ Please enter another word.''')
             # -------------
             # Wrong member
             # -------------
-            if not SINGLE_PLAYER and self._server_configs[server_id].last_member_id == message.author.id:
+            if not SINGLE_PLAYER and self.server_configs[server_id].last_member_id == message.author.id:
                 response: str = f'''{message.author.mention} messed up the count! \
 *You cannot send two words in a row!*
-{f'The chain length was {self._server_configs[server_id].current_count} when it was broken. :sob:\n' if self._server_configs[server_id].current_count > 0 else ''}\
-Restart with a word starting with **{self._server_configs[server_id].current_word[-1]}** and \
-try to beat the current high score of **{self._server_configs[server_id].high_score}**!'''
+{f'The chain length was {self.server_configs[server_id].current_count} when it was broken. :sob:\n' if self.server_configs[server_id].current_count > 0 else ''}\
+Restart with a word starting with **{self.server_configs[server_id].current_word[-1]}** and \
+try to beat the current high score of **{self.server_configs[server_id].high_score}**!'''
 
                 await self.handle_mistake(message, response, connection)
                 return
@@ -448,12 +448,12 @@ try to beat the current high score of **{self._server_configs[server_id].high_sc
             # -------------------------
             # Wrong starting letter
             # -------------------------
-            if self._server_configs[server_id].current_word and word[0] != self._server_configs[server_id].current_word[-1]:
+            if self.server_configs[server_id].current_word and word[0] != self.server_configs[server_id].current_word[-1]:
                 response: str = f'''{message.author.mention} messed up the chain! \
-*The word you entered did not begin with the last letter of the previous word* (**{self._server_configs[server_id].current_word[-1]}**).
-{f'The chain length was {self._server_configs[server_id].current_count} when it was broken. :sob:\n' if self._server_configs[server_id].current_count > 0 else ''}\
-Restart with a word starting with **{self._server_configs[server_id].current_word[-1]}** and try to beat the \
-current high score of **{self._server_configs[server_id].high_score}**!'''
+*The word you entered did not begin with the last letter of the previous word* (**{self.server_configs[server_id].current_word[-1]}**).
+{f'The chain length was {self.server_configs[server_id].current_count} when it was broken. :sob:\n' if self.server_configs[server_id].current_count > 0 else ''}\
+Restart with a word starting with **{self.server_configs[server_id].current_word[-1]}** and try to beat the \
+current high score of **{self.server_configs[server_id].high_score}**!'''
 
                 await self.handle_mistake(message, response, connection)
                 return
@@ -466,17 +466,17 @@ current high score of **{self._server_configs[server_id].high_score}**!'''
 
                 if result == Bot.API_RESPONSE_WORD_DOESNT_EXIST:
 
-                    if self._server_configs[server_id].current_word:
+                    if self.server_configs[server_id].current_word:
                         response: str = f'''{message.author.mention} messed up the chain! \
 *The word you entered does not exist.*
-{f'The chain length was {self._server_configs[server_id].current_count} when it was broken. :sob:\n' if self._server_configs[server_id].current_count > 0 else ''}\
-Restart with a word starting with **{self._server_configs[server_id].current_word[-1]}** and try to beat the \
-current high score of **{self._server_configs[server_id].high_score}**!'''
+{f'The chain length was {self.server_configs[server_id].current_count} when it was broken. :sob:\n' if self.server_configs[server_id].current_count > 0 else ''}\
+Restart with a word starting with **{self.server_configs[server_id].current_word[-1]}** and try to beat the \
+current high score of **{self.server_configs[server_id].high_score}**!'''
 
                     else:
                         response: str = f'''{message.author.mention} messed up the chain! \
 *The word you entered does not exist.*
-Restart and try to beat the current high score of **{self._server_configs[server_id].high_score}**!'''
+Restart and try to beat the current high score of **{self.server_configs[server_id].high_score}**!'''
 
                     await self.handle_mistake(message, response, connection)
                     return
@@ -495,9 +495,9 @@ The above entered word is **NOT** being taken into account.''')
             # --------------------
             # Everything is fine
             # ---------------------
-            self._server_configs[server_id].update_current(member_id=message.author.id, current_word=word)
+            self.server_configs[server_id].update_current(member_id=message.author.id, current_word=word)
 
-            await message.add_reaction(SPECIAL_REACTION_EMOJIS.get(word, self._server_configs[server_id].reaction_emoji()))
+            await message.add_reaction(SPECIAL_REACTION_EMOJIS.get(word, self.server_configs[server_id].reaction_emoji()))
 
             last_words: deque[str] = self._history[message.author.id]
             karma: float = calculate_total_karma(word, last_words)
@@ -523,20 +523,20 @@ The above entered word is **NOT** being taken into account.''')
 
             self._cached_words.add(word)
 
-            current_count = self._server_configs[server_id]
+            current_count = self.server_configs[server_id]
 
             if current_count > 0 and current_count % 100 == 0:
                 await message.channel.send(f'{current_count} words! Nice work, keep it up!')
 
             # Check and reset the server config.failed_member_id to None.
             # No need to remove the role itself, it will be done later when not busy
-            if self.server_failed_roles[server_id] and self._server_configs[server_id].failed_member_id == message.author.id:
-                self._server_configs[server_id].correct_inputs_by_failed_member += 1
-                if self._server_configs[server_id].correct_inputs_by_failed_member >= 30:
-                    self._server_configs[server_id].failed_member_id = None
-                    self._server_configs[server_id].correct_inputs_by_failed_member = 0
+            if self.server_failed_roles[server_id] and self.server_configs[server_id].failed_member_id == message.author.id:
+                self.server_configs[server_id].correct_inputs_by_failed_member += 1
+                if self.server_configs[server_id].correct_inputs_by_failed_member >= 30:
+                    self.server_configs[server_id].failed_member_id = None
+                    self.server_configs[server_id].correct_inputs_by_failed_member = 0
 
-            await self._server_configs[server_id].sync_to_db(connection)
+            await self.server_configs[server_id].sync_to_db(connection)
 
     # ---------------------------------------------------------------------------------------
 
@@ -546,7 +546,7 @@ The above entered word is **NOT** being taken into account.''')
 
         server_id = message.guild.id
         if self.server_failed_roles[server_id]:
-            self._server_configs[server_id].failed_member_id = message.author.id  # Designate current user as failed member
+            self.server_configs[server_id].failed_member_id = message.author.id  # Designate current user as failed member
             # Adding/removing failed role is done when not busy
 
         await message.channel.send(response)
@@ -563,7 +563,7 @@ The above entered word is **NOT** being taken into account.''')
         await connection.execute(stmt)
         await connection.commit()
 
-        await self._server_configs[server_id].sync_to_db(connection)
+        await self.server_configs[server_id].sync_to_db(connection)
 
     # ------------------------------------------------------------------------------------------------
     @staticmethod
@@ -840,10 +840,10 @@ async def set_channel(interaction: discord.Interaction, channel: discord.TextCha
     if not interaction.user.guild_permissions.ban_members:
         await interaction.response.send_message('You do not have permission to do this!')
         return
-    config = Config.read()
-    config.channel_id = channel.id
-    config.dump_data()
-    bot.read_config()  # Explicitly ask the bot to re-read the config
+    bot.server_configs[interaction.guild.id].channel_id = channel.id
+    async with bot.SQL_ENGINE.begin() as connection:
+        await bot.server_configs[interaction.guild.id].sync_to_db(connection)
+        await connection.commit()
     await interaction.response.send_message(f'Word chain channel was set to {channel.mention}')
 
 
