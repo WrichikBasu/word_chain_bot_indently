@@ -816,9 +816,6 @@ The above entered word is **NOT** being taken into account.''')
 
         alembic_cfg = AlembicConfig('alembic.ini')
         alembic_command.upgrade(alembic_cfg, 'head')
-        # alembic does some shenenigans and causes our logger to be disabled
-        logger.setLevel(logging.INFO)
-        logger.disabled = False
 
 bot = Bot()
 
