@@ -295,18 +295,6 @@ class Bot(commands.Bot):
                     self._config.correct_inputs_by_failed_member = 0
                     self._config.dump_data()
 
-    async def schedule_busy_work(self):
-        await asyncio.sleep(5)
-        self._busy -= 1
-        await self.do_busy_work()
-
-    async def do_busy_work(self):
-        if self._busy == 0:
-            self._config.dump_data()
-            await self.add_remove_failed_role()
-            await self.add_remove_reliable_role()
-            await self.add_to_cache()
-
     async def on_message(self, message: discord.Message) -> None:
         """
         Hierarchy of checking:
@@ -1082,14 +1070,6 @@ async def disconnect(interaction: discord.Interaction):
     emb = discord.Embed(description='⚠️  Bot is now offline.', colour=discord.Color.brand_red())
     await interaction.response.send_message(embed=emb)
     await bot.close()
-
-
-@bot.tree.command(name='force_dump', description='Forcibly dumps configuration data')
-@app_commands.default_permissions(ban_members=True)
-async def force_dump(interaction: discord.Interaction):
-    bot._busy = 0
-    await bot.do_busy_work()
-    await interaction.response.send_message('Configuration data successfully dumped.')
 
 
 @bot.tree.command(name='prune', description='(DANGER) Deletes data of users who are no longer in the server')
