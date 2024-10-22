@@ -51,8 +51,8 @@ class Bot(commands.Bot):
         self.server_failed_roles: dict[int, Optional[discord.Role]] = dict()
         self.server_reliable_roles: dict[int, Optinal[discord.Role]] = dict()
 
-        self._cached_words: set[str] = {}
-        self._history = defaultdict(lambda: deque(maxlen=HISTORY_LENGTH))
+        self._cached_words: set[str] = set()
+        self._server_histories: dict[int, dict[int, deque[str]]] = defaultdict(lambda: defaultdict(lambda: deque(maxlen=HISTORY_LENGTH)))
         super().__init__(command_prefix='!', intents=intents)
 
     async def on_ready(self) -> None:
@@ -371,9 +371,9 @@ The above entered word is **NOT** being taken into account.''')
 
             await message.add_reaction(SPECIAL_REACTION_EMOJIS.get(word, self.server_configs[server_id].reaction_emoji()))
 
-            last_words: deque[str] = self._history[message.author.id]
+            last_words: deque[str] = self._server_histories[server_id][message.author.id]
             karma: float = calculate_total_karma(word, last_words)
-            self._history[message.author.id].append(word)
+            self._server_histories[server_id][message.author.id].append(word)
 
             stmt = update(MemberModel).where(
                 MemberModel.server_id == message.guild.id,
@@ -406,9 +406,9 @@ The above entered word is **NOT** being taken into account.''')
                 if self.server_configs[server_id].correct_inputs_by_failed_member >= 30:
                     self.server_configs[server_id].failed_member_id = None
                     self.server_configs[server_id].correct_inputs_by_failed_member = 0
-                    await self.add_remove_failed_role(connection)
+                    await self.add_remove_failed_role(message.guild, connection)
 
-            await self.add_remove_reliable_role(connection)
+            await self.add_remove_reliable_role(message.guild, connection)
             await self.server_configs[server_id].sync_to_db(connection)
 
     # ---------------------------------------------------------------------------------------
@@ -420,7 +420,7 @@ The above entered word is **NOT** being taken into account.''')
         server_id = message.guild.id
         if self.server_failed_roles[server_id]:
             self.server_configs[server_id].failed_member_id = message.author.id  # Designate current user as failed member
-            await self.add_remove_failed_role(connection)
+            await self.add_remove_failed_role(message.guild, connection)
 
         await message.channel.send(response)
         await message.add_reaction('❌')
