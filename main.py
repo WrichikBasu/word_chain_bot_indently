@@ -146,7 +146,7 @@ class Bot(commands.Bot):
         if self.server_reliable_roles[guild.id]:
             stmt = select(MemberModel).where(
                 MemberModel.server_id == guild.id,
-                MemberModel.member_id.in_(tuple(users))
+                MemberModel.member_id.in_([member.id for member in guild.members])
             )
             result: CursorResult = await connection.execute(stmt)
             db_members = [Member.model_validate(row) for row in result]
@@ -395,7 +395,7 @@ The above entered word is **NOT** being taken into account.''')
 
             self._cached_words.add(word)
 
-            current_count = self.server_configs[server_id]
+            current_count = self.server_configs[server_id].current_count
 
             if current_count > 0 and current_count % 100 == 0:
                 await message.channel.send(f'{current_count} words! Nice work, keep it up!')
@@ -408,6 +408,7 @@ The above entered word is **NOT** being taken into account.''')
                     self.server_configs[server_id].correct_inputs_by_failed_member = 0
                     await self.add_remove_failed_role(message.guild, connection)
 
+            await self.add_to_cache()
             await self.add_remove_reliable_role(message.guild, connection)
             await self.server_configs[server_id].sync_to_db(connection)
 
@@ -600,9 +601,9 @@ The above entered word is **NOT** being taken into account.''')
         words = self._cached_words
         self._cached_words = {}
 
-        async with Bot.SQL_ENGINE.begin() as connection:
+        async with self.SQL_ENGINE.begin() as connection:
             for word in tuple(words):
-                if not await Bot.is_word_blacklisted(word):  # Do NOT insert globally blacklisted words into the cache
+                if not await self.is_word_blacklisted(word):  # Do NOT insert globally blacklisted words into the cache
                     stmt = insert(WordCacheModel).values(words=word).prefix_with('OR IGNORE')
                     await connection.execute(stmt)
             await connection.commit()
