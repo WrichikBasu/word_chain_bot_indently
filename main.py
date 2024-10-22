@@ -999,8 +999,7 @@ class StatsCmdGroup(app_commands.Group):
     @app_commands.command(description='Show the server stats for the word chain game')
     async def server(self, interaction: discord.Interaction) -> None:
         """Command to show the stats of the server"""
-        # Use the bot's config variable, do not re-read file as it may not have been updated yet
-        config: Config = bot._config
+        config: ServerConfig = bot.server_configs[interaction.guild.id]
 
         if config.channel_id is None:  # channel not set yet
             await interaction.response.send_message("Counting channel not set yet!")
