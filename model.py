@@ -101,7 +101,7 @@ class ServerConfig(BaseModel):
             channel_id = self.channel_id,
             current_count = self.current_count,
             high_score = self.high_score,
-            put_high_score_emoji = self.used_high_score_emoji,
+            used_high_score_emoji = self.used_high_score_emoji,
             reliable_role_id = self.reliable_role_id,
             failed_role_id = self.failed_role_id,
             last_member_id = self.last_member_id,
