@@ -743,7 +743,6 @@ __Restricted commands__ (Admin-only)
 **set_reliable_role** - Sets the reliable role.
 **remove_failed_role** - Unsets the role to give when a user fails.
 **remove_reliable_role** - Unset the reliable role.
-**force_dump** - Forcibly dump bot config data. Use only when no one is actively playing.
 **prune** - Remove data for users who are no longer in the server.
 **blacklist add** - Add a word to the blacklist for this server.
 **blacklist remove** - Remove a word from the blacklist of this server.
