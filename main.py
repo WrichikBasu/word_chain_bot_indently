@@ -51,7 +51,6 @@ class Bot(commands.Bot):
         self.server_failed_roles: dict[int, Optional[discord.Role]] = dict()
         self.server_reliable_roles: dict[int, Optinal[discord.Role]] = dict()
 
-        self._cached_words: set[str] = set()
         self._server_histories: dict[int, dict[int, deque[str]]] = defaultdict(lambda: defaultdict(lambda: deque(maxlen=HISTORY_LENGTH)))
         super().__init__(command_prefix='!', intents=intents)
 
@@ -393,8 +392,6 @@ The above entered word is **NOT** being taken into account.''')
 
             await connection.commit()
 
-            self._cached_words.add(word)
-
             current_count = self.server_configs[server_id].current_count
 
             if current_count > 0 and current_count % 100 == 0:
@@ -408,7 +405,7 @@ The above entered word is **NOT** being taken into account.''')
                     self.server_configs[server_id].correct_inputs_by_failed_member = 0
                     await self.add_remove_failed_role(message.guild, connection)
 
-            await self.add_to_cache()
+            await self.add_to_cache(word)
             await self.add_remove_reliable_role(message.guild, connection)
             await self.server_configs[server_id].sync_to_db(connection)
 
@@ -593,20 +590,16 @@ The above entered word is **NOT** being taken into account.''')
         result: CursorResult = await connection.execute(stmt)
         return result.scalar()
 
-    async def add_to_cache(self) -> None:
+    async def add_to_cache(self, word: str) -> None:
         """
-        Add words from `self._cached_words` into the `Bot.TABLE_CACHE` schema.
-        Should be executed when not busy.
+        Add a word into the `Bot.TABLE_CACHE` schema.
         """
-        words = self._cached_words
-        self._cached_words = {}
 
         async with self.SQL_ENGINE.begin() as connection:
-            for word in tuple(words):
-                if not await self.is_word_blacklisted(word):  # Do NOT insert globally blacklisted words into the cache
-                    stmt = insert(WordCacheModel).values(words=word).prefix_with('OR IGNORE')
-                    await connection.execute(stmt)
-            await connection.commit()
+            if not await self.is_word_blacklisted(word):  # Do NOT insert globally blacklisted words into the cache
+                stmt = insert(WordCacheModel).values(word=word).prefix_with('OR IGNORE')
+                await connection.execute(stmt)
+                await connection.commit()
 
     @staticmethod
     async def is_word_blacklisted(word: str, server_id: Optional[int] = None,
@@ -886,8 +879,7 @@ async def check_word(interaction: discord.Interaction, word: str):
 
             emb.description = f'✅ The word **{word}** is valid.'
 
-            bot._cached_words.add(word)
-            await bot.add_to_cache()
+            await bot.add_to_cache(word)
 
         case Bot.API_RESPONSE_WORD_DOESNT_EXIST:
             emb.description = f'❌ **{word}** is **not** a valid word.'
