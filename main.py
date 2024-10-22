@@ -1009,7 +1009,7 @@ class StatsCmdGroup(app_commands.Group):
             description=f'''Current Chain Length: {config.current_count}
 Longest chain length: {config.high_score}
 {f"**Last word:** {config.current_word}" if config.current_word else ""}
-{f"Last word by: <@{config.current_member_id}>" if config.current_member_id else ""}''',
+{f"Last word by: <@{config.last_member_id}>" if config.last_member_id else ""}''',
             color=discord.Color.blurple()
         )
         server_stats_embed.set_author(name=interaction.guild, icon_url=interaction.guild.icon)
