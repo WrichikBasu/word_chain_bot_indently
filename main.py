@@ -15,7 +15,7 @@ from discord.ext import commands
 from dotenv import load_dotenv
 from requests_futures.sessions import FuturesSession
 from sqlalchemy import Column, CursorResult, delete, exists, func, insert, select, update, values
-from sqlalchemy.ext.asyncio import AsyncConnection, create_async_engine
+from sqlalchemy.ext.asyncio import AsyncConnection, create_async_engine, AsyncEngine
 from sqlalchemy.sql.functions import count
 
 from alembic import command as alembic_command
@@ -134,7 +134,7 @@ class Bot(commands.Bot):
         else:
             self.server_reliable_roles[guild.id] = None
 
-    async def add_remove_reliable_role(self, guild: discord.Guild, connection: AsyncConnection):
+    async def add_remove_reliable_role(self, guild: discord.Guild, async_engine: AsyncEngine):
         """
         Adds/removes the reliable role for participating users.
 
@@ -143,30 +143,31 @@ class Bot(commands.Bot):
         2. Karma must be >= `RELIABLE_ROLE_KARMA_THRESHOLD`
         """
         if self.server_reliable_roles[guild.id]:
-            stmt = select(MemberModel).where(
-                MemberModel.server_id == guild.id,
-                MemberModel.member_id.in_([member.id for member in guild.members])
-            )
-            result: CursorResult = await connection.execute(stmt)
-            db_members = [Member.model_validate(row) for row in result]
+            async with async_engine.begin() as connection:
+                stmt = select(MemberModel).where(
+                    MemberModel.server_id == guild.id,
+                    MemberModel.member_id.in_([member.id for member in guild.members])
+                )
+                result: CursorResult = await connection.execute(stmt)
+                db_members = [Member.model_validate(row) for row in result]
 
-            def truncate(value: float, decimals: int = 4):
-                t = 10.0 ** decimals
-                return (value * t) // 1 / t
+                def truncate(value: float, decimals: int = 4):
+                    t = 10.0 ** decimals
+                    return (value * t) // 1 / t
 
-            if db_members:
-                for db_member in db_members:
-                    karma = truncate(db_member.karma)
-                    if karma != 0:
-                        member: Optional[discord.Member] = guild.get_member(db_member.member_id)
-                        if member:
-                            accuracy: float = truncate(db_member.correct / (db_member.correct + db_member.wrong))
-                            if karma >= RELIABLE_ROLE_KARMA_THRESHOLD and accuracy >= RELIABLE_ROLE_ACCURACY_THRESHOLD:
-                                await member.add_roles(self.server_reliable_roles[guild.id])
-                            else:
-                                await member.remove_roles(self.server_reliable_roles[guild.id])
+                if db_members:
+                    for db_member in db_members:
+                        karma = truncate(db_member.karma)
+                        if karma != 0:
+                            member: Optional[discord.Member] = guild.get_member(db_member.member_id)
+                            if member:
+                                accuracy: float = truncate(db_member.correct / (db_member.correct + db_member.wrong))
+                                if karma >= RELIABLE_ROLE_KARMA_THRESHOLD and accuracy >= RELIABLE_ROLE_ACCURACY_THRESHOLD:
+                                    await member.add_roles(self.server_reliable_roles[guild.id])
+                                else:
+                                    await member.remove_roles(self.server_reliable_roles[guild.id])
 
-    async def add_remove_failed_role(self, guild: discord.Guild, connection: AsyncConnection):
+    async def add_remove_failed_role(self, guild: discord.Guild, async_engine: AsyncEngine):
         """
         Adds the `failed_role` to the user whose id is stored in `failed_member_id`.
         Removes the failed role from all other users.
@@ -195,7 +196,7 @@ class Bot(commands.Bot):
                     # Member is no longer in the server
                     self.server_configs[guild.id].failed_member_id = None
                     self.server_configs[guild.id].correct_inputs_by_failed_member = 0
-                    await self.server_configs[guild.id].sync_to_db(self.SQL_ENGINE)
+                    await self.server_configs[guild.id].sync_to_db(async_engine)
 
     async def on_message(self, message: discord.Message) -> None:
         """
@@ -403,10 +404,10 @@ The above entered word is **NOT** being taken into account.''')
                 if self.server_configs[server_id].correct_inputs_by_failed_member >= 30:
                     self.server_configs[server_id].failed_member_id = None
                     self.server_configs[server_id].correct_inputs_by_failed_member = 0
-                    await self.add_remove_failed_role(message.guild, connection)
+                    await self.add_remove_failed_role(message.guild, self.SQL_ENGINE)
 
             await self.add_to_cache(word)
-            await self.add_remove_reliable_role(message.guild, connection)
+            await self.add_remove_reliable_role(message.guild, self.SQL_ENGINE)
             await self.server_configs[server_id].sync_to_db(self.SQL_ENGINE)
 
     # ---------------------------------------------------------------------------------------
@@ -418,7 +419,7 @@ The above entered word is **NOT** being taken into account.''')
         server_id = message.guild.id
         if self.server_failed_roles[server_id]:
             self.server_configs[server_id].failed_member_id = message.author.id  # Designate current user as failed member
-            await self.add_remove_failed_role(message.guild, connection)
+            await self.add_remove_failed_role(message.guild, self.SQL_ENGINE)
 
         await message.channel.send(response)
         await message.add_reaction('❌')
@@ -895,9 +896,8 @@ async def set_failed_role(interaction: discord.Interaction, role: discord.Role):
     """Command to set the role to be used when a user fails to count"""
     bot.server_configs[interaction.guild.id].failed_role_id = role.id
     await bot.server_configs[interaction.guild.id].sync_to_db(bot.SQL_ENGINE)
-    async with bot.SQL_ENGINE.begin() as connection:
-        bot.server_failed_roles[interaction.guild.id] = role  # Assign role directly if we already have it in this context
-        await bot.add_remove_failed_role(interaction.guild, connection)
+    bot.server_failed_roles[interaction.guild.id] = role  # Assign role directly if we already have it in this context
+    await bot.add_remove_failed_role(interaction.guild, bot.SQL_ENGINE)
     await interaction.response.send_message(f'Failed role was set to {role.mention}')
 
 
@@ -909,9 +909,8 @@ async def set_reliable_role(interaction: discord.Interaction, role: discord.Role
     """Command to set the role to be used when a user gets 100 of score"""
     bot.server_configs[interaction.guild.id].reliable_role_id = role.id
     await bot.server_configs[interaction.guild.id].sync_to_db(bot.SQL_ENGINE)
-    async with bot.SQL_ENGINE.begin() as connection:
-        bot.server_reliable_roles[interaction.guild.id] = role  # Assign role directly if we already have it in this context
-        await bot.add_remove_reliable_role(interaction.guild, connection)
+    bot.server_reliable_roles[interaction.guild.id] = role  # Assign role directly if we already have it in this context
+    await bot.add_remove_reliable_role(interaction.guild, bot.SQL_ENGINE)
     await interaction.response.send_message(f'Reliable role was set to {role.mention}')
 
 
@@ -920,9 +919,8 @@ async def set_reliable_role(interaction: discord.Interaction, role: discord.Role
 async def remove_failed_role(interaction: discord.Interaction):
     bot.server_configs[interaction.guild.id].failed_role_id = None
     await bot.server_configs[interaction.guild.id].sync_to_db(bot.SQL_ENGINE)
-    async with bot.SQL_ENGINE.begin() as connection:
-        bot.server_failed_roles[interaction.guild.id] = None
-        await bot.add_remove_failed_role(interaction.guild, connection)
+    bot.server_failed_roles[interaction.guild.id] = None
+    await bot.add_remove_failed_role(interaction.guild, bot.SQL_ENGINE)
     await interaction.response.send_message('Failed role removed')
 
 
@@ -931,9 +929,8 @@ async def remove_failed_role(interaction: discord.Interaction):
 async def remove_reliable_role(interaction: discord.Interaction):
     bot.server_configs[interaction.guild.id].reliable_role_id = None
     await bot.server_configs[interaction.guild.id].sync_to_db(bot.SQL_ENGINE)
-    async with bot.SQL_ENGINE.begin() as connection:
-        bot.server_reliable_roles[interaction.guild.id] = None
-        await bot.add_remove_reliable_role(interaction.guild, connection)
+    bot.server_reliable_roles[interaction.guild.id] = None
+    await bot.add_remove_reliable_role(interaction.guild, bot.SQL_ENGINE)
     await interaction.response.send_message('Reliable role removed')
 
 

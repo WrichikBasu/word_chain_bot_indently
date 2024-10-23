@@ -2,7 +2,7 @@ from typing import Optional
 
 from pydantic import BaseModel
 from sqlalchemy import Boolean, Column, Float, Integer, String, update
-from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
+from sqlalchemy.ext.asyncio import AsyncEngine
 from sqlalchemy.ext.declarative import declarative_base
 
 Base = declarative_base()
