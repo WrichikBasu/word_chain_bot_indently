@@ -94,8 +94,6 @@ class ServerConfig(BaseModel):
     async def sync_to_db(self, connection: AsyncConnection):
         """
         Synchronized itself with the DB.
-        :param connection:
-        :return:
         """
         stmt = update(ServerConfigModel).values(
             channel_id = self.channel_id,
