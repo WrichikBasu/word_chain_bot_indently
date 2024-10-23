@@ -2,7 +2,7 @@ from typing import Optional
 
 from pydantic import BaseModel
 from sqlalchemy import Boolean, Column, Float, Integer, String, update
-from sqlalchemy.ext.asyncio import AsyncConnection
+from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 from sqlalchemy.ext.declarative import declarative_base
 
 Base = declarative_base()
@@ -91,23 +91,24 @@ class ServerConfig(BaseModel):
             }.get(self.current_count, "✅")
         return emoji
 
-    async def sync_to_db(self, connection: AsyncConnection):
+    async def sync_to_db(self, async_engine: AsyncEngine):
         """
         Synchronized itself with the DB.
         """
-        stmt = update(ServerConfigModel).values(
-            channel_id = self.channel_id,
-            current_count = self.current_count,
-            high_score = self.high_score,
-            used_high_score_emoji = self.used_high_score_emoji,
-            reliable_role_id = self.reliable_role_id,
-            failed_role_id = self.failed_role_id,
-            last_member_id = self.last_member_id,
-            failed_member_id = self.failed_member_id,
-            correct_inputs_by_failed_member = self.correct_inputs_by_failed_member
-        ).where(ServerConfigModel.server_id == self.server_id)
-        await connection.execute(stmt)
-        await connection.commit()
+        async with async_engine.begin() as connection:
+            stmt = update(ServerConfigModel).values(
+                channel_id = self.channel_id,
+                current_count = self.current_count,
+                high_score = self.high_score,
+                used_high_score_emoji = self.used_high_score_emoji,
+                reliable_role_id = self.reliable_role_id,
+                failed_role_id = self.failed_role_id,
+                last_member_id = self.last_member_id,
+                failed_member_id = self.failed_member_id,
+                correct_inputs_by_failed_member = self.correct_inputs_by_failed_member
+            ).where(ServerConfigModel.server_id == self.server_id)
+            await connection.execute(stmt)
+            await connection.commit()
 
     class Config:
         from_attributes = True

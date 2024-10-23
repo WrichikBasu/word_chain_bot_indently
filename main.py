@@ -195,7 +195,7 @@ class Bot(commands.Bot):
                     # Member is no longer in the server
                     self.server_configs[guild.id].failed_member_id = None
                     self.server_configs[guild.id].correct_inputs_by_failed_member = 0
-                    await self.server_configs[guild.id].sync_to_db(connection)
+                    await self.server_configs[guild.id].sync_to_db(self.SQL_ENGINE)
 
     async def on_message(self, message: discord.Message) -> None:
         """
@@ -407,7 +407,7 @@ The above entered word is **NOT** being taken into account.''')
 
             await self.add_to_cache(word)
             await self.add_remove_reliable_role(message.guild, connection)
-            await self.server_configs[server_id].sync_to_db(connection)
+            await self.server_configs[server_id].sync_to_db(self.SQL_ENGINE)
 
     # ---------------------------------------------------------------------------------------
 
@@ -434,7 +434,7 @@ The above entered word is **NOT** being taken into account.''')
         await connection.execute(stmt)
         await connection.commit()
 
-        await self.server_configs[server_id].sync_to_db(connection)
+        await self.server_configs[server_id].sync_to_db(self.SQL_ENGINE)
 
     # ------------------------------------------------------------------------------------------------
     @staticmethod
@@ -709,9 +709,7 @@ async def set_channel(interaction: discord.Interaction, channel: discord.TextCha
         await interaction.response.send_message('You do not have permission to do this!')
         return
     bot.server_configs[interaction.guild.id].channel_id = channel.id
-    async with bot.SQL_ENGINE.begin() as connection:
-        await bot.server_configs[interaction.guild.id].sync_to_db(connection)
-        await connection.commit()
+    await bot.server_configs[interaction.guild.id].sync_to_db(bot.SQL_ENGINE)
     await interaction.response.send_message(f'Word chain channel was set to {channel.mention}')
 
 
@@ -896,8 +894,8 @@ async def check_word(interaction: discord.Interaction, word: str):
 async def set_failed_role(interaction: discord.Interaction, role: discord.Role):
     """Command to set the role to be used when a user fails to count"""
     bot.server_configs[interaction.guild.id].failed_role_id = role.id
+    await bot.server_configs[interaction.guild.id].sync_to_db(bot.SQL_ENGINE)
     async with bot.SQL_ENGINE.begin() as connection:
-        await bot.server_configs[interaction.guild.id].sync_to_db(connection)
         bot.server_failed_roles[interaction.guild.id] = role  # Assign role directly if we already have it in this context
         await bot.add_remove_failed_role(interaction.guild, connection)
     await interaction.response.send_message(f'Failed role was set to {role.mention}')
@@ -910,8 +908,8 @@ async def set_failed_role(interaction: discord.Interaction, role: discord.Role):
 async def set_reliable_role(interaction: discord.Interaction, role: discord.Role):
     """Command to set the role to be used when a user gets 100 of score"""
     bot.server_configs[interaction.guild.id].reliable_role_id = role.id
+    await bot.server_configs[interaction.guild.id].sync_to_db(bot.SQL_ENGINE)
     async with bot.SQL_ENGINE.begin() as connection:
-        await bot.server_configs[interaction.guild.id].sync_to_db(connection)
         bot.server_reliable_roles[interaction.guild.id] = role  # Assign role directly if we already have it in this context
         await bot.add_remove_reliable_role(interaction.guild, connection)
     await interaction.response.send_message(f'Reliable role was set to {role.mention}')
@@ -921,8 +919,8 @@ async def set_reliable_role(interaction: discord.Interaction, role: discord.Role
 @app_commands.default_permissions(ban_members=True)
 async def remove_failed_role(interaction: discord.Interaction):
     bot.server_configs[interaction.guild.id].failed_role_id = None
+    await bot.server_configs[interaction.guild.id].sync_to_db(bot.SQL_ENGINE)
     async with bot.SQL_ENGINE.begin() as connection:
-        await bot.server_configs[interaction.guild.id].sync_to_db(connection)
         bot.server_failed_roles[interaction.guild.id] = None
         await bot.add_remove_failed_role(interaction.guild, connection)
     await interaction.response.send_message('Failed role removed')
@@ -932,8 +930,8 @@ async def remove_failed_role(interaction: discord.Interaction):
 @app_commands.default_permissions(ban_members=True)
 async def remove_reliable_role(interaction: discord.Interaction):
     bot.server_configs[interaction.guild.id].reliable_role_id = None
+    await bot.server_configs[interaction.guild.id].sync_to_db(bot.SQL_ENGINE)
     async with bot.SQL_ENGINE.begin() as connection:
-        await bot.server_configs[interaction.guild.id].sync_to_db(connection)
         bot.server_reliable_roles[interaction.guild.id] = None
         await bot.add_remove_reliable_role(interaction.guild, connection)
     await interaction.response.send_message('Reliable role removed')
