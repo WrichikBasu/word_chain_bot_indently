@@ -545,7 +545,7 @@ The above entered word is **NOT** being taken into account.''')
             return
 
         # Check if the message is in the channel
-        if before.channel.id != self.server_configs[message.guild.id].channel_id:
+        if before.channel.id != self.server_configs[before.guild.id].channel_id:
             return
         if not before.reactions:
             return
@@ -554,10 +554,10 @@ The above entered word is **NOT** being taken into account.''')
         if before.content.lower() == after.content.lower():
             return
 
-        if self.server_configs[message.guild.id].current_word:
+        if self.server_configs[before.guild.id].current_word:
             await after.channel.send(
                 f'{after.author.mention} edited their word! '
-                f'The **last** word was **{self.server_configs[message.guild.id].current_word}**.')
+                f'The **last** word was **{self.server_configs[before.guild.id].current_word}**.')
         else:
             await after.channel.send(f'{after.author.mention} edited their word!')
 
@@ -852,19 +852,16 @@ async def check_word(interaction: discord.Interaction, word: str):
         if await Bot.is_word_whitelisted(word, interaction.guild.id, connection):
             emb.description = f'✅ The word **{word}** is valid.'
             await interaction.followup.send(embed=emb)
-            conn.close()
             return
 
         if await Bot.is_word_blacklisted(word, interaction.guild.id, connection):
             emb.description = f'❌ The word **{word}** is **blacklisted** and hence, **not** valid.'
             await interaction.followup.send(embed=emb)
-            conn.close()
             return
 
         if await Bot.is_word_in_cache(word, connection):
             emb.description = f'✅ The word **{word}** is valid.'
             await interaction.followup.send(embed=emb)
-            conn.close()
             return
 
         future: concurrent.futures.Future = Bot.start_api_query(word)
