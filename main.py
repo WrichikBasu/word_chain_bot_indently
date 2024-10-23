@@ -1,12 +1,8 @@
 """Word chain bot for the Indently server"""
-import asyncio
 import concurrent.futures
-import json
 import logging
 import os
-from code import interact
 from collections import defaultdict, deque
-from dataclasses import dataclass
 from typing import Optional
 
 import discord
@@ -14,8 +10,8 @@ from discord import app_commands
 from discord.ext import commands
 from dotenv import load_dotenv
 from requests_futures.sessions import FuturesSession
-from sqlalchemy import Column, CursorResult, delete, exists, func, insert, select, update, values
-from sqlalchemy.ext.asyncio import AsyncConnection, create_async_engine, AsyncEngine
+from sqlalchemy import CursorResult, delete, exists, func, insert, select, update
+from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, create_async_engine
 from sqlalchemy.sql.functions import count
 
 from alembic import command as alembic_command
@@ -49,7 +45,7 @@ class Bot(commands.Bot):
         intents.members = True
         self.server_configs: dict[int, ServerConfig] = dict()
         self.server_failed_roles: dict[int, Optional[discord.Role]] = dict()
-        self.server_reliable_roles: dict[int, Optinal[discord.Role]] = dict()
+        self.server_reliable_roles: dict[int, Optional[discord.Role]] = dict()
 
         self._server_histories: dict[int, dict[int, deque[str]]] = defaultdict(lambda: defaultdict(lambda: deque(maxlen=HISTORY_LENGTH)))
         super().__init__(command_prefix='!', intents=intents)
