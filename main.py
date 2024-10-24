@@ -133,7 +133,7 @@ class Bot(commands.Bot):
 
     async def add_remove_reliable_role(self, guild: discord.Guild, async_engine: AsyncEngine):
         """
-        Adds/removes the reliable role for participating users.
+        Adds/removes the reliable role if present to make sure it matches the rules.
 
         Criteria for getting the reliable role:
         1. Accuracy must be >= `RELIABLE_ROLE_ACCURACY_THRESHOLD`. (Accuracy = correct / (correct + wrong))
@@ -141,28 +141,28 @@ class Bot(commands.Bot):
         """
         if self.server_reliable_roles[guild.id]:
             async with async_engine.begin() as connection:
-                stmt = select(MemberModel).where(
+                stmt = select(MemberModel.member_id).where(
                     MemberModel.server_id == guild.id,
-                    MemberModel.member_id.in_([member.id for member in guild.members])
+                    MemberModel.member_id.in_([member.id for member in guild.members]),
+                    MemberModel.karma > RELIABLE_ROLE_KARMA_THRESHOLD,
+                    (MemberModel.correct / (MemberModel.correct + MemberModel.wrong)) > RELIABLE_ROLE_ACCURACY_THRESHOLD
                 )
                 result: CursorResult = await connection.execute(stmt)
-                db_members = [Member.model_validate(row) for row in result]
+                db_members: set[int] = {row[0] for row in result}
+                role_members: set[int] = {member.id for member in self.server_reliable_roles[guild.id].members}
 
-                def truncate(value: float, decimals: int = 4):
-                    t = 10.0 ** decimals
-                    return (value * t) // 1 / t
+                only_db_members = db_members - role_members  # those that should have the role but do not
+                only_role_members = role_members - db_members  # those that have the role but should not
 
-                if db_members:
-                    for db_member in db_members:
-                        karma = truncate(db_member.karma)
-                        if karma != 0:
-                            member: Optional[discord.Member] = guild.get_member(db_member.member_id)
-                            if member:
-                                accuracy: float = truncate(db_member.correct / (db_member.correct + db_member.wrong))
-                                if karma >= RELIABLE_ROLE_KARMA_THRESHOLD and accuracy >= RELIABLE_ROLE_ACCURACY_THRESHOLD:
-                                    await member.add_roles(self.server_reliable_roles[guild.id])
-                                else:
-                                    await member.remove_roles(self.server_reliable_roles[guild.id])
+                for member_id in only_db_members:
+                    member: Optional[discord.Member] = guild.get_member(member_id)
+                    if member:
+                        await member.add_roles(self.server_reliable_roles[guild.id])
+
+                for member_id in only_role_members:
+                    member: Optional[discord.Member] = guild.get_member(member_id)
+                    if member:
+                        await member.remove_roles(self.server_reliable_roles[guild.id])
 
     async def add_remove_failed_role(self, guild: discord.Guild, async_engine: AsyncEngine):
         """
