@@ -909,9 +909,10 @@ async def check_word(interaction: discord.Interaction, word: str):
 @app_commands.default_permissions(ban_members=True)
 async def set_failed_role(interaction: discord.Interaction, role: discord.Role):
     """Command to set the role to be used when a user fails to count"""
-    bot.server_configs[interaction.guild.id].failed_role_id = role.id
-    await bot.server_configs[interaction.guild.id].sync_to_db(bot.SQL_ENGINE)
-    bot.server_failed_roles[interaction.guild.id] = role  # Assign role directly if we already have it in this context
+    guild_id = interaction.guild.id
+    bot.server_configs[guild_id].failed_role_id = role.id
+    await bot.server_configs[guild_id].sync_to_db(bot.SQL_ENGINE)
+    bot.server_failed_roles[guild_id] = role  # Assign role directly if we already have it in this context
     await bot.add_remove_failed_role(interaction.guild, bot.SQL_ENGINE)
     await interaction.response.send_message(f'Failed role was set to {role.mention}')
 
@@ -922,9 +923,10 @@ async def set_failed_role(interaction: discord.Interaction, role: discord.Role):
 @app_commands.default_permissions(ban_members=True)
 async def set_reliable_role(interaction: discord.Interaction, role: discord.Role):
     """Command to set the role to be used when a user gets 100 of score"""
-    bot.server_configs[interaction.guild.id].reliable_role_id = role.id
-    await bot.server_configs[interaction.guild.id].sync_to_db(bot.SQL_ENGINE)
-    bot.server_reliable_roles[interaction.guild.id] = role  # Assign role directly if we already have it in this context
+    guild_id = interaction.guild.id
+    bot.server_configs[guild_id].reliable_role_id = role.id
+    await bot.server_configs[guild_id].sync_to_db(bot.SQL_ENGINE)
+    bot.server_reliable_roles[guild_id] = role  # Assign role directly if we already have it in this context
     await bot.add_remove_reliable_role(interaction.guild, bot.SQL_ENGINE)
     await interaction.response.send_message(f'Reliable role was set to {role.mention}')
 
@@ -932,16 +934,17 @@ async def set_reliable_role(interaction: discord.Interaction, role: discord.Role
 @bot.tree.command(name='remove_failed_role', description='Removes the failed role feature')
 @app_commands.default_permissions(ban_members=True)
 async def remove_failed_role(interaction: discord.Interaction):
-    bot.server_configs[interaction.guild.id].failed_role_id = None
-    bot.server_configs[interaction.guild.id].failed_member_id = None
-    bot.server_configs[interaction.guild.id].correct_inputs_by_failed_member = 0
-    await bot.server_configs[interaction.guild.id].sync_to_db(bot.SQL_ENGINE)
+    guild_id = interaction.guild.id
+    bot.server_configs[guild_id].failed_role_id = None
+    bot.server_configs[guild_id].failed_member_id = None
+    bot.server_configs[guild_id].correct_inputs_by_failed_member = 0
+    await bot.server_configs[guild_id].sync_to_db(bot.SQL_ENGINE)
 
-    if bot.server_failed_roles[interaction.guild.id]:
-        role = bot.server_failed_roles[interaction.guild.id]
+    if bot.server_failed_roles[guild_id]:
+        role = bot.server_failed_roles[guild_id]
         for member in role.members:
             await member.remove_roles(role)
-        bot.server_failed_roles[interaction.guild.id] = None
+        bot.server_failed_roles[guild_id] = None
         await interaction.response.send_message('Failed role removed')
     else:
         await interaction.response.send_message('Failed role was already removed')
@@ -950,14 +953,15 @@ async def remove_failed_role(interaction: discord.Interaction):
 @bot.tree.command(name='remove_reliable_role', description='Removes the reliable role feature')
 @app_commands.default_permissions(ban_members=True)
 async def remove_reliable_role(interaction: discord.Interaction):
-    bot.server_configs[interaction.guild.id].reliable_role_id = None
-    await bot.server_configs[interaction.guild.id].sync_to_db(bot.SQL_ENGINE)
+    guild_id = interaction.guild.id
+    bot.server_configs[guild_id].reliable_role_id = None
+    await bot.server_configs[guild_id].sync_to_db(bot.SQL_ENGINE)
 
-    if bot.server_reliable_roles[interaction.guild.id]:
-        role = bot.server_reliable_roles[interaction.guild.id]
+    if bot.server_reliable_roles[guild_id]:
+        role = bot.server_reliable_roles[guild_id]
         for member in role.members:
             await member.remove_roles(role)
-        bot.server_reliable_roles[interaction.guild.id] = None
+        bot.server_reliable_roles[guild_id] = None
         await interaction.response.send_message('Reliable role removed')
     else:
         await interaction.response.send_message('Reliable role was already removed')
