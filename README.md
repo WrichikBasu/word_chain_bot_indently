@@ -1,5 +1,5 @@
 # Word Chain Bot for Indently
-*The Indently Discord server's indigineous word chain bot!*
+*The Indently Discord server's indigenous word chain bot!*
 
 Join the [Indently Discord server](https://discord.gg/indently-1040343818274340935) to see this bot in action! 
 

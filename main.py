@@ -946,7 +946,7 @@ async def prune(interaction: discord.Interaction):
         data: list[tuple[int]] = result.fetchall()
 
         if data:
-            count: int = 0
+            member_count: int = 0
 
             for entry in data:
                 user_id: int = entry[0]
@@ -957,12 +957,12 @@ async def prune(interaction: discord.Interaction):
                         MemberModel.member_id == user_id
                     )
                     await connection.execute(stmt)
-                    count += 1
+                    member_count += 1
                     logger.info(f'Removed data for user {user_id}.')
 
-            if count > 0:
+            if member_count > 0:
                 await connection.commit()
-                await interaction.followup.send(f'Successfully removed data for {count} user(s).')
+                await interaction.followup.send(f'Successfully removed data for {member_count} user(s).')
             else:
                 await interaction.followup.send('No users met the criteria to be removed.')
 
