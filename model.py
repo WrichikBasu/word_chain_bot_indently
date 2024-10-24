@@ -1,53 +1,55 @@
 from typing import Optional
 
 from pydantic import BaseModel
-from sqlalchemy import Boolean, Column, Float, Integer, String, update
+from sqlalchemy import Boolean, Float, Integer, String, update
 from sqlalchemy.ext.asyncio import AsyncEngine
-from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
-Base = declarative_base()
+
+class Base(DeclarativeBase):
+    pass
 
 class ServerConfigModel(Base):
     __tablename__ = 'server_config'
-    server_id = Column(Integer, primary_key=True)
-    channel_id = Column(Integer)
-    current_count = Column(Integer, nullable=False)
-    current_word = Column(String)
-    high_score = Column(Integer, nullable=False)
-    used_high_score_emoji = Column(Boolean, nullable=False)
-    reliable_role_id = Column(Integer)
-    failed_role_id = Column(Integer)
-    last_member_id = Column(Integer)
-    failed_member_id = Column(Integer)
-    correct_inputs_by_failed_member = Column(Integer, nullable=False)
+    server_id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    channel_id: Mapped[Optional[int]] = mapped_column(Integer)
+    current_count: Mapped[int] = mapped_column(Integer)
+    current_word: Mapped[Optional[str]] = mapped_column(String)
+    high_score: Mapped[int] = mapped_column(Integer)
+    used_high_score_emoji: Mapped[bool] = mapped_column(Boolean)
+    reliable_role_id: Mapped[Optional[int]] = mapped_column(Integer)
+    failed_role_id: Mapped[Optional[int]] = mapped_column(Integer)
+    last_member_id: Mapped[Optional[int]] = mapped_column(Integer)
+    failed_member_id: Mapped[Optional[int]] = mapped_column(Integer)
+    correct_inputs_by_failed_member: Mapped[int] = mapped_column(Integer)
 
 class WordCacheModel(Base):
     __tablename__ = 'word_cache'
-    word = Column(String, primary_key=True)
+    word: Mapped[str] = mapped_column(String, primary_key=True)
 
 class UsedWordsModel(Base):
     __tablename__ = 'used_words'
-    server_id = Column(Integer, primary_key=True)
-    word = Column(String, primary_key=True)
+    server_id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    word: Mapped[str] = mapped_column(String, primary_key=True)
 
 class MemberModel(Base):
     __tablename__ = 'member'
-    server_id = Column(Integer, primary_key=True)
-    member_id = Column(Integer, primary_key=True)
-    score = Column(Integer, nullable=False)
-    correct = Column(Integer, nullable=False)
-    wrong = Column(Integer, nullable=False)
-    karma = Column(Float, nullable=False)
+    server_id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    member_id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    score: Mapped[int] = mapped_column(Integer)
+    correct: Mapped[int] = mapped_column(Integer)
+    wrong: Mapped[int] = mapped_column(Integer)
+    karma: Mapped[float] = mapped_column(Float)
 
 class BlacklistModel(Base):
     __tablename__ = 'blacklist'
-    server_id = Column(Integer, primary_key=True)
-    word = Column(String, primary_key=True)
+    server_id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    word: Mapped[str] = mapped_column(String, primary_key=True)
 
 class WhitelistModel(Base):
     __tablename__ = 'whitelist'
-    server_id = Column(Integer, primary_key=True)
-    word = Column(String, primary_key=True)
+    server_id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    word: Mapped[str] = mapped_column(String, primary_key=True)
 
 class ServerConfig(BaseModel):
     server_id: int
