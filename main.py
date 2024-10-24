@@ -426,22 +426,31 @@ The above entered word is **NOT** being taken into account.''')
         """Handles when someone messes up the count with a wrong number"""
 
         server_id = message.guild.id
+        member_id = message.author.id
         if self.server_failed_roles[server_id]:
-            self.server_configs[server_id].failed_member_id = message.author.id  # Designate current user as failed member
+            self.server_configs[server_id].failed_member_id = member_id  # Designate current user as failed member
             await self.add_remove_failed_role(message.guild, self.SQL_ENGINE)
+
+        self.server_configs[server_id].fail_chain(member_id)
 
         await message.channel.send(response)
         await message.add_reaction('❌')
 
         stmt = update(MemberModel).where(
-            MemberModel.server_id == message.guild.id,
-            MemberModel.member_id == message.author.id
+            MemberModel.server_id == server_id,
+            MemberModel.member_id == member_id
         ).values(
             score = MemberModel.score - 1,
             wrong = MemberModel.wrong + 1,
             karma = func.max(0, MemberModel.karma - MISTAKE_PENALTY)
         )
         await connection.execute(stmt)
+
+        stmt = delete(UsedWordsModel).where(
+            UsedWordsModel.server_id == server_id
+        )
+        await connection.execute(stmt)
+
         await connection.commit()
 
         await self.server_configs[server_id].sync_to_db(self.SQL_ENGINE)

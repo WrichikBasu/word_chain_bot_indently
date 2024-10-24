@@ -64,6 +64,15 @@ class ServerConfig(BaseModel):
     failed_member_id: Optional[int] = None
     correct_inputs_by_failed_member: int = 0
 
+    def fail_chain(self, member_id: int) -> None:
+        """
+        Resets the stats because a mistake was made.
+        """
+        self.current_count = 0
+        self.failed_member_id = member_id
+        self.correct_inputs_by_failed_member = 0
+        self.used_high_score_emoji = False
+
     def update_current(self, member_id: int, current_word: str) -> None:
         """
         Increment the current count.
