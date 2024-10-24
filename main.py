@@ -45,8 +45,8 @@ class Bot(commands.Bot):
         intents.message_content = True
         intents.members = True
         self.server_configs: dict[int, ServerConfig] = dict()
-        self.server_failed_roles: dict[int, Optional[discord.Role]] = dict()
-        self.server_reliable_roles: dict[int, Optional[discord.Role]] = dict()
+        self.server_failed_roles: dict[int, Optional[discord.Role]] = defaultdict(lambda: None)
+        self.server_reliable_roles: dict[int, Optional[discord.Role]] = defaultdict(lambda: None)
 
         self._server_histories: dict[int, dict[int, deque[str]]] = defaultdict(lambda: defaultdict(lambda: deque(maxlen=HISTORY_LENGTH)))
         super().__init__(command_prefix='!', intents=intents)
