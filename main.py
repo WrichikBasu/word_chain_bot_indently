@@ -924,10 +924,18 @@ async def set_reliable_role(interaction: discord.Interaction, role: discord.Role
 @app_commands.default_permissions(ban_members=True)
 async def remove_failed_role(interaction: discord.Interaction):
     bot.server_configs[interaction.guild.id].failed_role_id = None
+    bot.server_configs[interaction.guild.id].failed_member_id = None
+    bot.server_configs[interaction.guild.id].correct_inputs_by_failed_member = 0
     await bot.server_configs[interaction.guild.id].sync_to_db(bot.SQL_ENGINE)
-    bot.server_failed_roles[interaction.guild.id] = None
-    await bot.add_remove_failed_role(interaction.guild, bot.SQL_ENGINE)
-    await interaction.response.send_message('Failed role removed')
+
+    if bot.server_failed_roles[interaction.guild.id]:
+        role = bot.server_failed_roles[interaction.guild.id]
+        for member in role.members:
+            await member.remove_roles(role)
+        bot.server_failed_roles[interaction.guild.id] = None
+        await interaction.response.send_message('Failed role removed')
+    else:
+        await interaction.response.send_message('Failed role was already removed')
 
 
 @bot.tree.command(name='remove_reliable_role', description='Removes the reliable role feature')
@@ -935,9 +943,15 @@ async def remove_failed_role(interaction: discord.Interaction):
 async def remove_reliable_role(interaction: discord.Interaction):
     bot.server_configs[interaction.guild.id].reliable_role_id = None
     await bot.server_configs[interaction.guild.id].sync_to_db(bot.SQL_ENGINE)
-    bot.server_reliable_roles[interaction.guild.id] = None
-    await bot.add_remove_reliable_role(interaction.guild, bot.SQL_ENGINE)
-    await interaction.response.send_message('Reliable role removed')
+
+    if bot.server_reliable_roles[interaction.guild.id]:
+        role = bot.server_reliable_roles[interaction.guild.id]
+        for member in role.members:
+            await member.remove_roles(role)
+        bot.server_reliable_roles[interaction.guild.id] = None
+        await interaction.response.send_message('Reliable role removed')
+    else:
+        await interaction.response.send_message('Reliable role was already removed')
 
 
 @bot.tree.command(name='disconnect', description='Makes the bot go offline')
