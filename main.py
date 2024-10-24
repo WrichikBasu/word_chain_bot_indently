@@ -3,7 +3,7 @@ import concurrent.futures
 import logging
 import os
 from collections import defaultdict, deque
-from typing import Optional
+from typing import Optional, Sequence
 
 import discord
 from discord import app_commands
@@ -11,6 +11,7 @@ from discord.ext import commands
 from dotenv import load_dotenv
 from requests_futures.sessions import FuturesSession
 from sqlalchemy import CursorResult, delete, exists, func, insert, select, update
+from sqlalchemy.engine.row import Row
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, create_async_engine
 from sqlalchemy.sql.functions import count
 
@@ -765,7 +766,7 @@ async def leaderboard(interaction: discord.Interaction, type: Optional[app_comma
         async def fill_with_users(offset: int = 0, limit: int = 10) -> None:
 
             unavailable_users: int = 0  # Denotes no. of users who were not found
-            data: list[tuple[int, float]] = []
+            data: Sequence[Row[tuple[int, int]]] = []
 
             # Retrieve from the database
             match board_metric:
@@ -943,7 +944,7 @@ async def prune(interaction: discord.Interaction):
     async with Bot.SQL_ENGINE.begin() as connection:
         stmt = select(MemberModel.member_id).where(MemberModel.server_id == interaction.guild.id)
         result: CursorResult = await connection.execute(stmt)
-        data: list[tuple[int]] = result.fetchall()
+        data: Sequence[Row[tuple[int]]] = result.fetchall()
 
         if data:
             member_count: int = 0
