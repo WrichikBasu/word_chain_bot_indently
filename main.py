@@ -62,13 +62,25 @@ class Bot(commands.Bot):
             configs = [ServerConfig.model_validate(row) for row in result]
             self.server_configs = {config.server_id: config for config in configs}
 
-            for guild in self.guilds:
-                if guild.id in self.server_configs:
-                    continue
-                new_config = ServerConfig(server_id=guild.id)
+            db_servers = {config.server_id for config in configs}
+            current_servers = {guild.id for guild in self.guilds}
+
+            only_db_servers = db_servers - current_servers  # those that are only in db and can be removed
+            only_current_servers = current_servers - db_servers  # those that do not have a config in the db
+
+            for server_id in only_db_servers:
+                stmt = delete(ServerConfigModel).where(ServerConfigModel.server_id == server_id)
+                await connection.execute(stmt)
+                logger.debug(f'deleted config for {server_id} from db')
+                del self.server_configs[server_id]
+
+            for server_id in only_current_servers:
+                new_config = ServerConfig(server_id=server_id)
                 stmt = insert(ServerConfigModel).values(**new_config.model_dump())
                 await connection.execute(stmt)
-                self.server_configs[new_config.server_id] = new_config
+                logger.debug(f'created config for {server_id} in db')
+                self.server_configs[server_id] = new_config
+
             await connection.commit()
 
         for guild in self.guilds:
