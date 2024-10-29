@@ -12,9 +12,14 @@ python = "^3.12"
 "discord.py" = "^2.3.2"
 python-dotenv = "^1.0.1"
 requests-futures = "^1.0.1"
+pydantic = "^2.9.2"
+SQLAlchemy = "^2.0.36"
+aiosqlite = "^0.20.0"
+alembic = "^1.13.3"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.2.1"
+isort = "^5.13.2"
 
 [build-system]
 requires = ["poetry-core"]

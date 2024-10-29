@@ -1,28 +1,26 @@
 """Word chain bot for the Indently server"""
-import asyncio
 import concurrent.futures
-import json
 import logging
 import os
-from code import interact
 from collections import defaultdict, deque
-from dataclasses import dataclass
-from typing import NoReturn, Optional
+from typing import Optional, Sequence
 
 import discord
 from discord import app_commands
 from discord.ext import commands
 from dotenv import load_dotenv
 from requests_futures.sessions import FuturesSession
-from sqlalchemy import Column, CursorResult, delete, exists, func, insert, select, update
-from sqlalchemy.ext.asyncio import AsyncConnection, create_async_engine
+from sqlalchemy import CursorResult, delete, exists, func, insert, select, update
+from sqlalchemy.engine.row import Row
+from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, create_async_engine
 from sqlalchemy.sql.functions import count
 
 from alembic import command as alembic_command
 from alembic.config import Config as AlembicConfig
 from consts import *
 from data import calculate_total_karma
-from model import BlacklistModel, Member, MemberModel, UsedWordsModel, WhitelistModel, WordCacheModel
+from model import (BlacklistModel, Member, MemberModel, ServerConfig, ServerConfigModel, UsedWordsModel, WhitelistModel,
+                   WordCacheModel)
 
 load_dotenv('.env')
 # running in single player mode changes some game rules - you can chain words alone now
@@ -32,82 +30,10 @@ SINGLE_PLAYER = os.getenv('SINGLE_PLAYER', False) not in {False, 'False', 'false
 logging.basicConfig(level=logging.INFO, format='[%(asctime)s] [%(levelname)s] %(name)s: %(message)s')
 logger = logging.getLogger(__name__)
 
-@dataclass
-class Config:
-    """Configuration for the bot"""
-    channel_id: Optional[int] = None
-    current_count: int = 0
-    current_word: Optional[str] = None
-    high_score: int = 0
-    current_member_id: Optional[int] = None
-    put_high_score_emoji: bool = False
-    failed_role_id: Optional[int] = None
-    reliable_role_id: Optional[int] = None
-    failed_member_id: Optional[int] = None
-    correct_inputs_by_failed_member: int = 0
-
-    @staticmethod
-    def read():
-        _config: Optional[Config] = None
-        try:
-            with open(Bot.CONFIG_FILE, "r") as file:
-                _config = Config(**json.load(file))
-        except FileNotFoundError:
-            _config = Config()
-            _config.dump_data()
-        return _config
-
-    def dump_data(self) -> None:
-        """Update the config.json file"""
-        with open(Bot.CONFIG_FILE, "w", encoding='utf-8') as file:
-            json.dump(self.__dict__, file, indent=2)
-
-    def update_current(self, member_id: int, current_word: str) -> None:
-        """
-        Increment the current count.
-        NOTE: config is no longer dumped by default. Explicitly call config.dump().
-        """
-        # increment current count
-        self.current_count += 1
-        self.current_word = current_word
-
-        # update current member id
-        self.current_member_id = member_id
-
-        # check the high score
-        self.high_score = max(self.high_score, self.current_count)
-
-    def reset(self) -> None:
-        """
-        Reset chain stats.
-        Do NOT reset the `current_word` and the `current_member_id`.
-        NOTE: config is no longer dumped by default. Explicitly call config.dump_data().
-        """
-        self.current_count = 0
-        self.correct_inputs_by_failed_member = 0
-        self.put_high_score_emoji = False
-
-    def reaction_emoji(self) -> str:
-        """
-        Get the reaction emoji based on the current count.
-        NOTE: Data is no longer dumped automatically. Explicitly call config.data_dump().
-        """
-        if self.current_count == self.high_score and not self.put_high_score_emoji:
-            emoji = "🎉"
-            self.put_high_score_emoji = True  # Needs a config data dump
-        else:
-            emoji = {
-                100: "💯",
-                69: "😏",
-                666: "👹",
-            }.get(self.current_count, "✅")
-        return emoji
-
 
 class Bot(commands.Bot):
     """Word chain bot for Indently discord server."""
 
-    CONFIG_FILE: str = 'config_word_chain.json'
     SQL_ENGINE = create_async_engine('sqlite+aiosqlite:///database_word_chain.sqlite3')
 
     API_RESPONSE_WORD_EXISTS: int = 1
@@ -118,158 +44,168 @@ class Bot(commands.Bot):
         intents = discord.Intents.default()
         intents.message_content = True
         intents.members = True
-        self._config: Config = Config.read()
-        self._busy: int = 0
-        self._cached_words: Optional[set[str]] = None
-        self._participating_users: Optional[set[int]] = None
-        self._history = defaultdict(lambda: deque(maxlen=HISTORY_LENGTH))
-        self.failed_role: Optional[discord.Role] = None
-        self.reliable_role: Optional[discord.Role] = None
-        super().__init__(command_prefix='!', intents=intents)
+        self.server_configs: dict[int, ServerConfig] = dict()
+        self.server_failed_roles: dict[int, Optional[discord.Role]] = defaultdict(lambda: None)
+        self.server_reliable_roles: dict[int, Optional[discord.Role]] = defaultdict(lambda: None)
 
-    def read_config(self):
-        """
-        Force re-reading the config from the json to the instance variable.
-        Mostly for use by slash command functions after they have changed the config values.
-        """
-        self._config = Config.read()
+        self._server_histories: dict[int, dict[int, deque[str]]] = defaultdict(lambda: defaultdict(lambda: deque(maxlen=HISTORY_LENGTH)))
+        super().__init__(command_prefix='!', intents=intents)
 
     async def on_ready(self) -> None:
         """Override the on_ready method"""
         logger.info(f'Bot is ready as {self.user.name}#{self.user.discriminator}')
 
-        if self._config.channel_id:
+        # load all configs and make sure each guild has one entry
+        async with self.SQL_ENGINE.begin() as connection:
+            stmt = select(ServerConfigModel)
+            result: CursorResult = await connection.execute(stmt)
+            configs = [ServerConfig.model_validate(row) for row in result]
+            self.server_configs = {config.server_id: config for config in configs}
 
-            channel: Optional[discord.TextChannel] = bot.get_channel(self._config.channel_id)
+            db_servers = {config.server_id for config in configs}
+            current_servers = {guild.id for guild in self.guilds}
+
+            only_db_servers = db_servers - current_servers  # those that are only in db and can be removed
+            only_current_servers = current_servers - db_servers  # those that do not have a config in the db
+
+            for server_id in only_db_servers:
+                stmt = delete(ServerConfigModel).where(ServerConfigModel.server_id == server_id)
+                await connection.execute(stmt)
+                logger.debug(f'deleted config for {server_id} from db')
+                del self.server_configs[server_id]
+
+            for server_id in only_current_servers:
+                new_config = ServerConfig(server_id=server_id)
+                stmt = insert(ServerConfigModel).values(**new_config.model_dump())
+                await connection.execute(stmt)
+                logger.debug(f'created config for {server_id} in db')
+                self.server_configs[server_id] = new_config
+
+            await connection.commit()
+
+        for guild in self.guilds:
+            config = self.server_configs[guild.id]
+
+            channel: Optional[discord.TextChannel] = bot.get_channel(config.channel_id)
             if channel:
 
                 emb: discord.Embed = discord.Embed(description='**I\'m now online!**',
                                                    colour=discord.Color.brand_green())
 
-                if self._config.high_score > 0:
-                    emb.description += f'\n\n:fire: Let\'s beat the high score of {self._config.high_score}! :fire:\n'
+                if config.high_score > 0:
+                    emb.description += f'\n\n:fire: Let\'s beat the high score of {config.high_score}! :fire:\n'
 
-                if self._config.current_word:
-                    emb.add_field(name='Last valid word', value=f'{self._config.current_word}', inline=True)
+                if config.current_word:
+                    emb.add_field(name='Last valid word', value=f'{config.current_word}', inline=True)
 
-                    if self._config.current_member_id:
+                    if config.last_member_id:
 
-                        member: Optional[discord.Member] = channel.guild.get_member(self._config.current_member_id)
+                        member: Optional[discord.Member] = channel.guild.get_member(config.last_member_id)
                         if member:
                             emb.add_field(name='Last input by', value=f'{member.mention}', inline=True)
 
                 await channel.send(embed=emb)
+                self.load_discord_roles(guild)
+        logger.info(f'Loaded {len(self.server_configs)} server configs, running on {len(self.guilds)} servers')
 
-        self.set_roles()
+    async def on_guild_join(self, guild: discord.Guild):
+        """Override the on_guild_join method"""
+        logger.info(f'Joined guild {guild.name} ({guild.id})')
 
-    def set_roles(self):
+        async with self.SQL_ENGINE.begin() as connection:
+            new_config = ServerConfig(server_id=guild.id)
+            stmt = insert(ServerConfigModel).values(**new_config.model_dump()).prefix_with('OR IGNORE')
+            await connection.execute(stmt)
+            await connection.commit()
+            self.server_configs[new_config.server_id] = new_config
+
+    async def on_guild_remove(self, guild: discord.Guild):
+        """Override the on_guild_remove method"""
+        logger.info(f'Left guild {guild.name} ({guild.id})')
+        async with self.SQL_ENGINE.begin() as connection:
+            stmt = delete(ServerConfigModel).where(ServerConfigModel.server_id == guild.id)
+            await connection.execute(stmt)
+            await connection.commit()
+            self.server_configs.pop(guild.id)
+
+    def load_discord_roles(self, guild: discord.Guild):
         """
-        Sets the `self.failed_role` and `self.reliable_role` variables.
+        Sets the `self.server_failed_roles` and `self.server_reliable_roles` variables.
         """
-        for member in self.get_all_members():
-            guild: discord.Guild = member.guild
+        config = self.server_configs[guild.id]
+        if config.failed_role_id is not None:
+            self.server_failed_roles[guild.id] = discord.utils.get(guild.roles, id=config.failed_role_id)
+        else:
+            self.server_failed_roles[guild.id] = None
 
-            # Set self.failed_role
-            if self._config.failed_role_id is not None:
-                self.failed_role = discord.utils.get(guild.roles, id=self._config.failed_role_id)
-            else:
-                self.failed_role = None
+        if config.reliable_role_id is not None:
+            self.server_reliable_roles[guild.id] = discord.utils.get(guild.roles, id=config.reliable_role_id)
+        else:
+            self.server_reliable_roles[guild.id] = None
 
-            # Set self.reliable_role
-            if self._config.reliable_role_id is not None:
-                self.reliable_role = discord.utils.get(guild.roles, id=self._config.reliable_role_id)
-            else:
-                self.reliable_role = None
-
-            break
-
-    async def add_remove_reliable_role(self):
+    async def add_remove_reliable_role(self, guild: discord.Guild, async_engine: AsyncEngine):
         """
-        Adds/removes the reliable role for participating users.
+        Adds/removes the reliable role if present to make sure it matches the rules.
 
         Criteria for getting the reliable role:
         1. Accuracy must be >= `RELIABLE_ROLE_ACCURACY_THRESHOLD`. (Accuracy = correct / (correct + wrong))
         2. Karma must be >= `RELIABLE_ROLE_KARMA_THRESHOLD`
         """
-        if self.reliable_role and self._participating_users:
-
-            # Make a copy of the set to prevent runtime errors if the set changes while execution
-            users: set[int] = self._participating_users.copy()
-            self._participating_users = None
-
-            guild_id: int = self.reliable_role.guild.id
-
-            db_members: list[Member] = []
-            async with self.SQL_ENGINE.begin() as connection:
-                stmt = select(MemberModel).where(
-                    MemberModel.server_id == guild_id,
-                    MemberModel.member_id.in_(tuple(users))
+        if self.server_reliable_roles[guild.id]:
+            async with async_engine.begin() as connection:
+                stmt = select(MemberModel.member_id).where(
+                    MemberModel.server_id == guild.id,
+                    MemberModel.member_id.in_([member.id for member in guild.members]),
+                    MemberModel.karma > RELIABLE_ROLE_KARMA_THRESHOLD,
+                    (MemberModel.correct / (MemberModel.correct + MemberModel.wrong)) > RELIABLE_ROLE_ACCURACY_THRESHOLD
                 )
                 result: CursorResult = await connection.execute(stmt)
-                db_members = [Member.model_validate(row) for row in result]
+                db_members: set[int] = {row[0] for row in result}
+                role_members: set[int] = {member.id for member in self.server_reliable_roles[guild.id].members}
 
-            def truncate(value: float, decimals: int = 4):
-                t = 10.0 ** decimals
-                return (value * t) // 1 / t
+                only_db_members = db_members - role_members  # those that should have the role but do not
+                only_role_members = role_members - db_members  # those that have the role but should not
 
-            if db_members:
-                for db_member in db_members:
-                    karma = truncate(db_member.karma)
-                    if karma != 0:
-                        member: Optional[discord.Member] = self.reliable_role.guild.get_member(db_member.member_id)
-                        if member:
-                            accuracy: float = truncate(db_member.correct / (db_member.correct + db_member.wrong))
-                            if karma >= RELIABLE_ROLE_KARMA_THRESHOLD and accuracy >= RELIABLE_ROLE_ACCURACY_THRESHOLD:
-                                await member.add_roles(self.reliable_role)
-                            else:
-                                await member.remove_roles(self.reliable_role)
+                for member_id in only_db_members:
+                    member: Optional[discord.Member] = guild.get_member(member_id)
+                    if member:
+                        await member.add_roles(self.server_reliable_roles[guild.id])
 
-    async def add_remove_failed_role(self):
+                for member_id in only_role_members:
+                    member: Optional[discord.Member] = guild.get_member(member_id)
+                    if member:
+                        await member.remove_roles(self.server_reliable_roles[guild.id])
+
+    async def add_remove_failed_role(self, guild: discord.Guild, async_engine: AsyncEngine):
         """
-        Adds the `self.failed_role` to the user whose id is stored in `self._config.failed_member_id`.
+        Adds the `failed_role` to the user whose id is stored in `failed_member_id`.
         Removes the failed role from all other users.
         Does not proceed if failed role has not been set.
-        If `self.failed_role` is not `None` but `self._config.failed_member_id` is `None`, then simply removes
+        If `failed_role` is not `None` but `failed_member_id` is `None`, then simply removes
         the failed role from all members who have it currently.
         """
-        if self.failed_role:
-            handled_member: bool = False
-
-            for member in self.failed_role.members:
-                # Iterate through members who have the failed role, and remove those who have not failed
-
-                if self._config.failed_member_id and self._config.failed_member_id == member.id:
+        if self.server_failed_roles[guild.id]:
+            handled_member = False
+            for member in self.server_failed_roles[guild.id].members:
+                if self.server_configs[guild.id].failed_member_id == member.id:
                     # Current failed member already has the failed role, so just continue
                     handled_member = True
                     continue
                 else:
                     # Either failed_member_id is None, or this member is not the current failed member.
                     # In either case, we have to remove the role.
-                    await member.remove_roles(self.failed_role)
+                    await member.remove_roles(self.server_failed_roles[guild.id])
 
-            if not handled_member and self._config.failed_member_id:
+            if not handled_member and self.server_configs[guild.id].failed_member_id:
                 # Current failed member does not yet have the failed role
                 try:
-                    failed_member: discord.Member = await self.failed_role.guild.fetch_member(
-                        self._config.failed_member_id)
-                    await failed_member.add_roles(self.failed_role)
+                    failed_member: discord.Member = await guild.fetch_member(self.server_configs[guild.id].failed_member_id)
+                    await failed_member.add_roles(self.server_failed_roles[guild.id])
                 except discord.NotFound:
                     # Member is no longer in the server
-                    self._config.failed_member_id = None
-                    self._config.correct_inputs_by_failed_member = 0
-                    self._config.dump_data()
-
-    async def schedule_busy_work(self):
-        await asyncio.sleep(5)
-        self._busy -= 1
-        await self.do_busy_work()
-
-    async def do_busy_work(self):
-        if self._busy == 0:
-            self._config.dump_data()
-            await self.add_remove_failed_role()
-            await self.add_remove_reliable_role()
-            await self.add_to_cache()
+                    self.server_configs[guild.id].failed_member_id = None
+                    self.server_configs[guild.id].correct_inputs_by_failed_member = 0
+                    await self.server_configs[guild.id].sync_to_db(async_engine)
 
     async def on_message(self, message: discord.Message) -> None:
         """
@@ -286,8 +222,10 @@ class Bot(commands.Bot):
         if message.author == self.user:
             return
 
+        server_id = message.guild.id
+
         # Check if the message is in the channel
-        if message.channel.id != self._config.channel_id:
+        if message.channel.id != self.server_configs[server_id].channel_id:
             return
 
         word: str = message.content.lower()
@@ -305,13 +243,6 @@ class Bot(commands.Bot):
             await message.channel.send(f'''Single-letter inputs are no longer accepted.
 The chain has **not** been broken. Please enter another word.''')
             return
-
-        self._busy += 1
-
-        if self._participating_users is None:
-            self._participating_users = {message.author.id, }
-        else:
-            self._participating_users.add(message.author.id)
 
         async with self.SQL_ENGINE.begin() as connection:
             # ----------------------------------------------------------------------------------------
@@ -352,10 +283,6 @@ The chain has **not** been broken. Please enter another word.''')
                 await message.add_reaction('⚠️')
                 await message.channel.send(f'''This word has been **blacklisted**. Please do not use it.
 The chain has **not** been broken. Please enter another word.''')
-
-                # No need to schedule busy work as nothing has changed.
-                # Just decrement the variable.
-                self._busy -= 1
                 return
 
             # ------------------------------
@@ -388,21 +315,17 @@ The chain has **not** been broken. Please enter another word.''')
                 await message.channel.send(f'''The word *{word}* has already been used before. \
 The chain has **not** been broken.
 Please enter another word.''')
-
-                # No need to schedule busy work as nothing has changed.
-                # Just decrement the variable.
-                self._busy -= 1
                 return
 
             # -------------
             # Wrong member
             # -------------
-            if not SINGLE_PLAYER and self._config.current_member_id and self._config.current_member_id == message.author.id:
+            if not SINGLE_PLAYER and self.server_configs[server_id].last_member_id == message.author.id:
                 response: str = f'''{message.author.mention} messed up the count! \
 *You cannot send two words in a row!*
-{f'The chain length was {self._config.current_count} when it was broken. :sob:\n' if self._config.current_count > 0 else ''}\
-Restart with a word starting with **{self._config.current_word[-1]}** and \
-try to beat the current high score of **{self._config.high_score}**!'''
+{f'The chain length was {self.server_configs[server_id].current_count} when it was broken. :sob:\n' if self.server_configs[server_id].current_count > 0 else ''}\
+Restart with a word starting with **{self.server_configs[server_id].current_word[-1]}** and \
+try to beat the current high score of **{self.server_configs[server_id].high_score}**!'''
 
                 await self.handle_mistake(message, response, connection)
                 return
@@ -410,12 +333,12 @@ try to beat the current high score of **{self._config.high_score}**!'''
             # -------------------------
             # Wrong starting letter
             # -------------------------
-            if self._config.current_word and word[0] != self._config.current_word[-1]:
+            if self.server_configs[server_id].current_word and word[0] != self.server_configs[server_id].current_word[-1]:
                 response: str = f'''{message.author.mention} messed up the chain! \
-*The word you entered did not begin with the last letter of the previous word* (**{self._config.current_word[-1]}**).
-{f'The chain length was {self._config.current_count} when it was broken. :sob:\n' if self._config.current_count > 0 else ''}\
-Restart with a word starting with **{self._config.current_word[-1]}** and try to beat the \
-current high score of **{self._config.high_score}**!'''
+*The word you entered did not begin with the last letter of the previous word* (**{self.server_configs[server_id].current_word[-1]}**).
+{f'The chain length was {self.server_configs[server_id].current_count} when it was broken. :sob:\n' if self.server_configs[server_id].current_count > 0 else ''}\
+Restart with a word starting with **{self.server_configs[server_id].current_word[-1]}** and try to beat the \
+current high score of **{self.server_configs[server_id].high_score}**!'''
 
                 await self.handle_mistake(message, response, connection)
                 return
@@ -428,17 +351,17 @@ current high score of **{self._config.high_score}**!'''
 
                 if result == Bot.API_RESPONSE_WORD_DOESNT_EXIST:
 
-                    if self._config.current_word:
+                    if self.server_configs[server_id].current_word:
                         response: str = f'''{message.author.mention} messed up the chain! \
 *The word you entered does not exist.*
-{f'The chain length was {self._config.current_count} when it was broken. :sob:\n' if self._config.current_count > 0 else ''}\
-Restart with a word starting with **{self._config.current_word[-1]}** and try to beat the \
-current high score of **{self._config.high_score}**!'''
+{f'The chain length was {self.server_configs[server_id].current_count} when it was broken. :sob:\n' if self.server_configs[server_id].current_count > 0 else ''}\
+Restart with a word starting with **{self.server_configs[server_id].current_word[-1]}** and try to beat the \
+current high score of **{self.server_configs[server_id].high_score}**!'''
 
                     else:
                         response: str = f'''{message.author.mention} messed up the chain! \
 *The word you entered does not exist.*
-Restart and try to beat the current high score of **{self._config.high_score}**!'''
+Restart and try to beat the current high score of **{self.server_configs[server_id].high_score}**!'''
 
                     await self.handle_mistake(message, response, connection)
                     return
@@ -448,24 +371,18 @@ Restart and try to beat the current high score of **{self._config.high_score}**!
                     await message.add_reaction('⚠️')
                     await message.channel.send(''':octagonal_sign: There was an issue in the backend.
 The above entered word is **NOT** being taken into account.''')
-
-                    # No need to schedule busy work as nothing has changed.
-                    # Just decrement the variable.
-                    self._busy -= 1
                     return
 
             # --------------------
             # Everything is fine
             # ---------------------
-            current_count: int = self._config.current_count + 1
+            self.server_configs[server_id].update_current(member_id=message.author.id, current_word=word)
 
-            self._config.update_current(message.author.id, current_word=word)  # config dump at the end of the method
+            await message.add_reaction(SPECIAL_REACTION_EMOJIS.get(word, self.server_configs[server_id].reaction_emoji()))
 
-            await message.add_reaction(SPECIAL_REACTION_EMOJIS.get(word, self._config.reaction_emoji()))
-
-            last_words: deque[str] = self._history[message.author.id]
+            last_words: deque[str] = self._server_histories[server_id][message.author.id]
             karma: float = calculate_total_karma(word, last_words)
-            self._history[message.author.id].append(word)
+            self._server_histories[server_id][message.author.id].append(word)
 
             stmt = update(MemberModel).where(
                 MemberModel.server_id == message.guild.id,
@@ -485,23 +402,22 @@ The above entered word is **NOT** being taken into account.''')
 
             await connection.commit()
 
-            if self._cached_words is None:
-                self._cached_words = {word, }
-            else:
-                self._cached_words.add(word)
+            current_count = self.server_configs[server_id].current_count
 
             if current_count > 0 and current_count % 100 == 0:
                 await message.channel.send(f'{current_count} words! Nice work, keep it up!')
 
-            # Check and reset the self._config.failed_member_id to None.
-            # No need to remove the role itself, it will be done later when not busy
-            if self.failed_role and self._config.failed_member_id == message.author.id:
-                self._config.correct_inputs_by_failed_member += 1
-                if self._config.correct_inputs_by_failed_member >= 30:
-                    self._config.failed_member_id = None
-                    self._config.correct_inputs_by_failed_member = 0
+            # Check and reset the server config.failed_member_id to None.
+            if self.server_failed_roles[server_id] and self.server_configs[server_id].failed_member_id == message.author.id:
+                self.server_configs[server_id].correct_inputs_by_failed_member += 1
+                if self.server_configs[server_id].correct_inputs_by_failed_member >= 30:
+                    self.server_configs[server_id].failed_member_id = None
+                    self.server_configs[server_id].correct_inputs_by_failed_member = 0
+                    await self.add_remove_failed_role(message.guild, self.SQL_ENGINE)
 
-            await self.schedule_busy_work()
+            await self.add_to_cache(word)
+            await self.add_remove_reliable_role(message.guild, self.SQL_ENGINE)
+            await self.server_configs[server_id].sync_to_db(self.SQL_ENGINE)
 
     # ---------------------------------------------------------------------------------------
 
@@ -509,27 +425,35 @@ The above entered word is **NOT** being taken into account.''')
                              response: str, connection: AsyncConnection) -> None:
         """Handles when someone messes up the count with a wrong number"""
 
-        if self.failed_role:
-            self._config.failed_member_id = message.author.id  # Designate current user as failed member
-            # Adding/removing failed role is done when not busy
+        server_id = message.guild.id
+        member_id = message.author.id
+        if self.server_failed_roles[server_id]:
+            self.server_configs[server_id].failed_member_id = member_id  # Designate current user as failed member
+            await self.add_remove_failed_role(message.guild, self.SQL_ENGINE)
 
-        self._config.reset()  # config dump is triggered at the end of if-statement
+        self.server_configs[server_id].fail_chain(member_id)
 
         await message.channel.send(response)
         await message.add_reaction('❌')
 
         stmt = update(MemberModel).where(
-            MemberModel.server_id == message.guild.id,
-            MemberModel.member_id == message.author.id
+            MemberModel.server_id == server_id,
+            MemberModel.member_id == member_id
         ).values(
             score = MemberModel.score - 1,
             wrong = MemberModel.wrong + 1,
             karma = func.max(0, MemberModel.karma - MISTAKE_PENALTY)
         )
         await connection.execute(stmt)
+
+        stmt = delete(UsedWordsModel).where(
+            UsedWordsModel.server_id == server_id
+        )
+        await connection.execute(stmt)
+
         await connection.commit()
 
-        await self.schedule_busy_work()
+        await self.server_configs[server_id].sync_to_db(self.SQL_ENGINE)
 
     # ------------------------------------------------------------------------------------------------
     @staticmethod
@@ -619,17 +543,17 @@ The above entered word is **NOT** being taken into account.''')
             return
 
         # Check if the message is in the channel
-        if message.channel.id != self._config.channel_id:
+        if message.channel.id != self.server_configs[message.guild.id].channel_id:
             return
         if not message.reactions:
             return
         if not all(c in POSSIBLE_CHARACTERS for c in message.content.lower()):
             return
 
-        if self._config.current_word:
+        if self.server_configs[message.guild.id].current_word:
             await message.channel.send(
-                f'{message.author.mention} deleted their word!  '
-                f'The **last** word was **{self._config.current_word}**.')
+                f'{message.author.mention} deleted their word! '
+                f'The **last** word was **{self.server_configs[message.guild.id].current_word}**.')
         else:
             await message.channel.send(f'{message.author.mention} deleted their word!')
 
@@ -643,7 +567,7 @@ The above entered word is **NOT** being taken into account.''')
             return
 
         # Check if the message is in the channel
-        if before.channel.id != self._config.channel_id:
+        if before.channel.id != self.server_configs[before.guild.id].channel_id:
             return
         if not before.reactions:
             return
@@ -652,9 +576,10 @@ The above entered word is **NOT** being taken into account.''')
         if before.content.lower() == after.content.lower():
             return
 
-        if self._config.current_word:
+        if self.server_configs[before.guild.id].current_word:
             await after.channel.send(
-                f'{after.author.mention} edited their word! The **last** word was **{self._config.current_word}**.')
+                f'{after.author.mention} edited their word! '
+                f'The **last** word was **{self.server_configs[before.guild.id].current_word}**.')
         else:
             await after.channel.send(f'{after.author.mention} edited their word!')
 
@@ -684,21 +609,15 @@ The above entered word is **NOT** being taken into account.''')
         result: CursorResult = await connection.execute(stmt)
         return result.scalar()
 
-    async def add_to_cache(self) -> NoReturn:
+    async def add_to_cache(self, word: str) -> None:
         """
-        Add words from `self._cached_words` into the `Bot.TABLE_CACHE` schema.
-        Should be executed when not busy.
+        Add a word into the `Bot.TABLE_CACHE` schema.
         """
-        if self._cached_words:
 
-            words = self._cached_words
-            self._cached_words = None
-
-            async with Bot.SQL_ENGINE.begin() as connection:
-                for word in tuple(words):
-                    if not await Bot.is_word_blacklisted(word):  # Do NOT insert globally blacklisted words into the cache
-                        stmt = insert(WordCacheModel).values(words=word).prefix_with('OR IGNORE')
-                        await connection.execute(stmt)
+        async with self.SQL_ENGINE.begin() as connection:
+            if not await self.is_word_blacklisted(word):  # Do NOT insert globally blacklisted words into the cache
+                stmt = insert(WordCacheModel).values(word=word).prefix_with('OR IGNORE')
+                await connection.execute(stmt)
                 await connection.commit()
 
     @staticmethod
@@ -778,7 +697,7 @@ The above entered word is **NOT** being taken into account.''')
         result: CursorResult = await connection.execute(stmt)
         return result.scalar()
 
-    async def setup_hook(self) -> NoReturn:
+    async def setup_hook(self) -> None:
         await self.tree.sync()
         logger.info('Commands synchronized')
 
@@ -808,10 +727,8 @@ async def set_channel(interaction: discord.Interaction, channel: discord.TextCha
     if not interaction.user.guild_permissions.ban_members:
         await interaction.response.send_message('You do not have permission to do this!')
         return
-    config = Config.read()
-    config.channel_id = channel.id
-    config.dump_data()
-    bot.read_config()  # Explicitly ask the bot to re-read the config
+    bot.server_configs[interaction.guild.id].channel_id = channel.id
+    await bot.server_configs[interaction.guild.id].sync_to_db(bot.SQL_ENGINE)
     await interaction.response.send_message(f'Word chain channel was set to {channel.mention}')
 
 
@@ -837,7 +754,6 @@ __Restricted commands__ (Admin-only)
 **set_reliable_role** - Sets the reliable role.
 **remove_failed_role** - Unsets the role to give when a user fails.
 **remove_reliable_role** - Unset the reliable role.
-**force_dump** - Forcibly dump bot config data. Use only when no one is actively playing.
 **prune** - Remove data for users who are no longer in the server.
 **blacklist add** - Add a word to the blacklist for this server.
 **blacklist remove** - Remove a word from the blacklist of this server.
@@ -871,7 +787,7 @@ async def leaderboard(interaction: discord.Interaction, type: Optional[app_comma
         async def fill_with_users(offset: int = 0, limit: int = 10) -> None:
 
             unavailable_users: int = 0  # Denotes no. of users who were not found
-            data: list[tuple[int, float]] = []
+            data: Sequence[Row[tuple[int, int]]] = []
 
             # Retrieve from the database
             match board_metric:
@@ -958,19 +874,16 @@ async def check_word(interaction: discord.Interaction, word: str):
         if await Bot.is_word_whitelisted(word, interaction.guild.id, connection):
             emb.description = f'✅ The word **{word}** is valid.'
             await interaction.followup.send(embed=emb)
-            conn.close()
             return
 
         if await Bot.is_word_blacklisted(word, interaction.guild.id, connection):
             emb.description = f'❌ The word **{word}** is **blacklisted** and hence, **not** valid.'
             await interaction.followup.send(embed=emb)
-            conn.close()
             return
 
         if await Bot.is_word_in_cache(word, connection):
             emb.description = f'✅ The word **{word}** is valid.'
             await interaction.followup.send(embed=emb)
-            conn.close()
             return
 
         future: concurrent.futures.Future = Bot.start_api_query(word)
@@ -980,11 +893,7 @@ async def check_word(interaction: discord.Interaction, word: str):
 
             emb.description = f'✅ The word **{word}** is valid.'
 
-            if bot._cached_words is None:
-                bot._cached_words = {word, }
-            else:
-                bot._cached_words.add(word)
-            await bot.add_to_cache()
+            await bot.add_to_cache(word)
 
         case Bot.API_RESPONSE_WORD_DOESNT_EXIST:
             emb.description = f'❌ **{word}** is **not** a valid word.'
@@ -1000,11 +909,11 @@ async def check_word(interaction: discord.Interaction, word: str):
 @app_commands.default_permissions(ban_members=True)
 async def set_failed_role(interaction: discord.Interaction, role: discord.Role):
     """Command to set the role to be used when a user fails to count"""
-    config = Config.read()
-    config.failed_role_id = role.id
-    config.dump_data()
-    bot.read_config()  # Explicitly ask the bot to re-read the config
-    bot.set_roles()  # Ask the bot to re-load the roles
+    guild_id = interaction.guild.id
+    bot.server_configs[guild_id].failed_role_id = role.id
+    await bot.server_configs[guild_id].sync_to_db(bot.SQL_ENGINE)
+    bot.server_failed_roles[guild_id] = role  # Assign role directly if we already have it in this context
+    await bot.add_remove_failed_role(interaction.guild, bot.SQL_ENGINE)
     await interaction.response.send_message(f'Failed role was set to {role.mention}')
 
 
@@ -1014,36 +923,48 @@ async def set_failed_role(interaction: discord.Interaction, role: discord.Role):
 @app_commands.default_permissions(ban_members=True)
 async def set_reliable_role(interaction: discord.Interaction, role: discord.Role):
     """Command to set the role to be used when a user gets 100 of score"""
-    config = Config.read()
-    config.reliable_role_id = role.id
-    config.dump_data()
-    bot.read_config()  # Explicitly ask the bot to re-read the config
-    bot.set_roles()  # Ask the bot to re-load the roles
+    guild_id = interaction.guild.id
+    bot.server_configs[guild_id].reliable_role_id = role.id
+    await bot.server_configs[guild_id].sync_to_db(bot.SQL_ENGINE)
+    bot.server_reliable_roles[guild_id] = role  # Assign role directly if we already have it in this context
+    await bot.add_remove_reliable_role(interaction.guild, bot.SQL_ENGINE)
     await interaction.response.send_message(f'Reliable role was set to {role.mention}')
 
 
 @bot.tree.command(name='remove_failed_role', description='Removes the failed role feature')
 @app_commands.default_permissions(ban_members=True)
 async def remove_failed_role(interaction: discord.Interaction):
-    config = Config.read()
-    config.failed_role_id = None
-    config.failed_member_id = None
-    config.correct_inputs_by_failed_member = 0
-    config.dump_data()
-    bot.read_config()  # Explicitly ask the bot to re-read the config
-    bot.set_roles()  # Ask the bot to re-load the roles
-    await interaction.response.send_message('Failed role removed')
+    guild_id = interaction.guild.id
+    bot.server_configs[guild_id].failed_role_id = None
+    bot.server_configs[guild_id].failed_member_id = None
+    bot.server_configs[guild_id].correct_inputs_by_failed_member = 0
+    await bot.server_configs[guild_id].sync_to_db(bot.SQL_ENGINE)
+
+    if bot.server_failed_roles[guild_id]:
+        role = bot.server_failed_roles[guild_id]
+        for member in role.members:
+            await member.remove_roles(role)
+        bot.server_failed_roles[guild_id] = None
+        await interaction.response.send_message('Failed role removed')
+    else:
+        await interaction.response.send_message('Failed role was already removed')
 
 
 @bot.tree.command(name='remove_reliable_role', description='Removes the reliable role feature')
 @app_commands.default_permissions(ban_members=True)
 async def remove_reliable_role(interaction: discord.Interaction):
-    config = Config.read()
-    config.reliable_role_id = None
-    config.dump_data()
-    bot.read_config()  # Explicitly ask the bot to re-read the config
-    bot.set_roles()  # Ask the bot to re-load the roles
-    await interaction.response.send_message('Reliable role removed')
+    guild_id = interaction.guild.id
+    bot.server_configs[guild_id].reliable_role_id = None
+    await bot.server_configs[guild_id].sync_to_db(bot.SQL_ENGINE)
+
+    if bot.server_reliable_roles[guild_id]:
+        role = bot.server_reliable_roles[guild_id]
+        for member in role.members:
+            await member.remove_roles(role)
+        bot.server_reliable_roles[guild_id] = None
+        await interaction.response.send_message('Reliable role removed')
+    else:
+        await interaction.response.send_message('Reliable role was already removed')
 
 
 @bot.tree.command(name='disconnect', description='Makes the bot go offline')
@@ -1054,14 +975,6 @@ async def disconnect(interaction: discord.Interaction):
     await bot.close()
 
 
-@bot.tree.command(name='force_dump', description='Forcibly dumps configuration data')
-@app_commands.default_permissions(ban_members=True)
-async def force_dump(interaction: discord.Interaction):
-    bot._busy = 0
-    await bot.do_busy_work()
-    await interaction.response.send_message('Configuration data successfully dumped.')
-
-
 @bot.tree.command(name='prune', description='(DANGER) Deletes data of users who are no longer in the server')
 @app_commands.default_permissions(ban_members=True)
 async def prune(interaction: discord.Interaction):
@@ -1070,10 +983,10 @@ async def prune(interaction: discord.Interaction):
     async with Bot.SQL_ENGINE.begin() as connection:
         stmt = select(MemberModel.member_id).where(MemberModel.server_id == interaction.guild.id)
         result: CursorResult = await connection.execute(stmt)
-        data: list[tuple[int]] = result.fetchall()
+        data: Sequence[Row[tuple[int]]] = result.fetchall()
 
         if data:
-            count: int = 0
+            member_count: int = 0
 
             for entry in data:
                 user_id: int = entry[0]
@@ -1084,12 +997,12 @@ async def prune(interaction: discord.Interaction):
                         MemberModel.member_id == user_id
                     )
                     await connection.execute(stmt)
-                    count += 1
+                    member_count += 1
                     logger.info(f'Removed data for user {user_id}.')
 
-            if count > 0:
+            if member_count > 0:
                 await connection.commit()
-                await interaction.followup.send(f'Successfully removed data for {count} user(s).')
+                await interaction.followup.send(f'Successfully removed data for {member_count} user(s).')
             else:
                 await interaction.followup.send('No users met the criteria to be removed.')
 
@@ -1106,8 +1019,7 @@ class StatsCmdGroup(app_commands.Group):
     @app_commands.command(description='Show the server stats for the word chain game')
     async def server(self, interaction: discord.Interaction) -> None:
         """Command to show the stats of the server"""
-        # Use the bot's config variable, do not re-read file as it may not have been updated yet
-        config: Config = bot._config
+        config: ServerConfig = bot.server_configs[interaction.guild.id]
 
         if config.channel_id is None:  # channel not set yet
             await interaction.response.send_message("Counting channel not set yet!")
@@ -1117,7 +1029,7 @@ class StatsCmdGroup(app_commands.Group):
             description=f'''Current Chain Length: {config.current_count}
 Longest chain length: {config.high_score}
 {f"**Last word:** {config.current_word}" if config.current_word else ""}
-{f"Last word by: <@{config.current_member_id}>" if config.current_member_id else ""}''',
+{f"Last word by: <@{config.last_member_id}>" if config.last_member_id else ""}''',
             color=discord.Color.blurple()
         )
         server_stats_embed.set_author(name=interaction.guild, icon_url=interaction.guild.icon)
