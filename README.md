@@ -14,5 +14,6 @@ A premium node can also be purchased at a very cheap rate, which is what we use.
 
 ### Credits
 - Base code for `main.py` taken from the repo [Counting Bot for Indently](https://github.com/guanciottaman/counting_bot_indently).
-Thanks to @guanciottaman for making the codebase available under the MIT License!
+Thanks to [@guanciottaman](https://github.com/guanciottaman) for making the codebase available under the MIT License!
 - Idea of the word chain game and the use of Wiktionary API inspired by the bot [serverless-literally](https://github.com/mettlex/serverless-literally).
+- Karma system and multi-server support designed and coded by [@SirLefti](https://github.com/SirLefti).
