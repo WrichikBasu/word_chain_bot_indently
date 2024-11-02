@@ -967,14 +967,6 @@ async def remove_reliable_role(interaction: discord.Interaction):
         await interaction.response.send_message('Reliable role was already removed')
 
 
-@bot.tree.command(name='disconnect', description='Makes the bot go offline')
-@app_commands.default_permissions(ban_members=True)
-async def disconnect(interaction: discord.Interaction):
-    emb = discord.Embed(description='⚠️  Bot is now offline.', colour=discord.Color.brand_red())
-    await interaction.response.send_message(embed=emb)
-    await bot.close()
-
-
 @bot.tree.command(name='prune', description='(DANGER) Deletes data of users who are no longer in the server')
 @app_commands.default_permissions(ban_members=True)
 async def prune(interaction: discord.Interaction):
