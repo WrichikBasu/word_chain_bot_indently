@@ -31,7 +31,7 @@ logging.basicConfig(level=logging.INFO, format='[%(asctime)s] [%(levelname)s] %(
 logger = logging.getLogger(__name__)
 
 
-class Bot(commands.Bot):
+class Bot(commands.AutoShardedBot):
     """Word chain bot for Indently discord server."""
 
     SQL_ENGINE = create_async_engine('sqlite+aiosqlite:///database_word_chain.sqlite3')
