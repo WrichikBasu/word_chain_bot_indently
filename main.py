@@ -48,8 +48,11 @@ class Bot(commands.AutoShardedBot):
         self.server_failed_roles: dict[int, Optional[discord.Role]] = defaultdict(lambda: None)
         self.server_reliable_roles: dict[int, Optional[discord.Role]] = defaultdict(lambda: None)
 
-        self._server_histories: dict[int, dict[int, deque[str]]] = defaultdict(lambda: defaultdict(lambda: deque(maxlen=HISTORY_LENGTH)))
+        self._server_histories: dict[int, dict[int, deque[str]]] = defaultdict(
+            lambda: defaultdict(lambda: deque(maxlen=HISTORY_LENGTH)))
         super().__init__(command_prefix='!', intents=intents)
+
+    # ---------------------------------------------------------------------------------------------------------------
 
     async def on_ready(self) -> None:
         """Override the on_ready method"""
@@ -108,6 +111,8 @@ class Bot(commands.AutoShardedBot):
                 self.load_discord_roles(guild)
         logger.info(f'Loaded {len(self.server_configs)} server configs, running on {len(self.guilds)} servers')
 
+    # ---------------------------------------------------------------------------------------------------------------
+
     async def on_guild_join(self, guild: discord.Guild):
         """Override the on_guild_join method"""
         logger.info(f'Joined guild {guild.name} ({guild.id})')
@@ -119,6 +124,8 @@ class Bot(commands.AutoShardedBot):
             await connection.commit()
             self.server_configs[new_config.server_id] = new_config
 
+    # ---------------------------------------------------------------------------------------------------------------
+
     async def on_guild_remove(self, guild: discord.Guild):
         """Override the on_guild_remove method"""
         logger.info(f'Left guild {guild.name} ({guild.id})')
@@ -127,6 +134,8 @@ class Bot(commands.AutoShardedBot):
             await connection.execute(stmt)
             await connection.commit()
             self.server_configs.pop(guild.id)
+
+    # ---------------------------------------------------------------------------------------------------------------
 
     def load_discord_roles(self, guild: discord.Guild):
         """
@@ -142,6 +151,8 @@ class Bot(commands.AutoShardedBot):
             self.server_reliable_roles[guild.id] = discord.utils.get(guild.roles, id=config.reliable_role_id)
         else:
             self.server_reliable_roles[guild.id] = None
+
+    # ---------------------------------------------------------------------------------------------------------------
 
     async def add_remove_reliable_role(self, guild: discord.Guild, async_engine: AsyncEngine):
         """
@@ -176,6 +187,8 @@ class Bot(commands.AutoShardedBot):
                     if member:
                         await member.remove_roles(self.server_reliable_roles[guild.id])
 
+    # ---------------------------------------------------------------------------------------------------------------
+
     async def add_remove_failed_role(self, guild: discord.Guild, async_engine: AsyncEngine):
         """
         Adds the `failed_role` to the user whose id is stored in `failed_member_id`.
@@ -199,13 +212,16 @@ class Bot(commands.AutoShardedBot):
             if not handled_member and self.server_configs[guild.id].failed_member_id:
                 # Current failed member does not yet have the failed role
                 try:
-                    failed_member: discord.Member = await guild.fetch_member(self.server_configs[guild.id].failed_member_id)
+                    failed_member: discord.Member = await guild.fetch_member(
+                        self.server_configs[guild.id].failed_member_id)
                     await failed_member.add_roles(self.server_failed_roles[guild.id])
                 except discord.NotFound:
                     # Member is no longer in the server
                     self.server_configs[guild.id].failed_member_id = None
                     self.server_configs[guild.id].correct_inputs_by_failed_member = 0
                     await self.server_configs[guild.id].sync_to_db(async_engine)
+
+    # ---------------------------------------------------------------------------------------------------------------
 
     async def on_message(self, message: discord.Message) -> None:
         """
@@ -333,7 +349,8 @@ try to beat the current high score of **{self.server_configs[server_id].high_sco
             # -------------------------
             # Wrong starting letter
             # -------------------------
-            if self.server_configs[server_id].current_word and word[0] != self.server_configs[server_id].current_word[-1]:
+            if self.server_configs[server_id].current_word and word[0] != self.server_configs[server_id].current_word[
+                -1]:
                 response: str = f'''{message.author.mention} messed up the chain! \
 *The word you entered did not begin with the last letter of the previous word* (**{self.server_configs[server_id].current_word[-1]}**).
 {f'The chain length was {self.server_configs[server_id].current_count} when it was broken. :sob:\n' if self.server_configs[server_id].current_count > 0 else ''}\
@@ -378,7 +395,8 @@ The above entered word is **NOT** being taken into account.''')
             # ---------------------
             self.server_configs[server_id].update_current(member_id=message.author.id, current_word=word)
 
-            await message.add_reaction(SPECIAL_REACTION_EMOJIS.get(word, self.server_configs[server_id].reaction_emoji()))
+            await message.add_reaction(
+                SPECIAL_REACTION_EMOJIS.get(word, self.server_configs[server_id].reaction_emoji()))
 
             last_words: deque[str] = self._server_histories[server_id][message.author.id]
             karma: float = calculate_total_karma(word, last_words)
@@ -388,15 +406,15 @@ The above entered word is **NOT** being taken into account.''')
                 MemberModel.server_id == message.guild.id,
                 MemberModel.member_id == message.author.id
             ).values(
-                score = MemberModel.score + 1,
-                correct = MemberModel.correct + 1,
-                karma = func.max(0, MemberModel.karma + karma)
+                score=MemberModel.score + 1,
+                correct=MemberModel.correct + 1,
+                karma=func.max(0, MemberModel.karma + karma)
             )
             await connection.execute(stmt)
 
             stmt = insert(UsedWordsModel).values(
-                server_id = message.guild.id,
-                word = word
+                server_id=message.guild.id,
+                word=word
             )
             await connection.execute(stmt)
 
@@ -408,7 +426,8 @@ The above entered word is **NOT** being taken into account.''')
                 await message.channel.send(f'{current_count} words! Nice work, keep it up!')
 
             # Check and reset the server config.failed_member_id to None.
-            if self.server_failed_roles[server_id] and self.server_configs[server_id].failed_member_id == message.author.id:
+            if self.server_failed_roles[server_id] and self.server_configs[
+                server_id].failed_member_id == message.author.id:
                 self.server_configs[server_id].correct_inputs_by_failed_member += 1
                 if self.server_configs[server_id].correct_inputs_by_failed_member >= 30:
                     self.server_configs[server_id].failed_member_id = None
@@ -419,7 +438,7 @@ The above entered word is **NOT** being taken into account.''')
             await self.add_remove_reliable_role(message.guild, self.SQL_ENGINE)
             await self.server_configs[server_id].sync_to_db(self.SQL_ENGINE)
 
-    # ---------------------------------------------------------------------------------------
+    # ---------------------------------------------------------------------------------------------------------------
 
     async def handle_mistake(self, message: discord.Message,
                              response: str, connection: AsyncConnection) -> None:
@@ -440,9 +459,9 @@ The above entered word is **NOT** being taken into account.''')
             MemberModel.server_id == server_id,
             MemberModel.member_id == member_id
         ).values(
-            score = MemberModel.score - 1,
-            wrong = MemberModel.wrong + 1,
-            karma = func.max(0, MemberModel.karma - MISTAKE_PENALTY)
+            score=MemberModel.score - 1,
+            wrong=MemberModel.wrong + 1,
+            karma=func.max(0, MemberModel.karma - MISTAKE_PENALTY)
         )
         await connection.execute(stmt)
 
@@ -455,7 +474,8 @@ The above entered word is **NOT** being taken into account.''')
 
         await self.server_configs[server_id].sync_to_db(self.SQL_ENGINE)
 
-    # ------------------------------------------------------------------------------------------------
+    # ---------------------------------------------------------------------------------------------------------------
+
     @staticmethod
     def start_api_query(word: str) -> concurrent.futures.Future:
         """
@@ -485,6 +505,8 @@ The above entered word is **NOT** being taken into account.''')
         }
 
         return session.get(url=url, params=params)
+
+    # ---------------------------------------------------------------------------------------------------------------
 
     @staticmethod
     def get_query_response(future: concurrent.futures.Future) -> int:
@@ -531,7 +553,7 @@ The above entered word is **NOT** being taken into account.''')
 
         return Bot.API_RESPONSE_ERROR
 
-    # ------------------------------------------------------------------------------------------------
+    # ---------------------------------------------------------------------------------------------------------------
 
     async def on_message_delete(self, message: discord.Message) -> None:
         """Post a message in the channel if a user deletes their input."""
@@ -556,6 +578,8 @@ The above entered word is **NOT** being taken into account.''')
                 f'The **last** word was **{self.server_configs[message.guild.id].current_word}**.')
         else:
             await message.channel.send(f'{message.author.mention} deleted their word!')
+
+    # ---------------------------------------------------------------------------------------------------------------
 
     async def on_message_edit(self, before: discord.Message, after: discord.Message) -> None:
         """Send a message in the channel if a user modifies their input."""
@@ -583,7 +607,7 @@ The above entered word is **NOT** being taken into account.''')
         else:
             await after.channel.send(f'{after.author.mention} edited their word!')
 
-    # -------------------------------------------------------------------------------------------------------
+    # ---------------------------------------------------------------------------------------------------------------
 
     @staticmethod
     async def is_word_in_cache(word: str, connection: AsyncConnection) -> bool:
@@ -609,6 +633,8 @@ The above entered word is **NOT** being taken into account.''')
         result: CursorResult = await connection.execute(stmt)
         return result.scalar()
 
+    # ---------------------------------------------------------------------------------------------------------------
+
     async def add_to_cache(self, word: str) -> None:
         """
         Add a word into the `Bot.TABLE_CACHE` schema.
@@ -620,9 +646,11 @@ The above entered word is **NOT** being taken into account.''')
                 await connection.execute(stmt)
                 await connection.commit()
 
+    # ---------------------------------------------------------------------------------------------------------------
+
     @staticmethod
     async def is_word_blacklisted(word: str, server_id: Optional[int] = None,
-                            connection: Optional[AsyncConnection] = None) -> bool:
+                                  connection: Optional[AsyncConnection] = None) -> bool:
         """
         Checks if a word is blacklisted.
 
@@ -668,6 +696,8 @@ The above entered word is **NOT** being taken into account.''')
         result: CursorResult = await connection.execute(stmt)
         return result.scalar()
 
+    # ---------------------------------------------------------------------------------------------------------------
+
     @staticmethod
     async def is_word_whitelisted(word: str, server_id: int, connection: AsyncConnection) -> bool:
         """
@@ -697,6 +727,8 @@ The above entered word is **NOT** being taken into account.''')
         result: CursorResult = await connection.execute(stmt)
         return result.scalar()
 
+    # ---------------------------------------------------------------------------------------------------------------
+
     async def setup_hook(self) -> None:
         await self.tree.sync()
         logger.info('Commands synchronized')
@@ -719,6 +751,8 @@ async def set_channel(interaction: discord.Interaction, channel: discord.TextCha
     bot.server_configs[interaction.guild.id].channel_id = channel.id
     await bot.server_configs[interaction.guild.id].sync_to_db(bot.SQL_ENGINE)
     await interaction.response.send_message(f'Word chain channel was set to {channel.mention}')
+
+# ---------------------------------------------------------------------------------------------------------------
 
 
 @bot.tree.command(name='list_commands', description='List all slash commands')
@@ -752,6 +786,8 @@ __Restricted commands__ (Admin-only)
 **whitelist show** - Show the whitelist words for this server.'''
 
     await interaction.response.send_message(embed=emb, ephemeral=ephemeral)
+
+# ---------------------------------------------------------------------------------------------------------------
 
 
 @bot.tree.command(name='leaderboard', description='Shows the first 10 users with the highest score/karma')
@@ -828,6 +864,8 @@ async def leaderboard(interaction: discord.Interaction, type: Optional[app_comma
 
         await interaction.followup.send(embed=emb)
 
+# ---------------------------------------------------------------------------------------------------------------
+
 
 @bot.tree.command(name='check_word', description='Check if a word is correct')
 @app_commands.describe(word='The word to check')
@@ -891,6 +929,8 @@ async def check_word(interaction: discord.Interaction, word: str):
 
     await interaction.followup.send(embed=emb)
 
+# ---------------------------------------------------------------------------------------------------------------
+
 
 @bot.tree.command(name='set_failed_role',
                   description='Sets the role to be used when a user puts a wrong word')
@@ -905,6 +945,8 @@ async def set_failed_role(interaction: discord.Interaction, role: discord.Role):
     await bot.add_remove_failed_role(interaction.guild, bot.SQL_ENGINE)
     await interaction.response.send_message(f'Failed role was set to {role.mention}')
 
+# ---------------------------------------------------------------------------------------------------------------
+
 
 @bot.tree.command(name='set_reliable_role',
                   description='Sets the role to be used when a user attains a score of 100')
@@ -918,6 +960,8 @@ async def set_reliable_role(interaction: discord.Interaction, role: discord.Role
     bot.server_reliable_roles[guild_id] = role  # Assign role directly if we already have it in this context
     await bot.add_remove_reliable_role(interaction.guild, bot.SQL_ENGINE)
     await interaction.response.send_message(f'Reliable role was set to {role.mention}')
+
+# ---------------------------------------------------------------------------------------------------------------
 
 
 @bot.tree.command(name='remove_failed_role', description='Removes the failed role feature')
@@ -938,6 +982,8 @@ async def remove_failed_role(interaction: discord.Interaction):
     else:
         await interaction.response.send_message('Failed role was already removed')
 
+# ---------------------------------------------------------------------------------------------------------------
+
 
 @bot.tree.command(name='remove_reliable_role', description='Removes the reliable role feature')
 @app_commands.default_permissions(manage_guild=True)
@@ -954,6 +1000,8 @@ async def remove_reliable_role(interaction: discord.Interaction):
         await interaction.response.send_message('Reliable role removed')
     else:
         await interaction.response.send_message('Reliable role was already removed')
+
+# ---------------------------------------------------------------------------------------------------------------
 
 
 @bot.tree.command(name='prune', description='(DANGER) Deletes data of users who are no longer in the server')
@@ -991,11 +1039,15 @@ async def prune(interaction: discord.Interaction):
             await interaction.followup.send('No users found in the database.')
 
 
+# ===================================================================================================================
+
 
 class StatsCmdGroup(app_commands.Group):
 
     def __init__(self):
         super().__init__(name='stats')
+
+    # ---------------------------------------------------------------------------------------------------------------
 
     @app_commands.command(description='Show the server stats for the word chain game')
     async def server(self, interaction: discord.Interaction) -> None:
@@ -1016,6 +1068,8 @@ Longest chain length: {config.high_score}
         server_stats_embed.set_author(name=interaction.guild, icon_url=interaction.guild.icon)
 
         await interaction.response.send_message(embed=server_stats_embed)
+
+    # ---------------------------------------------------------------------------------------------------------------
 
     @app_commands.command(description='Get the word chain game stats of a user')
     @app_commands.describe(member="The user whose stats you want to see")
@@ -1052,7 +1106,7 @@ Longest chain length: {config.high_score}
                 MemberModel.karma >= db_member.karma
             )
             result: CursorResult = await connection.execute(stmt)
-            pos_by_karma= result.scalar()
+            pos_by_karma = result.scalar()
 
             emb = discord.Embed(
                 color=discord.Color.blue(),
@@ -1065,7 +1119,8 @@ Longest chain length: {config.high_score}
 
             await interaction.followup.send(embed=emb)
 
-# ---------------------------------------------------------------------------------------------------------------
+
+# ===================================================================================================================
 
 
 @app_commands.default_permissions(ban_members=True)
@@ -1073,6 +1128,8 @@ class BlacklistCmdGroup(app_commands.Group):
 
     def __init__(self):
         super().__init__(name='blacklist')
+
+    # ---------------------------------------------------------------------------------------------------------------
 
     # subcommand of Group
     @app_commands.command(description='Add a word to the blacklist')
@@ -1089,14 +1146,16 @@ class BlacklistCmdGroup(app_commands.Group):
 
         async with Bot.SQL_ENGINE.begin() as connection:
             stmt = insert(BlacklistModel).values(
-                server_id = interaction.guild.id,
-                word = word.lower()
+                server_id=interaction.guild.id,
+                word=word.lower()
             ).prefix_with('OR IGNORE')
             await connection.execute(stmt)
             await connection.commit()
 
         emb.description = f'✅ The word *{word.lower()}* was successfully added to the blacklist.'
         await interaction.followup.send(embed=emb)
+
+    # ---------------------------------------------------------------------------------------------------------------
 
     @app_commands.command(description='Remove a word from the blacklist')
     @app_commands.describe(word='The word to be removed from the blacklist')
@@ -1121,6 +1180,8 @@ class BlacklistCmdGroup(app_commands.Group):
         emb.description = f'✅ The word *{word.lower()}* was successfully removed from the blacklist.'
         await interaction.followup.send(embed=emb)
 
+    # ---------------------------------------------------------------------------------------------------------------
+
     @app_commands.command(description='List the blacklisted words')
     async def show(self, interaction: discord.Interaction) -> None:
         await interaction.response.defer()
@@ -1143,7 +1204,8 @@ class BlacklistCmdGroup(app_commands.Group):
 
                 await interaction.followup.send(embed=emb)
 
-# ---------------------------------------------------------------------------------------------------------------
+
+# ================================================================================================================
 
 
 @app_commands.default_permissions(ban_members=True)
@@ -1156,6 +1218,8 @@ class WhitelistCmdGroup(app_commands.Group):
 
     def __init__(self):
         super().__init__(name='whitelist')
+
+    # ---------------------------------------------------------------------------------------------------------------
 
     # subcommand of Group
     @app_commands.command(description='Add a word to the whitelist')
@@ -1172,14 +1236,16 @@ class WhitelistCmdGroup(app_commands.Group):
 
         async with Bot.SQL_ENGINE.begin() as connection:
             stmt = insert(WhitelistModel).values(
-                server_id = interaction.guild.id,
-                word = word.lower()
+                server_id=interaction.guild.id,
+                word=word.lower()
             ).prefix_with('OR IGNORE')
             await connection.execute(stmt)
             await connection.commit()
 
         emb.description = f'✅ The word *{word.lower()}* was successfully added to the whitelist.'
         await interaction.followup.send(embed=emb)
+
+    # ---------------------------------------------------------------------------------------------------------------
 
     @app_commands.command(description='Remove a word from the whitelist')
     @app_commands.describe(word='The word to be removed')
@@ -1203,6 +1269,8 @@ class WhitelistCmdGroup(app_commands.Group):
 
         emb.description = f'✅ The word *{word.lower()}* has been removed from the whitelist.'
         await interaction.followup.send(embed=emb)
+
+    # ---------------------------------------------------------------------------------------------------------------
 
     @app_commands.command(description='List the whitelisted words')
     async def show(self, interaction: discord.Interaction) -> None:
