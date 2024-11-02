@@ -704,19 +704,8 @@ The above entered word is **NOT** being taken into account.''')
         alembic_cfg = AlembicConfig('alembic.ini')
         alembic_command.upgrade(alembic_cfg, 'head')
 
+
 bot = Bot()
-
-
-@bot.tree.command(name='sync', description='Syncs the slash commands to the bot')
-@app_commands.default_permissions(ban_members=True)
-async def sync(interaction: discord.Interaction):
-    """Sync all the slash commands to the bot"""
-    if not interaction.user.guild_permissions.ban_members:
-        await interaction.response.send_message('You do not have permission to do this!')
-        return
-    await interaction.response.defer()
-    await bot.tree.sync()
-    await interaction.followup.send('Synced!')
 
 
 @bot.tree.command(name='set_channel', description='Sets the channel to count in')
