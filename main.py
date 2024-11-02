@@ -895,7 +895,7 @@ async def check_word(interaction: discord.Interaction, word: str):
 @bot.tree.command(name='set_failed_role',
                   description='Sets the role to be used when a user puts a wrong word')
 @app_commands.describe(role='The role to be used when a user puts a wrong word')
-@app_commands.default_permissions(ban_members=True)
+@app_commands.default_permissions(manage_guild=True)
 async def set_failed_role(interaction: discord.Interaction, role: discord.Role):
     """Command to set the role to be used when a user fails to count"""
     guild_id = interaction.guild.id
@@ -909,7 +909,7 @@ async def set_failed_role(interaction: discord.Interaction, role: discord.Role):
 @bot.tree.command(name='set_reliable_role',
                   description='Sets the role to be used when a user attains a score of 100')
 @app_commands.describe(role='The role to be used when a user attains a score of 100')
-@app_commands.default_permissions(ban_members=True)
+@app_commands.default_permissions(manage_guild=True)
 async def set_reliable_role(interaction: discord.Interaction, role: discord.Role):
     """Command to set the role to be used when a user gets 100 of score"""
     guild_id = interaction.guild.id
@@ -921,7 +921,7 @@ async def set_reliable_role(interaction: discord.Interaction, role: discord.Role
 
 
 @bot.tree.command(name='remove_failed_role', description='Removes the failed role feature')
-@app_commands.default_permissions(ban_members=True)
+@app_commands.default_permissions(manage_guild=True)
 async def remove_failed_role(interaction: discord.Interaction):
     guild_id = interaction.guild.id
     bot.server_configs[guild_id].failed_role_id = None
@@ -940,7 +940,7 @@ async def remove_failed_role(interaction: discord.Interaction):
 
 
 @bot.tree.command(name='remove_reliable_role', description='Removes the reliable role feature')
-@app_commands.default_permissions(ban_members=True)
+@app_commands.default_permissions(manage_guild=True)
 async def remove_reliable_role(interaction: discord.Interaction):
     guild_id = interaction.guild.id
     bot.server_configs[guild_id].reliable_role_id = None
@@ -957,7 +957,7 @@ async def remove_reliable_role(interaction: discord.Interaction):
 
 
 @bot.tree.command(name='prune', description='(DANGER) Deletes data of users who are no longer in the server')
-@app_commands.default_permissions(ban_members=True)
+@app_commands.default_permissions(manage_guild=True)
 async def prune(interaction: discord.Interaction):
     await interaction.response.defer()
 
