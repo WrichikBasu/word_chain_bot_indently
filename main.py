@@ -710,7 +710,7 @@ bot = Bot()
 
 @bot.tree.command(name='set_channel', description='Sets the channel to count in')
 @app_commands.describe(channel='The channel to count in')
-@app_commands.default_permissions(ban_members=True)
+@app_commands.default_permissions(manage_guild=True)
 async def set_channel(interaction: discord.Interaction, channel: discord.TextChannel):
     """Command to set the channel to count in"""
     if not interaction.user.guild_permissions.ban_members:
@@ -957,7 +957,7 @@ async def remove_reliable_role(interaction: discord.Interaction):
 
 
 @bot.tree.command(name='prune', description='(DANGER) Deletes data of users who are no longer in the server')
-@app_commands.default_permissions(manage_guild=True)
+@app_commands.default_permissions(administrator=True)
 async def prune(interaction: discord.Interaction):
     await interaction.response.defer()
 
