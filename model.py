@@ -100,7 +100,7 @@ class ServerConfig(BaseModel):
         """
         if self.current_count == self.high_score and not self.used_high_score_emoji:
             emoji = "🎉"
-            self.used_high_score_emoji = True  # Needs a config data dump
+            self.used_high_score_emoji = True
         else:
             emoji = {
                 100: "💯",
