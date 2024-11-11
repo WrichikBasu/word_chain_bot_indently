@@ -1090,7 +1090,7 @@ async def remove_reliable_role(interaction: discord.Interaction):
 
 # ---------------------------------------------------------------------------------------------------------------
 
-
+"""
 @bot.tree.command(name='prune', description='(DANGER) Deletes data of users who are no longer in the server')
 @app_commands.default_permissions(administrator=True)
 async def prune(interaction: discord.Interaction):
@@ -1124,7 +1124,7 @@ async def prune(interaction: discord.Interaction):
 
         else:
             await interaction.followup.send('No users found in the database.')
-
+"""
 
 # ===================================================================================================================
 
