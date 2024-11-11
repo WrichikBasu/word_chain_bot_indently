@@ -746,8 +746,64 @@ async def sync(interaction: discord.Interaction):
 @app_commands.guilds(ADMIN_GUILD_ID)
 @app_commands.describe(guild_id='ID of the guild to be removed from the DB')
 @app_commands.default_permissions(manage_guild=True)
-async def clean_server(interaction: discord.Interaction, guild_id: int):
-    await interaction.response.send_message('soon to be implemented!')
+async def clean_server(interaction: discord.Interaction, guild_id: str):
+    # cannot use int directly in type annotation, because it would allow just 32-bit integers, but most IDs are 64-bit
+    try:
+        guild_id_as_number = int(guild_id)
+    except ValueError:
+        await interaction.response.send_message('This is not a valid ID!')
+        return
+
+    async with bot.SQL_ENGINE.begin() as connection:
+        total_rows_changed = 0
+
+        # delete used words
+        stmt = delete(UsedWordsModel).where(UsedWordsModel.server_id == guild_id_as_number)
+        result = await connection.execute(stmt)
+        total_rows_changed += result.rowcount
+
+        # delete members
+        stmt = delete(MemberModel).where(MemberModel.server_id == guild_id_as_number)
+        result = await connection.execute(stmt)
+        total_rows_changed += result.rowcount
+
+        # delete blacklist
+        stmt = delete(BlacklistModel).where(BlacklistModel.server_id == guild_id_as_number)
+        result = await connection.execute(stmt)
+        total_rows_changed += result.rowcount
+
+        # delete whitelist
+        stmt = delete(WhitelistModel).where(WhitelistModel.server_id == guild_id_as_number)
+        result = await connection.execute(stmt)
+        total_rows_changed += result.rowcount
+
+        # delete config
+        if guild_id_as_number in bot.server_configs:
+            # just reset the data instead to make sure that every current guild has an existing config
+            config = bot.server_configs[guild_id_as_number]
+            config.channel_id = None
+            config.current_count = 0
+            config.current_word = None
+            config.high_score = 0
+            config.used_high_score_emoji = False
+            config.reliable_role_id = None
+            config.failed_role_id = None
+            config.last_member_id = None
+            config.failed_member_id = None
+            config.correct_inputs_by_failed_member = 0
+
+            total_rows_changed += await config.sync_to_db_with_connection(connection)
+        else:
+            stmt = delete(ServerConfigModel).where(ServerConfigModel.server_id == guild_id_as_number)
+            result = await connection.execute(stmt)
+            total_rows_changed += result.rowcount
+
+        await connection.commit()
+
+        if total_rows_changed > 0:
+            await interaction.response.send_message(f'Removed data for server {guild_id_as_number}')
+        else:
+            await interaction.response.send_message(f'No data to remove for server {guild_id_as_number}')
 
 # ---------------------------------------------------------------------------------------------------------------
 
@@ -756,8 +812,23 @@ async def clean_server(interaction: discord.Interaction, guild_id: int):
 @app_commands.guilds(ADMIN_GUILD_ID)
 @app_commands.describe(user_id='ID of the user to be removed from the DB')
 @app_commands.default_permissions(manage_guild=True)
-async def clean_user(interaction: discord.Interaction, user_id: int):
-    await interaction.response.send_message('soon to be implemented!')
+async def clean_user(interaction: discord.Interaction, user_id: str):
+    # cannot use int directly in type annotation, because it would allow just 32-bit integers, but most IDs are 64-bit
+    try:
+        user_id_as_number = int(user_id)
+    except ValueError:
+        await interaction.response.send_message('This is not a valid ID!')
+        return
+
+    async with bot.SQL_ENGINE.begin() as connection:
+        stmt = delete(MemberModel).where(MemberModel.member_id == user_id_as_number)
+        result = await connection.execute(stmt)
+        await connection.commit()
+        rows_deleted: int = result.rowcount
+        if rows_deleted > 0:
+            await interaction.response.send_message(f'Removed data for user {user_id_as_number} in {rows_deleted} servers')
+        else:
+            await interaction.response.send_message(f'No data to remove for user {user_id_as_number}')
 
 # ---------------------------------------------------------------------------------------------------------------
 
