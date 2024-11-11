@@ -139,7 +139,7 @@ class ServerConfig(BaseModel):
         """
         stmt = self.__update_statement()
         result = await connection.execute(stmt)
-        return result.rowcount
+        return result.rowcount  # noqa: custom property with memoization which IDEs won't recognize as a property
 
     class Config:
         from_attributes = True
