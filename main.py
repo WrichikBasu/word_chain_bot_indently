@@ -26,6 +26,8 @@ load_dotenv('.env')
 # running in single player mode changes some game rules - you can chain words alone now
 # getenv reads always strings, which are truthy if not empty - thus checking for common false-ish tokens
 SINGLE_PLAYER = os.getenv('SINGLE_PLAYER', False) not in {False, 'False', 'false', '0'}
+DEV_MODE = os.getenv('DEV_MODE', False) not in {False, 'False', 'false', '0'}
+ADMIN_GUILD_ID = int(os.environ['ADMIN_GUILD_ID'])
 
 logging.basicConfig(level=logging.INFO, format='[%(asctime)s] [%(levelname)s] %(name)s: %(message)s')
 logger = logging.getLogger(__name__)
@@ -712,8 +714,11 @@ The above entered word is **NOT** being taken into account.''')
     # ---------------------------------------------------------------------------------------------------------------
 
     async def setup_hook(self) -> None:
-        await self.tree.sync()
-        logger.info('Commands synchronized')
+        if not DEV_MODE:
+            # only sync when not in dev mode to avoid syncing over and over again - use sync command explicitly
+            await self.tree.sync()
+            await self.tree.sync(guild=discord.Object(id=ADMIN_GUILD_ID))
+            logger.info('Commands synchronized')
 
         alembic_cfg = AlembicConfig('alembic.ini')
         alembic_command.upgrade(alembic_cfg, 'head')
@@ -722,6 +727,7 @@ bot = Bot()
 
 
 @bot.tree.command(name='sync', description='Syncs the slash commands to the bot')
+@app_commands.guilds(ADMIN_GUILD_ID)
 @app_commands.default_permissions(ban_members=True)
 async def sync(interaction: discord.Interaction):
     """Sync all the slash commands to the bot"""
@@ -730,7 +736,30 @@ async def sync(interaction: discord.Interaction):
         return
     await interaction.response.defer()
     await bot.tree.sync()
+    await bot.tree.sync(guild=discord.Object(id=ADMIN_GUILD_ID))
     await interaction.followup.send('Synced!')
+
+# ---------------------------------------------------------------------------------------------------------------
+
+
+@bot.tree.command(name='clean_server', description='Removes all config data for given guild id.')
+@app_commands.guilds(ADMIN_GUILD_ID)
+@app_commands.describe(guild_id='ID of the guild to be removed from the DB')
+@app_commands.default_permissions(manage_guild=True)
+async def clean_server(interaction: discord.Interaction, guild_id: int):
+    await interaction.response.send_message('soon to be implemented!')
+
+# ---------------------------------------------------------------------------------------------------------------
+
+
+@bot.tree.command(name='clean_user', description='Removes all saved data for given user id.')
+@app_commands.guilds(ADMIN_GUILD_ID)
+@app_commands.describe(user_id='ID of the user to be removed from the DB')
+@app_commands.default_permissions(manage_guild=True)
+async def clean_user(interaction: discord.Interaction, user_id: int):
+    await interaction.response.send_message('soon to be implemented!')
+
+# ---------------------------------------------------------------------------------------------------------------
 
 
 @bot.tree.command(name='set_channel', description='Sets the channel to count in')
