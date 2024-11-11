@@ -70,9 +70,9 @@ class Bot(commands.AutoShardedBot):
             db_servers = {config.server_id for config in configs}
             current_servers = {guild.id for guild in self.guilds}
 
-            server_without_config = current_servers - db_servers  # those that do not have a config in the db
+            servers_without_config = current_servers - db_servers  # those that do not have a config in the db
 
-            for server_id in server_without_config:
+            for server_id in servers_without_config:
                 new_config = ServerConfig(server_id=server_id)
                 stmt = insert(ServerConfigModel).values(**new_config.model_dump())
                 await connection.execute(stmt)
