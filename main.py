@@ -731,9 +731,6 @@ bot = Bot()
 @app_commands.default_permissions(ban_members=True)
 async def sync(interaction: discord.Interaction):
     """Sync all the slash commands to the bot"""
-    if not interaction.user.guild_permissions.ban_members:
-        await interaction.response.send_message('You do not have permission to do this!')
-        return
     await interaction.response.defer()
     await bot.tree.sync()
     await bot.tree.sync(guild=discord.Object(id=ADMIN_GUILD_ID))
@@ -838,9 +835,6 @@ async def clean_user(interaction: discord.Interaction, user_id: str):
 @app_commands.default_permissions(manage_guild=True)
 async def set_channel(interaction: discord.Interaction, channel: discord.TextChannel):
     """Command to set the channel to count in"""
-    if not interaction.user.guild_permissions.ban_members:
-        await interaction.response.send_message('You do not have permission to do this!')
-        return
     bot.server_configs[interaction.guild.id].channel_id = channel.id
     await bot.server_configs[interaction.guild.id].sync_to_db(bot.SQL_ENGINE)
     await interaction.response.send_message(f'Word chain channel was set to {channel.mention}')
