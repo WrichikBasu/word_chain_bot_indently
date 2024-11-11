@@ -26,6 +26,8 @@ load_dotenv('.env')
 # running in single player mode changes some game rules - you can chain words alone now
 # getenv reads always strings, which are truthy if not empty - thus checking for common false-ish tokens
 SINGLE_PLAYER = os.getenv('SINGLE_PLAYER', False) not in {False, 'False', 'false', '0'}
+DEV_MODE = os.getenv('DEV_MODE', False) not in {False, 'False', 'false', '0'}
+ADMIN_GUILD_ID = int(os.environ['ADMIN_GUILD_ID'])
 
 logging.basicConfig(level=logging.INFO, format='[%(asctime)s] [%(levelname)s] %(name)s: %(message)s')
 logger = logging.getLogger(__name__)
@@ -68,9 +70,9 @@ class Bot(commands.AutoShardedBot):
             db_servers = {config.server_id for config in configs}
             current_servers = {guild.id for guild in self.guilds}
 
-            server_without_config = current_servers - db_servers  # those that do not have a config in the db
+            servers_without_config = current_servers - db_servers  # those that do not have a config in the db
 
-            for server_id in server_without_config:
+            for server_id in servers_without_config:
                 new_config = ServerConfig(server_id=server_id)
                 stmt = insert(ServerConfigModel).values(**new_config.model_dump())
                 await connection.execute(stmt)
@@ -712,14 +714,120 @@ The above entered word is **NOT** being taken into account.''')
     # ---------------------------------------------------------------------------------------------------------------
 
     async def setup_hook(self) -> None:
-        await self.tree.sync()
-        logger.info('Commands synchronized')
+        if not DEV_MODE:
+            # only sync when not in dev mode to avoid syncing over and over again - use sync command explicitly
+            await self.tree.sync()
+            await self.tree.sync(guild=discord.Object(id=ADMIN_GUILD_ID))
+            logger.info('Commands synchronized')
 
         alembic_cfg = AlembicConfig('alembic.ini')
         alembic_command.upgrade(alembic_cfg, 'head')
 
-
 bot = Bot()
+
+
+@bot.tree.command(name='sync', description='Syncs the slash commands to the bot')
+@app_commands.guilds(ADMIN_GUILD_ID)
+@app_commands.default_permissions(ban_members=True)
+async def sync(interaction: discord.Interaction):
+    """Sync all the slash commands to the bot"""
+    await interaction.response.defer()
+    await bot.tree.sync()
+    await bot.tree.sync(guild=discord.Object(id=ADMIN_GUILD_ID))
+    await interaction.followup.send('Synced!')
+
+# ---------------------------------------------------------------------------------------------------------------
+
+
+@bot.tree.command(name='clean_server', description='Removes all config data for given guild id.')
+@app_commands.guilds(ADMIN_GUILD_ID)
+@app_commands.describe(guild_id='ID of the guild to be removed from the DB')
+@app_commands.default_permissions(manage_guild=True)
+async def clean_server(interaction: discord.Interaction, guild_id: str):
+    # cannot use int directly in type annotation, because it would allow just 32-bit integers, but most IDs are 64-bit
+    try:
+        guild_id_as_number = int(guild_id)
+    except ValueError:
+        await interaction.response.send_message('This is not a valid ID!')
+        return
+
+    async with bot.SQL_ENGINE.begin() as connection:
+        total_rows_changed = 0
+
+        # delete used words
+        stmt = delete(UsedWordsModel).where(UsedWordsModel.server_id == guild_id_as_number)
+        result = await connection.execute(stmt)
+        total_rows_changed += result.rowcount
+
+        # delete members
+        stmt = delete(MemberModel).where(MemberModel.server_id == guild_id_as_number)
+        result = await connection.execute(stmt)
+        total_rows_changed += result.rowcount
+
+        # delete blacklist
+        stmt = delete(BlacklistModel).where(BlacklistModel.server_id == guild_id_as_number)
+        result = await connection.execute(stmt)
+        total_rows_changed += result.rowcount
+
+        # delete whitelist
+        stmt = delete(WhitelistModel).where(WhitelistModel.server_id == guild_id_as_number)
+        result = await connection.execute(stmt)
+        total_rows_changed += result.rowcount
+
+        # delete config
+        if guild_id_as_number in bot.server_configs:
+            # just reset the data instead to make sure that every current guild has an existing config
+            config = bot.server_configs[guild_id_as_number]
+            config.channel_id = None
+            config.current_count = 0
+            config.current_word = None
+            config.high_score = 0
+            config.used_high_score_emoji = False
+            config.reliable_role_id = None
+            config.failed_role_id = None
+            config.last_member_id = None
+            config.failed_member_id = None
+            config.correct_inputs_by_failed_member = 0
+
+            total_rows_changed += await config.sync_to_db_with_connection(connection)
+        else:
+            stmt = delete(ServerConfigModel).where(ServerConfigModel.server_id == guild_id_as_number)
+            result = await connection.execute(stmt)
+            total_rows_changed += result.rowcount
+
+        await connection.commit()
+
+        if total_rows_changed > 0:
+            await interaction.response.send_message(f'Removed data for server {guild_id_as_number}')
+        else:
+            await interaction.response.send_message(f'No data to remove for server {guild_id_as_number}')
+
+# ---------------------------------------------------------------------------------------------------------------
+
+
+@bot.tree.command(name='clean_user', description='Removes all saved data for given user id.')
+@app_commands.guilds(ADMIN_GUILD_ID)
+@app_commands.describe(user_id='ID of the user to be removed from the DB')
+@app_commands.default_permissions(manage_guild=True)
+async def clean_user(interaction: discord.Interaction, user_id: str):
+    # cannot use int directly in type annotation, because it would allow just 32-bit integers, but most IDs are 64-bit
+    try:
+        user_id_as_number = int(user_id)
+    except ValueError:
+        await interaction.response.send_message('This is not a valid ID!')
+        return
+
+    async with bot.SQL_ENGINE.begin() as connection:
+        stmt = delete(MemberModel).where(MemberModel.member_id == user_id_as_number)
+        result = await connection.execute(stmt)
+        await connection.commit()
+        rows_deleted: int = result.rowcount
+        if rows_deleted > 0:
+            await interaction.response.send_message(f'Removed data for user {user_id_as_number} in {rows_deleted} servers')
+        else:
+            await interaction.response.send_message(f'No data to remove for user {user_id_as_number}')
+
+# ---------------------------------------------------------------------------------------------------------------
 
 
 @bot.tree.command(name='set_channel', description='Sets the channel to count in')
@@ -727,9 +835,6 @@ bot = Bot()
 @app_commands.default_permissions(manage_guild=True)
 async def set_channel(interaction: discord.Interaction, channel: discord.TextChannel):
     """Command to set the channel to count in"""
-    if not interaction.user.guild_permissions.ban_members:
-        await interaction.response.send_message('You do not have permission to do this!')
-        return
     bot.server_configs[interaction.guild.id].channel_id = channel.id
     await bot.server_configs[interaction.guild.id].sync_to_db(bot.SQL_ENGINE)
     await interaction.response.send_message(f'Word chain channel was set to {channel.mention}')
@@ -985,7 +1090,7 @@ async def remove_reliable_role(interaction: discord.Interaction):
 
 # ---------------------------------------------------------------------------------------------------------------
 
-
+"""
 @bot.tree.command(name='prune', description='(DANGER) Deletes data of users who are no longer in the server')
 @app_commands.default_permissions(administrator=True)
 async def prune(interaction: discord.Interaction):
@@ -1019,7 +1124,7 @@ async def prune(interaction: discord.Interaction):
 
         else:
             await interaction.followup.send('No users found in the database.')
-
+"""
 
 # ===================================================================================================================
 

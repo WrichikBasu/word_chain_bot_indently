@@ -2,7 +2,7 @@ from typing import Optional
 
 from pydantic import BaseModel
 from sqlalchemy import Boolean, Float, Integer, String, update
-from sqlalchemy.ext.asyncio import AsyncEngine
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncConnection
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -109,25 +109,37 @@ class ServerConfig(BaseModel):
             }.get(self.current_count, "✅")
         return emoji
 
+    def __update_statement(self):
+        stmt = update(ServerConfigModel).values(
+            channel_id=self.channel_id,
+            current_count=self.current_count,
+            current_word=self.current_word,
+            high_score=self.high_score,
+            used_high_score_emoji=self.used_high_score_emoji,
+            reliable_role_id=self.reliable_role_id,
+            failed_role_id=self.failed_role_id,
+            last_member_id=self.last_member_id,
+            failed_member_id=self.failed_member_id,
+            correct_inputs_by_failed_member=self.correct_inputs_by_failed_member
+        ).where(ServerConfigModel.server_id == self.server_id)
+        return stmt
+
     async def sync_to_db(self, async_engine: AsyncEngine):
         """
-        Synchronized itself with the DB.
+        Synchronizes itself with the DB.
         """
         async with async_engine.begin() as connection:
-            stmt = update(ServerConfigModel).values(
-                channel_id=self.channel_id,
-                current_count=self.current_count,
-                current_word=self.current_word,
-                high_score=self.high_score,
-                used_high_score_emoji=self.used_high_score_emoji,
-                reliable_role_id=self.reliable_role_id,
-                failed_role_id=self.failed_role_id,
-                last_member_id=self.last_member_id,
-                failed_member_id=self.failed_member_id,
-                correct_inputs_by_failed_member=self.correct_inputs_by_failed_member
-            ).where(ServerConfigModel.server_id == self.server_id)
+            stmt = self.__update_statement()
             await connection.execute(stmt)
             await connection.commit()
+
+    async def sync_to_db_with_connection(self, connection: AsyncConnection) -> int:
+        """
+        Synchronizes itself with the DB using an existing connection without committing.
+        """
+        stmt = self.__update_statement()
+        result = await connection.execute(stmt)
+        return result.rowcount  # noqa: custom property with memoization which IDEs won't recognize as a property
 
     class Config:
         from_attributes = True
