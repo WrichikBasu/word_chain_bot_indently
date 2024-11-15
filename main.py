@@ -1152,7 +1152,7 @@ Longest chain length: {config.high_score}
 {f"Last word by: <@{config.last_member_id}>" if config.last_member_id else ""}''',
             color=discord.Color.blurple()
         )
-        server_stats_embed.set_author(name=interaction.guild, icon_url=interaction.guild.icon)
+        server_stats_embed.set_author(name=interaction.guild, icon_url=interaction.guild.icon if interaction.guild.icon else None)
 
         await interaction.response.send_message(embed=server_stats_embed)
 
@@ -1166,6 +1166,14 @@ Longest chain length: {config.high_score}
 
         if member is None:
             member = interaction.user
+
+        def get_member_avatar() -> Optional[discord.Asset]:
+            if member.avatar:
+                return member.avatar
+            elif member.display_avatar:
+                return member.display_avatar
+            else:
+                return None
 
         async with Bot.SQL_ENGINE.begin() as connection:
             stmt = select(MemberModel).where(
@@ -1202,7 +1210,7 @@ Longest chain length: {config.high_score}
 **✅Correct:** {db_member.correct}
 **❌Wrong:** {db_member.wrong}
 **Accuracy:** {(db_member.correct / (db_member.correct + db_member.wrong)):.2%}'''
-            ).set_author(name=f"{member} | stats", icon_url=member.avatar)
+            ).set_author(name=f"{member} | stats", icon_url=get_member_avatar())
 
             await interaction.followup.send(embed=emb)
 
