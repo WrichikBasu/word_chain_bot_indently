@@ -893,7 +893,7 @@ async def leaderboard(interaction: discord.Interaction, type: Optional[app_comma
         title=f'Top 10 users by {board_metric}',
         color=discord.Color.blue(),
         description=''
-    ).set_author(name=interaction.guild.name, icon_url=interaction.guild.icon.url)
+    ).set_author(name=interaction.guild.name, icon_url=interaction.guild.icon.url if interaction.guild.icon else None)
 
     async with Bot.SQL_ENGINE.begin() as connection:
         async def fill_with_users(offset: int = 0, limit: int = 10) -> None:
