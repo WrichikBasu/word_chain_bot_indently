@@ -11,6 +11,7 @@ from discord.ext import commands
 from dotenv import load_dotenv
 from requests_futures.sessions import FuturesSession
 from sqlalchemy import CursorResult, delete, exists, func, insert, select, update
+from sqlalchemy.sql.selectable import Select
 from sqlalchemy.engine.row import Row
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, create_async_engine
 from sqlalchemy.sql.functions import count
@@ -878,53 +879,73 @@ __Restricted commands__ (Admin-only)
 
 
 @bot.tree.command(name='leaderboard', description='Shows the first 10 users with the highest score/karma')
-@app_commands.describe(type='The type of the leaderboard')
-@app_commands.choices(type=[
+@app_commands.describe(metric='Use either score or karma for ordering the leaderboard')
+@app_commands.choices(metric=[
     app_commands.Choice(name='score', value='score'),
     app_commands.Choice(name='karma', value='karma')
 ])
-async def leaderboard(interaction: discord.Interaction, type: Optional[app_commands.Choice[str]]):
+@app_commands.describe(scope='Use either users from the current server or all users globally for the leaderboard')
+@app_commands.choices(scope=[
+    app_commands.Choice(name='server', value='server'),
+    app_commands.Choice(name='global', value='global')
+])
+async def leaderboard(interaction: discord.Interaction, metric: Optional[app_commands.Choice[str]],
+                      scope: Optional[app_commands.Choice[str]]):
     """Command to show the top 10 users with the highest score/karma."""
     await interaction.response.defer()
 
-    board_metric: str = 'score' if type is None else type.value
+    board_metric: str = 'score' if metric is None else metric.value
+    board_scope: str = 'server' if scope is None else scope.value
 
     emb = discord.Embed(
         title=f'Top 10 users by {board_metric}',
         color=discord.Color.blue(),
         description=''
-    ).set_author(name=interaction.guild.name, icon_url=interaction.guild.icon.url if interaction.guild.icon else None)
+    )
+
+    match board_scope:
+        case 'server':
+            emb.set_author(name=interaction.guild.name,
+                           icon_url=interaction.guild.icon.url if interaction.guild.icon else None)
+        case 'global':
+            emb.set_author(name='Global')
 
     async with Bot.SQL_ENGINE.begin() as connection:
         async def fill_with_users(offset: int = 0, limit: int = 10) -> None:
 
             unavailable_users: int = 0  # Denotes no. of users who were not found
-            data: Sequence[Row[tuple[int, int]]] = []
 
             # Retrieve from the database
             match board_metric:
                 case 'score':
-                    stmt = (select(MemberModel.member_id, MemberModel.score)
-                            .where(MemberModel.server_id == interaction.guild.id)
-                            .order_by(MemberModel.score.desc())
-                            .limit(limit)
-                            .offset(offset))
-                    result: CursorResult = await connection.execute(stmt)
-                    data = result.fetchall()
+                    stmt = select(MemberModel.member_id, MemberModel.score)
                 case 'karma':
-                    stmt = (select(MemberModel.member_id, MemberModel.karma)
-                            .where(MemberModel.server_id == interaction.guild.id)
-                            .order_by(MemberModel.karma.desc())
-                            .limit(limit)
-                            .offset(offset))
-                    result: CursorResult = await connection.execute(stmt)
-                    data = result.fetchall()
+                    stmt = select(MemberModel.member_id, MemberModel.karma)
                 case _:
                     raise ValueError(f'Unknown metric {board_metric}')
 
+            match board_scope:
+                case 'server':
+                    stmt = stmt.where(MemberModel.server_id == interaction.guild.id)
+                case 'global':
+                    # no extra filtering needed
+                    pass
+                case _:
+                    raise ValueError(f'Unknown scope {board_scope}')
+
+            stmt = (stmt.order_by(MemberModel.karma.desc())
+                    .limit(limit)
+                    .offset(offset))
+            result: CursorResult = await connection.execute(stmt)
+            data: Sequence[Row[tuple[int, int]]] = result.fetchall()
+
             if len(data) == 0:  # Stop when no users could be retrieved.
                 if offset == 0 and limit == 10:  # Show a message if no users were found the first time itself
-                    emb.description = ':warning: No users have played in this server yet!'
+                    match board_scope:
+                        case 'server':
+                            emb.description = ':warning: No users have played in this server yet!'
+                        case 'global':
+                            emb.description = ':warning: No users have played yet!'
                 return
 
             for i, user_data in enumerate(data, 1):
@@ -938,8 +959,6 @@ async def leaderboard(interaction: discord.Interaction, type: Optional[app_comma
                             emb.description += f'{i}. {user.mention} **{score_or_karma}**\n'
                         case 'karma':
                             emb.description += f'{i}. {user.mention} **{score_or_karma:.2f}**\n'
-                        case _:
-                            raise ValueError(f'Unknown metric {board_metric}')
 
                 except discord.NotFound:  # Member not found as they are no longer in the server
                     unavailable_users += 1
