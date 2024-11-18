@@ -911,62 +911,47 @@ async def leaderboard(interaction: discord.Interaction, metric: Optional[app_com
             emb.set_author(name='Global')
 
     async with Bot.SQL_ENGINE.begin() as connection:
-        async def fill_with_users(offset: int = 0, limit: int = 10) -> None:
+        limit = 10
 
-            unavailable_users: int = 0  # Denotes no. of users who were not found
+        match board_metric:
+            case 'score':
+                field = MemberModel.score
+            case 'karma':
+                field = MemberModel.karma
+            case _:
+                raise ValueError(f'Unknown metric {board_metric}')
 
-            # Retrieve from the database
-            match board_metric:
-                case 'score':
-                    stmt = select(MemberModel.member_id, MemberModel.score)
-                case 'karma':
-                    stmt = select(MemberModel.member_id, MemberModel.karma)
-                case _:
-                    raise ValueError(f'Unknown metric {board_metric}')
+        match board_scope:
+            case 'server':
+                stmt = (select(MemberModel.member_id, field)
+                        .where(MemberModel.server_id == interaction.guild.id)
+                        .order_by(field.desc())
+                        .limit(limit))
+            case 'global':
+                stmt = (select(MemberModel.member_id, func.sum(field))
+                        .group_by(MemberModel.member_id)
+                        .order_by(func.sum(field).desc())
+                        .limit(limit))
+            case _:
+                raise ValueError(f'Unknown scope {board_scope}')
 
+        result: CursorResult = await connection.execute(stmt)
+        data: Sequence[Row[tuple[int, int | float]]] = result.fetchall()
+
+        if len(data) == 0:  # Stop when no users could be retrieved.
             match board_scope:
                 case 'server':
-                    stmt = stmt.where(MemberModel.server_id == interaction.guild.id)
+                    emb.description = ':warning: No users have played in this server yet!'
                 case 'global':
-                    # no extra filtering needed
-                    pass
-                case _:
-                    raise ValueError(f'Unknown scope {board_scope}')
-
-            stmt = (stmt.order_by(MemberModel.karma.desc())
-                    .limit(limit)
-                    .offset(offset))
-            result: CursorResult = await connection.execute(stmt)
-            data: Sequence[Row[tuple[int, int]]] = result.fetchall()
-
-            if len(data) == 0:  # Stop when no users could be retrieved.
-                if offset == 0 and limit == 10:  # Show a message if no users were found the first time itself
-                    match board_scope:
-                        case 'server':
-                            emb.description = ':warning: No users have played in this server yet!'
-                        case 'global':
-                            emb.description = ':warning: No users have played yet!'
-                return
-
+                    emb.description = ':warning: No users have played yet!'
+        else:
             for i, user_data in enumerate(data, 1):
                 member_id, score_or_karma = user_data
-
-                try:
-                    user: discord.Member = await interaction.guild.fetch_member(member_id)
-
-                    match board_metric:
-                        case 'score':
-                            emb.description += f'{i}. {user.mention} **{score_or_karma}**\n'
-                        case 'karma':
-                            emb.description += f'{i}. {user.mention} **{score_or_karma:.2f}**\n'
-
-                except discord.NotFound:  # Member not found as they are no longer in the server
-                    unavailable_users += 1
-
-            if unavailable_users > 0:  # Recursively call if 10 members could not be retrieved
-                await fill_with_users(offset=offset + limit, limit=unavailable_users)
-
-        await fill_with_users()
+                match board_metric:
+                    case 'score':
+                        emb.description += f'{i}. <@{member_id}> **{score_or_karma}**\n'
+                    case 'karma':
+                        emb.description += f'{i}. <@{member_id}> **{score_or_karma:.2f}**\n'
 
         await interaction.followup.send(embed=emb)
 
