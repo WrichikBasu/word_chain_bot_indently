@@ -225,6 +225,10 @@ class Bot(commands.AutoShardedBot):
 
         server_id = message.guild.id
 
+        # Check if we have a config ready for this server
+        if server_id not in self.server_configs:
+            return
+
         # Check if the message is in the channel
         if message.channel.id != self.server_configs[server_id].channel_id:
             return
