@@ -6,18 +6,17 @@ from collections import defaultdict, deque
 from typing import Optional, Sequence
 
 import discord
+from alembic import command as alembic_command
+from alembic.config import Config as AlembicConfig
 from discord import app_commands
 from discord.ext import commands
 from dotenv import load_dotenv
 from requests_futures.sessions import FuturesSession
 from sqlalchemy import CursorResult, delete, exists, func, insert, select, update
-from sqlalchemy.sql.selectable import Select
 from sqlalchemy.engine.row import Row
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, create_async_engine
 from sqlalchemy.sql.functions import count
 
-from alembic import command as alembic_command
-from alembic.config import Config as AlembicConfig
 from consts import *
 from data import calculate_total_karma
 from model import (BlacklistModel, Member, MemberModel, ServerConfig, ServerConfigModel, UsedWordsModel, WhitelistModel,
