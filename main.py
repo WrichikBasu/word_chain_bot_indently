@@ -1166,7 +1166,7 @@ Longest chain length: {config.high_score}
 
     # ---------------------------------------------------------------------------------------------------------------
 
-    @app_commands.command(description='Get the word chain game stats of a user')
+    @app_commands.command(description='Show the user stats for the word chain game')
     @app_commands.describe(member="The user whose stats you want to see")
     async def user(self, interaction: discord.Interaction, member: Optional[discord.Member]) -> None:
         """Command to show the stats of a specific user"""
