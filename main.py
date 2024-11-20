@@ -6,6 +6,8 @@ from collections import defaultdict, deque
 from typing import Optional, Sequence
 
 import discord
+from alembic import command as alembic_command
+from alembic.config import Config as AlembicConfig
 from discord import app_commands
 from discord.ext import commands
 from dotenv import load_dotenv
@@ -15,8 +17,6 @@ from sqlalchemy.engine.row import Row
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, create_async_engine
 from sqlalchemy.sql.functions import count
 
-from alembic import command as alembic_command
-from alembic.config import Config as AlembicConfig
 from consts import *
 from data import calculate_total_karma
 from model import (BlacklistModel, Member, MemberModel, ServerConfig, ServerConfigModel, UsedWordsModel, WhitelistModel,
@@ -223,6 +223,10 @@ class Bot(commands.AutoShardedBot):
             return
 
         server_id = message.guild.id
+
+        # Check if we have a config ready for this server
+        if server_id not in self.server_configs:
+            return
 
         # Check if the message is in the channel
         if message.channel.id != self.server_configs[server_id].channel_id:
@@ -716,9 +720,9 @@ The above entered word is **NOT** being taken into account.''')
     async def setup_hook(self) -> None:
         if not DEV_MODE:
             # only sync when not in dev mode to avoid syncing over and over again - use sync command explicitly
-            await self.tree.sync()
-            await self.tree.sync(guild=discord.Object(id=ADMIN_GUILD_ID))
-            logger.info('Commands synchronized')
+            global_sync = await self.tree.sync()
+            admin_sync = await self.tree.sync(guild=discord.Object(id=ADMIN_GUILD_ID))
+            logger.info(f'Synchronized {len(global_sync)} global commands and {len(admin_sync)} admin commands')
 
         alembic_cfg = AlembicConfig('alembic.ini')
         alembic_command.upgrade(alembic_cfg, 'head')
@@ -732,9 +736,9 @@ bot = Bot()
 async def sync(interaction: discord.Interaction):
     """Sync all the slash commands to the bot"""
     await interaction.response.defer()
-    await bot.tree.sync()
-    await bot.tree.sync(guild=discord.Object(id=ADMIN_GUILD_ID))
-    await interaction.followup.send('Synced!')
+    global_sync = await bot.tree.sync()
+    admin_sync = await bot.tree.sync(guild=discord.Object(id=ADMIN_GUILD_ID))
+    await interaction.followup.send(f'Synchronized {len(global_sync)} global commands and {len(admin_sync)} admin commands')
 
 # ---------------------------------------------------------------------------------------------------------------
 
@@ -873,83 +877,6 @@ __Restricted commands__ (Admin-only)
 **whitelist show** - Show the whitelist words for this server.'''
 
     await interaction.response.send_message(embed=emb, ephemeral=ephemeral)
-
-# ---------------------------------------------------------------------------------------------------------------
-
-
-@bot.tree.command(name='leaderboard', description='Shows the first 10 users with the highest score/karma')
-@app_commands.describe(type='The type of the leaderboard')
-@app_commands.choices(type=[
-    app_commands.Choice(name='score', value='score'),
-    app_commands.Choice(name='karma', value='karma')
-])
-async def leaderboard(interaction: discord.Interaction, type: Optional[app_commands.Choice[str]]):
-    """Command to show the top 10 users with the highest score/karma."""
-    await interaction.response.defer()
-
-    board_metric: str = 'score' if type is None else type.value
-
-    emb = discord.Embed(
-        title=f'Top 10 users by {board_metric}',
-        color=discord.Color.blue(),
-        description=''
-    ).set_author(name=interaction.guild.name, icon_url=interaction.guild.icon.url if interaction.guild.icon else None)
-
-    async with Bot.SQL_ENGINE.begin() as connection:
-        async def fill_with_users(offset: int = 0, limit: int = 10) -> None:
-
-            unavailable_users: int = 0  # Denotes no. of users who were not found
-            data: Sequence[Row[tuple[int, int]]] = []
-
-            # Retrieve from the database
-            match board_metric:
-                case 'score':
-                    stmt = (select(MemberModel.member_id, MemberModel.score)
-                            .where(MemberModel.server_id == interaction.guild.id)
-                            .order_by(MemberModel.score.desc())
-                            .limit(limit)
-                            .offset(offset))
-                    result: CursorResult = await connection.execute(stmt)
-                    data = result.fetchall()
-                case 'karma':
-                    stmt = (select(MemberModel.member_id, MemberModel.karma)
-                            .where(MemberModel.server_id == interaction.guild.id)
-                            .order_by(MemberModel.karma.desc())
-                            .limit(limit)
-                            .offset(offset))
-                    result: CursorResult = await connection.execute(stmt)
-                    data = result.fetchall()
-                case _:
-                    raise ValueError(f'Unknown metric {board_metric}')
-
-            if len(data) == 0:  # Stop when no users could be retrieved.
-                if offset == 0 and limit == 10:  # Show a message if no users were found the first time itself
-                    emb.description = ':warning: No users have played in this server yet!'
-                return
-
-            for i, user_data in enumerate(data, 1):
-                member_id, score_or_karma = user_data
-
-                try:
-                    user: discord.Member = await interaction.guild.fetch_member(member_id)
-
-                    match board_metric:
-                        case 'score':
-                            emb.description += f'{i}. {user.mention} **{score_or_karma}**\n'
-                        case 'karma':
-                            emb.description += f'{i}. {user.mention} **{score_or_karma:.2f}**\n'
-                        case _:
-                            raise ValueError(f'Unknown metric {board_metric}')
-
-                except discord.NotFound:  # Member not found as they are no longer in the server
-                    unavailable_users += 1
-
-            if unavailable_users > 0:  # Recursively call if 10 members could not be retrieved
-                await fill_with_users(offset=offset + limit, limit=unavailable_users)
-
-        await fill_with_users()
-
-        await interaction.followup.send(embed=emb)
 
 # ---------------------------------------------------------------------------------------------------------------
 
@@ -1129,6 +1056,123 @@ async def prune(interaction: discord.Interaction):
 # ===================================================================================================================
 
 
+class LeaderboardCmdGroup(app_commands.Group):
+
+    def __init__(self):
+        super().__init__(name='leaderboard')
+
+    # ---------------------------------------------------------------------------------------------------------------
+
+    @app_commands.command(description='Shows the first 10 users with the highest score/karma')
+    @app_commands.describe(metric='Use either score or karma for ordering the leaderboard')
+    @app_commands.choices(metric=[
+        app_commands.Choice(name='score', value='score'),
+        app_commands.Choice(name='karma', value='karma')
+    ])
+    @app_commands.describe(scope='Use either users from the current server or all users globally for the leaderboard')
+    @app_commands.choices(scope=[
+        app_commands.Choice(name='server', value='server'),
+        app_commands.Choice(name='global', value='global')
+    ])
+    async def user(self, interaction: discord.Interaction, metric: Optional[app_commands.Choice[str]],
+                   scope: Optional[app_commands.Choice[str]]):
+        """Command to show the top 10 users with the highest score/karma."""
+        await interaction.response.defer()
+
+        board_metric: str = 'score' if metric is None else metric.value
+        board_scope: str = 'server' if scope is None else scope.value
+
+        emb = discord.Embed(
+            title=f'Top 10 users by {board_metric}',
+            color=discord.Color.blue(),
+            description=''
+        )
+
+        match board_scope:
+            case 'server':
+                emb.set_author(name=interaction.guild.name,
+                               icon_url=interaction.guild.icon.url if interaction.guild.icon else None)
+            case 'global':
+                emb.set_author(name='Global')
+
+        async with bot.SQL_ENGINE.begin() as connection:
+            limit = 10
+
+            match board_metric:
+                case 'score':
+                    field = MemberModel.score
+                case 'karma':
+                    field = MemberModel.karma
+                case _:
+                    raise ValueError(f'Unknown metric {board_metric}')
+
+            match board_scope:
+                case 'server':
+                    stmt = (select(MemberModel.member_id, field)
+                            .where(MemberModel.server_id == interaction.guild.id)
+                            .order_by(field.desc())
+                            .limit(limit))
+                case 'global':
+                    stmt = (select(MemberModel.member_id, func.sum(field))
+                            .group_by(MemberModel.member_id)
+                            .order_by(func.sum(field).desc())
+                            .limit(limit))
+                case _:
+                    raise ValueError(f'Unknown scope {board_scope}')
+
+            result: CursorResult = await connection.execute(stmt)
+            data: Sequence[Row[tuple[int, int | float]]] = result.fetchall()
+
+            if len(data) == 0:  # Stop when no users could be retrieved.
+                match board_scope:
+                    case 'server':
+                        emb.description = ':warning: No users have played in this server yet!'
+                    case 'global':
+                        emb.description = ':warning: No users have played yet!'
+            else:
+                for i, user_data in enumerate(data, 1):
+                    member_id, score_or_karma = user_data
+                    match board_metric:
+                        case 'score':
+                            emb.description += f'{i}. <@{member_id}> **{score_or_karma}**\n'
+                        case 'karma':
+                            emb.description += f'{i}. <@{member_id}> **{score_or_karma:.2f}**\n'
+
+            await interaction.followup.send(embed=emb)
+
+# ---------------------------------------------------------------------------------------------------------------
+
+    @app_commands.command(description='Shows the first 10 servers with the highest highscore')
+    async def server(self, interaction: discord.Interaction):
+        """Command to show the top 10 servers with the highest highscore"""
+        await interaction.response.defer()
+
+        emb = discord.Embed(
+            title=f'Top 10 servers by highscore',
+            color=discord.Color.blue(),
+            description=''
+        ).set_author(name='Global')
+
+        async with bot.SQL_ENGINE.begin() as connection:
+            limit = 10
+
+            stmt = (select(ServerConfigModel.server_id, ServerConfigModel.high_score)
+                    .order_by(ServerConfigModel.high_score.desc())
+                    .limit(limit))
+
+            result: CursorResult = await connection.execute(stmt)
+            data: Sequence[Row[tuple[int, int]]] = result.fetchall()
+
+            guild_names = defaultdict(lambda: 'unknown', {g.id: g.name for g in bot.guilds})
+            for i, server_data in enumerate(data, 1):
+                server_id, high_score = server_data
+                emb.description += f'{i}. {guild_names[server_id]} **{high_score}**\n'
+
+            await interaction.followup.send(embed=emb)
+
+# ===================================================================================================================
+
+
 class StatsCmdGroup(app_commands.Group):
 
     def __init__(self):
@@ -1158,7 +1202,7 @@ Longest chain length: {config.high_score}
 
     # ---------------------------------------------------------------------------------------------------------------
 
-    @app_commands.command(description='Get the word chain game stats of a user')
+    @app_commands.command(description='Show the user stats for the word chain game')
     @app_commands.describe(member="The user whose stats you want to see")
     async def user(self, interaction: discord.Interaction, member: Optional[discord.Member]) -> None:
         """Command to show the stats of a specific user"""
@@ -1391,6 +1435,7 @@ class WhitelistCmdGroup(app_commands.Group):
 
 
 if __name__ == '__main__':
+    bot.tree.add_command(LeaderboardCmdGroup())
     bot.tree.add_command(StatsCmdGroup())
     bot.tree.add_command(BlacklistCmdGroup())
     bot.tree.add_command(WhitelistCmdGroup())
