@@ -721,9 +721,9 @@ The above entered word is **NOT** being taken into account.''')
     async def setup_hook(self) -> None:
         if not DEV_MODE:
             # only sync when not in dev mode to avoid syncing over and over again - use sync command explicitly
-            await self.tree.sync()
-            await self.tree.sync(guild=discord.Object(id=ADMIN_GUILD_ID))
-            logger.info('Commands synchronized')
+            global_sync = await self.tree.sync()
+            admin_sync = await self.tree.sync(guild=discord.Object(id=ADMIN_GUILD_ID))
+            logger.info(f'Synchronized {len(global_sync)} global commands and {len(admin_sync)} admin commands')
 
         alembic_cfg = AlembicConfig('alembic.ini')
         alembic_command.upgrade(alembic_cfg, 'head')
@@ -737,9 +737,9 @@ bot = Bot()
 async def sync(interaction: discord.Interaction):
     """Sync all the slash commands to the bot"""
     await interaction.response.defer()
-    await bot.tree.sync()
-    await bot.tree.sync(guild=discord.Object(id=ADMIN_GUILD_ID))
-    await interaction.followup.send('Synced!')
+    global_sync = await bot.tree.sync()
+    admin_sync = await bot.tree.sync(guild=discord.Object(id=ADMIN_GUILD_ID))
+    await interaction.followup.send(f'Synchronized {len(global_sync)} global commands and {len(admin_sync)} admin commands')
 
 # ---------------------------------------------------------------------------------------------------------------
 
