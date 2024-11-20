@@ -1151,7 +1151,7 @@ class LeaderboardCmdGroup(app_commands.Group):
             title=f'Top 10 servers by highscore',
             color=discord.Color.blue(),
             description=''
-        )
+        ).set_author(name='Global')
 
         async with bot.SQL_ENGINE.begin() as connection:
             limit = 10
