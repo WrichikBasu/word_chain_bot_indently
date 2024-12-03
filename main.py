@@ -1,9 +1,12 @@
 """Word chain bot for the Indently server"""
+import asyncio
 import concurrent.futures
+import contextlib
 import logging
 import os
+import time
 from collections import defaultdict, deque
-from typing import Optional, Sequence
+from typing import Callable, Optional, Sequence, AsyncIterator
 
 import discord
 from alembic import command as alembic_command
@@ -14,7 +17,7 @@ from dotenv import load_dotenv
 from requests_futures.sessions import FuturesSession
 from sqlalchemy import CursorResult, delete, exists, func, insert, select, update
 from sqlalchemy.engine.row import Row
-from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, create_async_engine
+from sqlalchemy.ext.asyncio import AsyncConnection, create_async_engine
 from sqlalchemy.sql.functions import count
 
 from consts import *
@@ -36,7 +39,8 @@ logger = logging.getLogger(__name__)
 class Bot(commands.AutoShardedBot):
     """Word chain bot for Indently discord server."""
 
-    SQL_ENGINE = create_async_engine('sqlite+aiosqlite:///database_word_chain.sqlite3')
+    __SQL_ENGINE = create_async_engine('sqlite+aiosqlite:///database_word_chain.sqlite3')
+    __LOCK = asyncio.Lock()
 
     API_RESPONSE_WORD_EXISTS: int = 1
     API_RESPONSE_WORD_DOESNT_EXIST: int = 0
@@ -54,6 +58,21 @@ class Bot(commands.AutoShardedBot):
             lambda: defaultdict(lambda: deque(maxlen=HISTORY_LENGTH)))
         super().__init__(command_prefix='!', intents=intents)
 
+    @contextlib.asynccontextmanager
+    async def db_connection(self, locked=True) -> AsyncIterator[AsyncConnection]:
+        logger.debug(f'requesting connection with {locked=}')
+        if locked:
+            start_time = time.monotonic()
+            async with self.__LOCK:
+                wait_time = time.monotonic() - start_time
+                logger.debug(f'Waited {wait_time:.4f} seconds for DB lock')
+                async with self.__SQL_ENGINE.begin() as connection:
+                    yield connection
+        else:
+            async with self.__SQL_ENGINE.begin() as connection:
+                yield connection
+        logger.debug(f'connection done')
+
     # ---------------------------------------------------------------------------------------------------------------
 
     async def on_ready(self) -> None:
@@ -61,7 +80,7 @@ class Bot(commands.AutoShardedBot):
         logger.info(f'Bot is ready as {self.user.name}#{self.user.discriminator}')
 
         # load all configs and make sure each guild has one entry
-        async with self.SQL_ENGINE.begin() as connection:
+        async with self.db_connection() as connection:
             stmt = select(ServerConfigModel)
             result: CursorResult = await connection.execute(stmt)
             configs = [ServerConfig.model_validate(row) for row in result]
@@ -112,7 +131,7 @@ class Bot(commands.AutoShardedBot):
         """Override the on_guild_join method"""
         logger.info(f'Joined guild {guild.name} ({guild.id})')
 
-        async with self.SQL_ENGINE.begin() as connection:
+        async with self.db_connection() as connection:
             new_config = ServerConfig(server_id=guild.id)
             stmt = insert(ServerConfigModel).values(**new_config.model_dump()).prefix_with('OR IGNORE')
             await connection.execute(stmt)
@@ -138,7 +157,8 @@ class Bot(commands.AutoShardedBot):
 
     # ---------------------------------------------------------------------------------------------------------------
 
-    async def add_remove_reliable_role(self, guild: discord.Guild, async_engine: AsyncEngine):
+    async def add_remove_reliable_role(self, guild: discord.Guild,
+                                       async_connection_generator: Callable[[bool], AsyncConnection]):
         """
         Adds/removes the reliable role if present to make sure it matches the rules.
 
@@ -147,7 +167,7 @@ class Bot(commands.AutoShardedBot):
         2. Karma must be >= `RELIABLE_ROLE_KARMA_THRESHOLD`
         """
         if self.server_reliable_roles[guild.id]:
-            async with async_engine.begin() as connection:
+            async with async_connection_generator(False) as connection:
                 stmt = select(MemberModel.member_id).where(
                     MemberModel.server_id == guild.id,
                     MemberModel.member_id.in_([member.id for member in guild.members]),
@@ -173,7 +193,8 @@ class Bot(commands.AutoShardedBot):
 
     # ---------------------------------------------------------------------------------------------------------------
 
-    async def add_remove_failed_role(self, guild: discord.Guild, async_engine: AsyncEngine):
+    async def add_remove_failed_role(self, guild: discord.Guild,
+                                     async_connection_generator: Callable[[bool], AsyncConnection]):
         """
         Adds the `failed_role` to the user whose id is stored in `failed_member_id`.
         Removes the failed role from all other users.
@@ -203,7 +224,7 @@ class Bot(commands.AutoShardedBot):
                     # Member is no longer in the server
                     self.server_configs[guild.id].failed_member_id = None
                     self.server_configs[guild.id].correct_inputs_by_failed_member = 0
-                    await self.server_configs[guild.id].sync_to_db(async_engine)
+                    await self.server_configs[guild.id].sync_to_db(async_connection_generator)
 
     # ---------------------------------------------------------------------------------------------------------------
 
@@ -248,7 +269,7 @@ class Bot(commands.AutoShardedBot):
 The chain has **not** been broken. Please enter another word.''')
             return
 
-        async with self.SQL_ENGINE.begin() as connection:
+        async with self.db_connection() as connection:
             # ----------------------------------------------------------------------------------------
             # ADD USER TO THE DATABASE
             # ----------------------------------------------------------------------------------------
@@ -273,7 +294,7 @@ The chain has **not** been broken. Please enter another word.''')
                 await connection.execute(stmt)
                 await connection.commit()
 
-        async with self.SQL_ENGINE.begin() as connection:
+        async with self.db_connection() as connection:
             # -------------------------------
             # Check if word is whitelisted
             # -------------------------------
@@ -354,7 +375,7 @@ current high score of **{self.server_configs[server_id].high_score}**!'''
             if future:
                 result: int = self.get_query_response(future)
 
-                if result == Bot.API_RESPONSE_WORD_DOESNT_EXIST:
+                if result == bot.API_RESPONSE_WORD_DOESNT_EXIST:
 
                     if self.server_configs[server_id].current_word:
                         response: str = f'''{message.author.mention} messed up the chain! \
@@ -371,7 +392,7 @@ Restart and try to beat the current high score of **{self.server_configs[server_
                     await self.handle_mistake(message, response, connection)
                     return
 
-                elif result == Bot.API_RESPONSE_ERROR:
+                elif result == bot.API_RESPONSE_ERROR:
 
                     await message.add_reaction('⚠️')
                     await message.channel.send(''':octagonal_sign: There was an issue in the backend.
@@ -407,6 +428,7 @@ The above entered word is **NOT** being taken into account.''')
             await connection.execute(stmt)
 
             await connection.commit()
+            # TODO this is an issue here - we are inside the context manager, but will be creating additional ones
 
             current_count = self.server_configs[server_id].current_count
 
@@ -420,11 +442,11 @@ The above entered word is **NOT** being taken into account.''')
                 if self.server_configs[server_id].correct_inputs_by_failed_member >= 30:
                     self.server_configs[server_id].failed_member_id = None
                     self.server_configs[server_id].correct_inputs_by_failed_member = 0
-                    await self.add_remove_failed_role(message.guild, self.SQL_ENGINE)
+                    await self.add_remove_failed_role(message.guild, self.db_connection)
 
             await self.add_to_cache(word)
-            await self.add_remove_reliable_role(message.guild, self.SQL_ENGINE)
-            await self.server_configs[server_id].sync_to_db(self.SQL_ENGINE)
+            await self.add_remove_reliable_role(message.guild, self.db_connection)
+            await self.server_configs[server_id].sync_to_db(self.db_connection)
 
     # ---------------------------------------------------------------------------------------------------------------
 
@@ -436,7 +458,7 @@ The above entered word is **NOT** being taken into account.''')
         member_id = message.author.id
         if self.server_failed_roles[server_id]:
             self.server_configs[server_id].failed_member_id = member_id  # Designate current user as failed member
-            await self.add_remove_failed_role(message.guild, self.SQL_ENGINE)
+            await self.add_remove_failed_role(message.guild, self.db_connection)
 
         self.server_configs[server_id].fail_chain(member_id)
 
@@ -460,7 +482,7 @@ The above entered word is **NOT** being taken into account.''')
 
         await connection.commit()
 
-        await self.server_configs[server_id].sync_to_db(self.SQL_ENGINE)
+        await self.server_configs[server_id].sync_to_db(self.db_connection)
 
     # ---------------------------------------------------------------------------------------------------------------
 
@@ -509,15 +531,15 @@ The above entered word is **NOT** being taken into account.''')
         Returns
         -------
         int
-            `Bot.API_RESPONSE_WORD_EXISTS` is the word exists, `Bot.API_RESPONSE_WORD_DOESNT_EXIST` if the word
-            does not exist, or `Bot.API_RESPONSE_ERROR` if an error (of any type) was raised in the query.
+            `bot.API_RESPONSE_WORD_EXISTS` is the word exists, `bot.API_RESPONSE_WORD_DOESNT_EXIST` if the word
+            does not exist, or `bot.API_RESPONSE_ERROR` if an error (of any type) was raised in the query.
         """
         try:
             response = future.result(timeout=5)
 
             if response.status_code >= 400:
                 logger.error(f'Received status code {response.status_code} from Wiktionary API query.')
-                return Bot.API_RESPONSE_ERROR
+                return bot.API_RESPONSE_ERROR
 
             data = response.json()
 
@@ -525,21 +547,21 @@ The above entered word is **NOT** being taken into account.''')
             best_match: str = data[1][0]  # Should raise an IndexError if no match is returned
 
             if best_match.lower() == word.lower():
-                return Bot.API_RESPONSE_WORD_EXISTS
+                return bot.API_RESPONSE_WORD_EXISTS
             else:
                 # Normally, the control should not reach this else statement.
                 # If, however, some word is returned by chance, and it doesn't match the entered word,
                 # this else will take care of it
-                return Bot.API_RESPONSE_WORD_DOESNT_EXIST
+                return bot.API_RESPONSE_WORD_DOESNT_EXIST
 
-        except TimeoutError:  # Send Bot.API_RESPONSE_ERROR
+        except TimeoutError:  # Send bot.API_RESPONSE_ERROR
             logger.error('Timeout error raised when trying to get the query result.')
         except IndexError:
-            return Bot.API_RESPONSE_WORD_DOESNT_EXIST
+            return bot.API_RESPONSE_WORD_DOESNT_EXIST
         except Exception as ex:
             logger.error(f'An exception was raised while getting the query result:\n{ex}')
 
-        return Bot.API_RESPONSE_ERROR
+        return bot.API_RESPONSE_ERROR
 
     # ---------------------------------------------------------------------------------------------------------------
 
@@ -625,10 +647,10 @@ The above entered word is **NOT** being taken into account.''')
 
     async def add_to_cache(self, word: str) -> None:
         """
-        Add a word into the `Bot.TABLE_CACHE` schema.
+        Add a word into the `bot.TABLE_CACHE` schema.
         """
 
-        async with self.SQL_ENGINE.begin() as connection:
+        async with self.db_connection() as connection:
             if not await self.is_word_blacklisted(word):  # Do NOT insert globally blacklisted words into the cache
                 stmt = insert(WordCacheModel).values(word=word).prefix_with('OR IGNORE')
                 await connection.execute(stmt)
@@ -755,7 +777,7 @@ async def clean_server(interaction: discord.Interaction, guild_id: str):
         await interaction.response.send_message('This is not a valid ID!')
         return
 
-    async with bot.SQL_ENGINE.begin() as connection:
+    async with bot.db_connection() as connection:
         total_rows_changed = 0
 
         # delete used words
@@ -821,7 +843,7 @@ async def clean_user(interaction: discord.Interaction, user_id: str):
         await interaction.response.send_message('This is not a valid ID!')
         return
 
-    async with bot.SQL_ENGINE.begin() as connection:
+    async with bot.db_connection() as connection:
         stmt = delete(MemberModel).where(MemberModel.member_id == user_id_as_number)
         result = await connection.execute(stmt)
         await connection.commit()
@@ -840,7 +862,7 @@ async def clean_user(interaction: discord.Interaction, user_id: str):
 async def set_channel(interaction: discord.Interaction, channel: discord.TextChannel):
     """Command to set the channel to count in"""
     bot.server_configs[interaction.guild.id].channel_id = channel.id
-    await bot.server_configs[interaction.guild.id].sync_to_db(bot.SQL_ENGINE)
+    await bot.server_configs[interaction.guild.id].sync_to_db(bot.db_connection)
     await interaction.response.send_message(f'Word chain channel was set to {channel.mention}')
 
 # ---------------------------------------------------------------------------------------------------------------
@@ -911,32 +933,32 @@ async def check_word(interaction: discord.Interaction, word: str):
 
     word = word.lower()
 
-    async with Bot.SQL_ENGINE.begin() as connection:
-        if await Bot.is_word_whitelisted(word, interaction.guild.id, connection):
+    async with bot.db_connection(locked=False) as connection:
+        if await bot.is_word_whitelisted(word, interaction.guild.id, connection):
             emb.description = f'✅ The word **{word}** is valid.'
             await interaction.followup.send(embed=emb)
             return
 
-        if await Bot.is_word_blacklisted(word, interaction.guild.id, connection):
+        if await bot.is_word_blacklisted(word, interaction.guild.id, connection):
             emb.description = f'❌ The word **{word}** is **blacklisted** and hence, **not** valid.'
             await interaction.followup.send(embed=emb)
             return
 
-        if await Bot.is_word_in_cache(word, connection):
+        if await bot.is_word_in_cache(word, connection):
             emb.description = f'✅ The word **{word}** is valid.'
             await interaction.followup.send(embed=emb)
             return
 
-        future: concurrent.futures.Future = Bot.start_api_query(word)
+        future: concurrent.futures.Future = bot.start_api_query(word)
 
-    match Bot.get_query_response(future):
-        case Bot.API_RESPONSE_WORD_EXISTS:
+    match bot.get_query_response(future):
+        case bot.API_RESPONSE_WORD_EXISTS:
 
             emb.description = f'✅ The word **{word}** is valid.'
 
             await bot.add_to_cache(word)
 
-        case Bot.API_RESPONSE_WORD_DOESNT_EXIST:
+        case bot.API_RESPONSE_WORD_DOESNT_EXIST:
             emb.description = f'❌ **{word}** is **not** a valid word.'
         case _:
             emb.description = f'⚠️ There was an issue in fetching the result.'
@@ -954,9 +976,9 @@ async def set_failed_role(interaction: discord.Interaction, role: discord.Role):
     """Command to set the role to be used when a user fails to count"""
     guild_id = interaction.guild.id
     bot.server_configs[guild_id].failed_role_id = role.id
-    await bot.server_configs[guild_id].sync_to_db(bot.SQL_ENGINE)
+    await bot.server_configs[guild_id].sync_to_db(bot.db_connection)
     bot.server_failed_roles[guild_id] = role  # Assign role directly if we already have it in this context
-    await bot.add_remove_failed_role(interaction.guild, bot.SQL_ENGINE)
+    await bot.add_remove_failed_role(interaction.guild, bot.db_connection)
     await interaction.response.send_message(f'Failed role was set to {role.mention}')
 
 # ---------------------------------------------------------------------------------------------------------------
@@ -970,9 +992,9 @@ async def set_reliable_role(interaction: discord.Interaction, role: discord.Role
     """Command to set the role to be used when a user gets 100 of score"""
     guild_id = interaction.guild.id
     bot.server_configs[guild_id].reliable_role_id = role.id
-    await bot.server_configs[guild_id].sync_to_db(bot.SQL_ENGINE)
+    await bot.server_configs[guild_id].sync_to_db(bot.db_connection)
     bot.server_reliable_roles[guild_id] = role  # Assign role directly if we already have it in this context
-    await bot.add_remove_reliable_role(interaction.guild, bot.SQL_ENGINE)
+    await bot.add_remove_reliable_role(interaction.guild, bot.db_connection)
     await interaction.response.send_message(f'Reliable role was set to {role.mention}')
 
 # ---------------------------------------------------------------------------------------------------------------
@@ -985,7 +1007,7 @@ async def remove_failed_role(interaction: discord.Interaction):
     bot.server_configs[guild_id].failed_role_id = None
     bot.server_configs[guild_id].failed_member_id = None
     bot.server_configs[guild_id].correct_inputs_by_failed_member = 0
-    await bot.server_configs[guild_id].sync_to_db(bot.SQL_ENGINE)
+    await bot.server_configs[guild_id].sync_to_db(bot.db_connection)
 
     if bot.server_failed_roles[guild_id]:
         role = bot.server_failed_roles[guild_id]
@@ -1004,7 +1026,7 @@ async def remove_failed_role(interaction: discord.Interaction):
 async def remove_reliable_role(interaction: discord.Interaction):
     guild_id = interaction.guild.id
     bot.server_configs[guild_id].reliable_role_id = None
-    await bot.server_configs[guild_id].sync_to_db(bot.SQL_ENGINE)
+    await bot.server_configs[guild_id].sync_to_db(bot.db_connection)
 
     if bot.server_reliable_roles[guild_id]:
         role = bot.server_reliable_roles[guild_id]
@@ -1023,7 +1045,7 @@ async def remove_reliable_role(interaction: discord.Interaction):
 async def prune(interaction: discord.Interaction):
     await interaction.response.defer()
 
-    async with Bot.SQL_ENGINE.begin() as connection:
+    async with bot.SQL_ENGINE.begin() as connection:
         stmt = select(MemberModel.member_id).where(MemberModel.server_id == interaction.guild.id)
         result: CursorResult = await connection.execute(stmt)
         data: Sequence[Row[tuple[int]]] = result.fetchall()
@@ -1095,7 +1117,7 @@ class LeaderboardCmdGroup(app_commands.Group):
             case 'global':
                 emb.set_author(name='Global')
 
-        async with bot.SQL_ENGINE.begin() as connection:
+        async with bot.db_connection(locked=False) as connection:
             limit = 10
 
             match board_metric:
@@ -1153,7 +1175,7 @@ class LeaderboardCmdGroup(app_commands.Group):
             description=''
         ).set_author(name='Global')
 
-        async with bot.SQL_ENGINE.begin() as connection:
+        async with bot.db_connection(locked=False) as connection:
             limit = 10
 
             stmt = (select(ServerConfigModel.server_id, ServerConfigModel.high_score)
@@ -1219,7 +1241,7 @@ Longest chain length: {config.high_score}
             else:
                 return None
 
-        async with Bot.SQL_ENGINE.begin() as connection:
+        async with bot.db_connection(locked=False) as connection:
             stmt = select(MemberModel).where(
                 MemberModel.server_id == member.guild.id,
                 MemberModel.member_id == member.id
@@ -1283,7 +1305,7 @@ class BlacklistCmdGroup(app_commands.Group):
             await interaction.followup.send(embed=emb)
             return
 
-        async with Bot.SQL_ENGINE.begin() as connection:
+        async with bot.db_connection() as connection:
             stmt = insert(BlacklistModel).values(
                 server_id=interaction.guild.id,
                 word=word.lower()
@@ -1308,7 +1330,7 @@ class BlacklistCmdGroup(app_commands.Group):
             await interaction.followup.send(embed=emb)
             return
 
-        async with Bot.SQL_ENGINE.begin() as connection:
+        async with bot.db_connection() as connection:
             stmt = delete(BlacklistModel).where(
                 BlacklistModel.server_id == interaction.guild.id,
                 BlacklistModel.word == word.lower()
@@ -1325,7 +1347,7 @@ class BlacklistCmdGroup(app_commands.Group):
     async def show(self, interaction: discord.Interaction) -> None:
         await interaction.response.defer()
 
-        async with Bot.SQL_ENGINE.begin() as connection:
+        async with bot.db_connection(locked=False) as connection:
             stmt = select(BlacklistModel.word).where(BlacklistModel.server_id == interaction.guild.id)
             result: CursorResult = await connection.execute(stmt)
             words = [row[0] for row in result]
@@ -1373,7 +1395,7 @@ class WhitelistCmdGroup(app_commands.Group):
             await interaction.followup.send(embed=emb)
             return
 
-        async with Bot.SQL_ENGINE.begin() as connection:
+        async with bot.db_connection() as connection:
             stmt = insert(WhitelistModel).values(
                 server_id=interaction.guild.id,
                 word=word.lower()
@@ -1398,7 +1420,7 @@ class WhitelistCmdGroup(app_commands.Group):
             await interaction.followup.send(embed=emb)
             return
 
-        async with Bot.SQL_ENGINE.begin() as connection:
+        async with bot.db_connection() as connection:
             stmt = delete(WhitelistModel).where(
                 WhitelistModel.server_id == interaction.guild.id,
                 WhitelistModel.word == word.lower()
@@ -1415,7 +1437,7 @@ class WhitelistCmdGroup(app_commands.Group):
     async def show(self, interaction: discord.Interaction) -> None:
         await interaction.response.defer()
 
-        async with Bot.SQL_ENGINE.begin() as connection:
+        async with bot.db_connection(locked=False) as connection:
             stmt = select(WhitelistModel.word).where(WhitelistModel.server_id == interaction.guild.id)
             result: CursorResult = await connection.execute(stmt)
             words = [row[0] for row in result]
