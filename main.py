@@ -6,7 +6,7 @@ import logging
 import os
 import time
 from collections import defaultdict, deque
-from typing import Optional, Sequence, AsyncIterator
+from typing import AsyncIterator, Optional, Sequence
 
 import discord
 from alembic import command as alembic_command
