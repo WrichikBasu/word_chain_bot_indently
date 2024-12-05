@@ -1,3 +1,4 @@
+import contextlib
 from typing import Callable, Optional
 
 from pydantic import BaseModel
@@ -124,7 +125,7 @@ class ServerConfig(BaseModel):
         ).where(ServerConfigModel.server_id == self.server_id)
         return stmt
 
-    async def sync_to_db(self, async_engine_generator: Callable[[bool], AsyncConnection]):
+    async def sync_to_db(self, async_engine_generator: Callable[[bool], contextlib.AbstractAsyncContextManager[AsyncConnection]]):
         """
         Synchronizes itself with the DB.
         """
