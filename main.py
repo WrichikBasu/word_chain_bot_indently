@@ -6,7 +6,7 @@ import logging
 import os
 import time
 from collections import defaultdict, deque
-from typing import Callable, Optional, Sequence, AsyncIterator
+from typing import Optional, Sequence, AsyncIterator
 
 import discord
 from alembic import command as alembic_command
@@ -157,8 +157,7 @@ class Bot(commands.AutoShardedBot):
 
     # ---------------------------------------------------------------------------------------------------------------
 
-    async def add_remove_reliable_role(self, guild: discord.Guild,
-                                       async_connection_generator: Callable[[bool], AsyncConnection]):
+    async def add_remove_reliable_role(self, guild: discord.Guild, connection: AsyncConnection):
         """
         Adds/removes the reliable role if present to make sure it matches the rules.
 
@@ -167,34 +166,32 @@ class Bot(commands.AutoShardedBot):
         2. Karma must be >= `RELIABLE_ROLE_KARMA_THRESHOLD`
         """
         if self.server_reliable_roles[guild.id]:
-            async with async_connection_generator(False) as connection:
-                stmt = select(MemberModel.member_id).where(
-                    MemberModel.server_id == guild.id,
-                    MemberModel.member_id.in_([member.id for member in guild.members]),
-                    MemberModel.karma > RELIABLE_ROLE_KARMA_THRESHOLD,
-                    (MemberModel.correct / (MemberModel.correct + MemberModel.wrong)) > RELIABLE_ROLE_ACCURACY_THRESHOLD
-                )
-                result: CursorResult = await connection.execute(stmt)
-                db_members: set[int] = {row[0] for row in result}
-                role_members: set[int] = {member.id for member in self.server_reliable_roles[guild.id].members}
+            stmt = select(MemberModel.member_id).where(
+                MemberModel.server_id == guild.id,
+                MemberModel.member_id.in_([member.id for member in guild.members]),
+                MemberModel.karma > RELIABLE_ROLE_KARMA_THRESHOLD,
+                (MemberModel.correct / (MemberModel.correct + MemberModel.wrong)) > RELIABLE_ROLE_ACCURACY_THRESHOLD
+            )
+            result: CursorResult = await connection.execute(stmt)
+            db_members: set[int] = {row[0] for row in result}
+            role_members: set[int] = {member.id for member in self.server_reliable_roles[guild.id].members}
 
-                only_db_members = db_members - role_members  # those that should have the role but do not
-                only_role_members = role_members - db_members  # those that have the role but should not
+            only_db_members = db_members - role_members  # those that should have the role but do not
+            only_role_members = role_members - db_members  # those that have the role but should not
 
-                for member_id in only_db_members:
-                    member: Optional[discord.Member] = guild.get_member(member_id)
-                    if member:
-                        await member.add_roles(self.server_reliable_roles[guild.id])
+            for member_id in only_db_members:
+                member: Optional[discord.Member] = guild.get_member(member_id)
+                if member:
+                    await member.add_roles(self.server_reliable_roles[guild.id])
 
-                for member_id in only_role_members:
-                    member: Optional[discord.Member] = guild.get_member(member_id)
-                    if member:
-                        await member.remove_roles(self.server_reliable_roles[guild.id])
+            for member_id in only_role_members:
+                member: Optional[discord.Member] = guild.get_member(member_id)
+                if member:
+                    await member.remove_roles(self.server_reliable_roles[guild.id])
 
     # ---------------------------------------------------------------------------------------------------------------
 
-    async def add_remove_failed_role(self, guild: discord.Guild,
-                                     async_connection_generator: Callable[[bool], AsyncConnection]):
+    async def add_remove_failed_role(self, guild: discord.Guild, connection: AsyncConnection):
         """
         Adds the `failed_role` to the user whose id is stored in `failed_member_id`.
         Removes the failed role from all other users.
@@ -224,7 +221,7 @@ class Bot(commands.AutoShardedBot):
                     # Member is no longer in the server
                     self.server_configs[guild.id].failed_member_id = None
                     self.server_configs[guild.id].correct_inputs_by_failed_member = 0
-                    await self.server_configs[guild.id].sync_to_db(async_connection_generator)
+                    await self.server_configs[guild.id].sync_to_db_with_connection(connection)
 
     # ---------------------------------------------------------------------------------------------------------------
 
@@ -353,6 +350,7 @@ Restart with a word starting with **{self.server_configs[server_id].current_word
 try to beat the current high score of **{self.server_configs[server_id].high_score}**!'''
 
                 await self.handle_mistake(message, response, connection)
+                connection.commit()
                 return
 
             # -------------------------
@@ -367,6 +365,7 @@ Restart with a word starting with **{self.server_configs[server_id].current_word
 current high score of **{self.server_configs[server_id].high_score}**!'''
 
                 await self.handle_mistake(message, response, connection)
+                connection.commit()
                 return
 
             # ----------------------------------
@@ -390,6 +389,7 @@ current high score of **{self.server_configs[server_id].high_score}**!'''
 Restart and try to beat the current high score of **{self.server_configs[server_id].high_score}**!'''
 
                     await self.handle_mistake(message, response, connection)
+                    connection.commit()
                     return
 
                 elif result == bot.API_RESPONSE_ERROR:
@@ -427,7 +427,6 @@ The above entered word is **NOT** being taken into account.''')
             )
             await connection.execute(stmt)
 
-            await connection.commit()
             # TODO this is an issue here - we are inside the context manager, but will be creating additional ones
 
             current_count = self.server_configs[server_id].current_count
@@ -442,11 +441,13 @@ The above entered word is **NOT** being taken into account.''')
                 if self.server_configs[server_id].correct_inputs_by_failed_member >= 30:
                     self.server_configs[server_id].failed_member_id = None
                     self.server_configs[server_id].correct_inputs_by_failed_member = 0
-                    await self.add_remove_failed_role(message.guild, self.db_connection)
+                    await self.add_remove_failed_role(message.guild, connection)
 
-            await self.add_to_cache(word)
-            await self.add_remove_reliable_role(message.guild, self.db_connection)
-            await self.server_configs[server_id].sync_to_db(self.db_connection)
+            await self.add_to_cache(word, connection)
+            await self.add_remove_reliable_role(message.guild, connection)
+            await self.server_configs[server_id].sync_to_db_with_connection(connection)
+
+            await connection.commit()
 
     # ---------------------------------------------------------------------------------------------------------------
 
@@ -458,7 +459,7 @@ The above entered word is **NOT** being taken into account.''')
         member_id = message.author.id
         if self.server_failed_roles[server_id]:
             self.server_configs[server_id].failed_member_id = member_id  # Designate current user as failed member
-            await self.add_remove_failed_role(message.guild, self.db_connection)
+            await self.add_remove_failed_role(message.guild, connection)
 
         self.server_configs[server_id].fail_chain(member_id)
 
@@ -480,9 +481,8 @@ The above entered word is **NOT** being taken into account.''')
         )
         await connection.execute(stmt)
 
-        await connection.commit()
+        await self.server_configs[server_id].sync_to_db_with_connection(connection)
 
-        await self.server_configs[server_id].sync_to_db(self.db_connection)
 
     # ---------------------------------------------------------------------------------------------------------------
 
@@ -645,16 +645,13 @@ The above entered word is **NOT** being taken into account.''')
 
     # ---------------------------------------------------------------------------------------------------------------
 
-    async def add_to_cache(self, word: str) -> None:
+    async def add_to_cache(self, word: str, connection: AsyncConnection) -> None:
         """
         Add a word into the `bot.TABLE_CACHE` schema.
         """
-
-        async with self.db_connection() as connection:
-            if not await self.is_word_blacklisted(word):  # Do NOT insert globally blacklisted words into the cache
-                stmt = insert(WordCacheModel).values(word=word).prefix_with('OR IGNORE')
-                await connection.execute(stmt)
-                await connection.commit()
+        if not await self.is_word_blacklisted(word):  # Do NOT insert globally blacklisted words into the cache
+            stmt = insert(WordCacheModel).values(word=word).prefix_with('OR IGNORE')
+            await connection.execute(stmt)
 
     # ---------------------------------------------------------------------------------------------------------------
 
@@ -933,7 +930,7 @@ async def check_word(interaction: discord.Interaction, word: str):
 
     word = word.lower()
 
-    async with bot.db_connection(locked=False) as connection:
+    async with bot.db_connection() as connection:
         if await bot.is_word_whitelisted(word, interaction.guild.id, connection):
             emb.description = f'✅ The word **{word}** is valid.'
             await interaction.followup.send(embed=emb)
@@ -951,19 +948,19 @@ async def check_word(interaction: discord.Interaction, word: str):
 
         future: concurrent.futures.Future = bot.start_api_query(word)
 
-    match bot.get_query_response(future):
-        case bot.API_RESPONSE_WORD_EXISTS:
+        match bot.get_query_response(future):
+            case bot.API_RESPONSE_WORD_EXISTS:
 
-            emb.description = f'✅ The word **{word}** is valid.'
+                emb.description = f'✅ The word **{word}** is valid.'
 
-            await bot.add_to_cache(word)
+                await bot.add_to_cache(word, connection)
 
-        case bot.API_RESPONSE_WORD_DOESNT_EXIST:
-            emb.description = f'❌ **{word}** is **not** a valid word.'
-        case _:
-            emb.description = f'⚠️ There was an issue in fetching the result.'
+            case bot.API_RESPONSE_WORD_DOESNT_EXIST:
+                emb.description = f'❌ **{word}** is **not** a valid word.'
+            case _:
+                emb.description = f'⚠️ There was an issue in fetching the result.'
 
-    await interaction.followup.send(embed=emb)
+        await interaction.followup.send(embed=emb)
 
 # ---------------------------------------------------------------------------------------------------------------
 
@@ -976,10 +973,12 @@ async def set_failed_role(interaction: discord.Interaction, role: discord.Role):
     """Command to set the role to be used when a user fails to count"""
     guild_id = interaction.guild.id
     bot.server_configs[guild_id].failed_role_id = role.id
-    await bot.server_configs[guild_id].sync_to_db(bot.db_connection)
-    bot.server_failed_roles[guild_id] = role  # Assign role directly if we already have it in this context
-    await bot.add_remove_failed_role(interaction.guild, bot.db_connection)
-    await interaction.response.send_message(f'Failed role was set to {role.mention}')
+    async with bot.db_connection() as connection:
+        await bot.server_configs[guild_id].sync_to_db_with_connection(connection)
+        bot.server_failed_roles[guild_id] = role  # Assign role directly if we already have it in this context
+        await bot.add_remove_failed_role(interaction.guild, connection)
+        connection.commit()
+        await interaction.response.send_message(f'Failed role was set to {role.mention}')
 
 # ---------------------------------------------------------------------------------------------------------------
 
@@ -992,10 +991,12 @@ async def set_reliable_role(interaction: discord.Interaction, role: discord.Role
     """Command to set the role to be used when a user gets 100 of score"""
     guild_id = interaction.guild.id
     bot.server_configs[guild_id].reliable_role_id = role.id
-    await bot.server_configs[guild_id].sync_to_db(bot.db_connection)
-    bot.server_reliable_roles[guild_id] = role  # Assign role directly if we already have it in this context
-    await bot.add_remove_reliable_role(interaction.guild, bot.db_connection)
-    await interaction.response.send_message(f'Reliable role was set to {role.mention}')
+    async with bot.db_connection() as connection:
+        await bot.server_configs[guild_id].sync_to_db_with_connection(connection)
+        bot.server_reliable_roles[guild_id] = role  # Assign role directly if we already have it in this context
+        await bot.add_remove_reliable_role(interaction.guild, connection)
+        connection.commit()
+        await interaction.response.send_message(f'Reliable role was set to {role.mention}')
 
 # ---------------------------------------------------------------------------------------------------------------
 
