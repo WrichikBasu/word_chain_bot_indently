@@ -427,8 +427,6 @@ The above entered word is **NOT** being taken into account.''')
             )
             await connection.execute(stmt)
 
-            # TODO this is an issue here - we are inside the context manager, but will be creating additional ones
-
             current_count = self.server_configs[server_id].current_count
 
             if current_count > 0 and current_count % 100 == 0:
