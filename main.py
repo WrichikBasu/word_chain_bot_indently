@@ -350,7 +350,7 @@ Restart with a word starting with **{self.server_configs[server_id].current_word
 try to beat the current high score of **{self.server_configs[server_id].high_score}**!'''
 
                 await self.handle_mistake(message, response, connection)
-                connection.commit()
+                await connection.commit()
                 return
 
             # -------------------------
@@ -365,7 +365,7 @@ Restart with a word starting with **{self.server_configs[server_id].current_word
 current high score of **{self.server_configs[server_id].high_score}**!'''
 
                 await self.handle_mistake(message, response, connection)
-                connection.commit()
+                await connection.commit()
                 return
 
             # ----------------------------------
@@ -389,7 +389,7 @@ current high score of **{self.server_configs[server_id].high_score}**!'''
 Restart and try to beat the current high score of **{self.server_configs[server_id].high_score}**!'''
 
                     await self.handle_mistake(message, response, connection)
-                    connection.commit()
+                    await connection.commit()
                     return
 
                 elif result == bot.API_RESPONSE_ERROR:
@@ -975,7 +975,7 @@ async def set_failed_role(interaction: discord.Interaction, role: discord.Role):
         await bot.server_configs[guild_id].sync_to_db_with_connection(connection)
         bot.server_failed_roles[guild_id] = role  # Assign role directly if we already have it in this context
         await bot.add_remove_failed_role(interaction.guild, connection)
-        connection.commit()
+        await connection.commit()
         await interaction.response.send_message(f'Failed role was set to {role.mention}')
 
 # ---------------------------------------------------------------------------------------------------------------
@@ -993,7 +993,7 @@ async def set_reliable_role(interaction: discord.Interaction, role: discord.Role
         await bot.server_configs[guild_id].sync_to_db_with_connection(connection)
         bot.server_reliable_roles[guild_id] = role  # Assign role directly if we already have it in this context
         await bot.add_remove_reliable_role(interaction.guild, connection)
-        connection.commit()
+        await connection.commit()
         await interaction.response.send_message(f'Reliable role was set to {role.mention}')
 
 # ---------------------------------------------------------------------------------------------------------------
