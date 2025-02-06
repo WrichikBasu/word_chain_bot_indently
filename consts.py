@@ -2,7 +2,7 @@ import string
 
 """
 The allowed characters in the input.
-If the inout has any character(s) other than these, it will be ignored by the bot.
+If the input has any character(s) other than these, it will be ignored by the bot.
 """
 POSSIBLE_CHARACTERS: str = string.ascii_lowercase + "-"
 

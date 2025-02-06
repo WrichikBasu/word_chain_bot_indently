@@ -99,15 +99,19 @@ class ServerConfig(BaseModel):
         """
         Get the reaction emoji based on the current count.
         """
-        if self.current_count == self.high_score and not self.used_high_score_emoji:
-            emoji = "🎉"
-            self.used_high_score_emoji = True
+        special_emojis = {
+            100: "💯",
+            69: "😏",
+            666: "👹",
+        }
+        if self.current_count == self.high_score:
+            if not self.used_high_score_emoji:
+                emoji = "🎉"
+                self.used_high_score_emoji = True
+            else:
+                emoji = special_emojis.get(self.current_count, '☑️')
         else:
-            emoji = {
-                100: "💯",
-                69: "😏",
-                666: "👹",
-            }.get(self.current_count, "✅")
+            emoji = special_emojis.get(self.current_count, '✅')
         return emoji
 
     def __update_statement(self):
