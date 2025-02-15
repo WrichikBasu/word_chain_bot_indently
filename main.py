@@ -765,11 +765,13 @@ async def sync(interaction: discord.Interaction):
 @app_commands.describe(guild_id='ID of the guild to be removed from the DB')
 @app_commands.default_permissions(manage_guild=True)
 async def clean_server(interaction: discord.Interaction, guild_id: str):
+    await interaction.response.defer()
+
     # cannot use int directly in type annotation, because it would allow just 32-bit integers, but most IDs are 64-bit
     try:
         guild_id_as_number = int(guild_id)
     except ValueError:
-        await interaction.response.send_message('This is not a valid ID!')
+        await interaction.followup.send('This is not a valid ID!')
         return
 
     async with bot.db_connection() as connection:
@@ -819,9 +821,9 @@ async def clean_server(interaction: discord.Interaction, guild_id: str):
         await connection.commit()
 
         if total_rows_changed > 0:
-            await interaction.response.send_message(f'Removed data for server {guild_id_as_number}')
+            await interaction.followup.send(f'Removed data for server {guild_id_as_number}')
         else:
-            await interaction.response.send_message(f'No data to remove for server {guild_id_as_number}')
+            await interaction.followup.send(f'No data to remove for server {guild_id_as_number}')
 
 # ---------------------------------------------------------------------------------------------------------------
 
@@ -831,11 +833,13 @@ async def clean_server(interaction: discord.Interaction, guild_id: str):
 @app_commands.describe(user_id='ID of the user to be removed from the DB')
 @app_commands.default_permissions(manage_guild=True)
 async def clean_user(interaction: discord.Interaction, user_id: str):
+    await interaction.response.defer()
+
     # cannot use int directly in type annotation, because it would allow just 32-bit integers, but most IDs are 64-bit
     try:
         user_id_as_number = int(user_id)
     except ValueError:
-        await interaction.response.send_message('This is not a valid ID!')
+        await interaction.followup.send('This is not a valid ID!')
         return
 
     async with bot.db_connection() as connection:
@@ -844,9 +848,9 @@ async def clean_user(interaction: discord.Interaction, user_id: str):
         await connection.commit()
         rows_deleted: int = result.rowcount
         if rows_deleted > 0:
-            await interaction.response.send_message(f'Removed data for user {user_id_as_number} in {rows_deleted} servers')
+            await interaction.followup.send(f'Removed data for user {user_id_as_number} in {rows_deleted} servers')
         else:
-            await interaction.response.send_message(f'No data to remove for user {user_id_as_number}')
+            await interaction.followup.send(f'No data to remove for user {user_id_as_number}')
 
 # ---------------------------------------------------------------------------------------------------------------
 
@@ -856,9 +860,12 @@ async def clean_user(interaction: discord.Interaction, user_id: str):
 @app_commands.default_permissions(manage_guild=True)
 async def set_channel(interaction: discord.Interaction, channel: discord.TextChannel):
     """Command to set the channel to count in"""
+    await interaction.response.defer()
+
     bot.server_configs[interaction.guild.id].channel_id = channel.id
     await bot.server_configs[interaction.guild.id].sync_to_db(bot.db_connection)
-    await interaction.response.send_message(f'Word chain channel was set to {channel.mention}')
+
+    await interaction.followup.send(f'Word chain channel was set to {channel.mention}')
 
 # ---------------------------------------------------------------------------------------------------------------
 
@@ -867,6 +874,8 @@ async def set_channel(interaction: discord.Interaction, channel: discord.TextCha
 @app_commands.describe(ephemeral="Whether the list will be publicly displayed")
 async def list_commands(interaction: discord.Interaction, ephemeral: bool = True):
     """Command to list all the slash commands"""
+
+    await interaction.response.defer()
 
     emb = discord.Embed(title='Slash Commands', color=discord.Color.blue(),
                         description='''
@@ -893,7 +902,7 @@ __Restricted commands__ (Admin-only)
 **whitelist remove** - Remove a word from the whitelist of this server.
 **whitelist show** - Show the whitelist words for this server.'''
 
-    await interaction.response.send_message(embed=emb, ephemeral=ephemeral)
+    await interaction.followup.send(embed=emb, ephemeral=ephemeral)
 
 # ---------------------------------------------------------------------------------------------------------------
 
@@ -969,14 +978,17 @@ async def check_word(interaction: discord.Interaction, word: str):
 @app_commands.default_permissions(manage_guild=True)
 async def set_failed_role(interaction: discord.Interaction, role: discord.Role):
     """Command to set the role to be used when a user fails to count"""
+    await interaction.response.defer()
+
     guild_id = interaction.guild.id
     bot.server_configs[guild_id].failed_role_id = role.id
+
     async with bot.db_connection() as connection:
         await bot.server_configs[guild_id].sync_to_db_with_connection(connection)
         bot.server_failed_roles[guild_id] = role  # Assign role directly if we already have it in this context
         await bot.add_remove_failed_role(interaction.guild, connection)
         await connection.commit()
-        await interaction.response.send_message(f'Failed role was set to {role.mention}')
+        await interaction.followup.send(f'Failed role was set to {role.mention}')
 
 # ---------------------------------------------------------------------------------------------------------------
 
@@ -987,14 +999,18 @@ async def set_failed_role(interaction: discord.Interaction, role: discord.Role):
 @app_commands.default_permissions(manage_guild=True)
 async def set_reliable_role(interaction: discord.Interaction, role: discord.Role):
     """Command to set the role to be used when a user gets 100 of score"""
+    await interaction.response.defer()
+
     guild_id = interaction.guild.id
     bot.server_configs[guild_id].reliable_role_id = role.id
+
     async with bot.db_connection() as connection:
         await bot.server_configs[guild_id].sync_to_db_with_connection(connection)
         bot.server_reliable_roles[guild_id] = role  # Assign role directly if we already have it in this context
         await bot.add_remove_reliable_role(interaction.guild, connection)
         await connection.commit()
-        await interaction.response.send_message(f'Reliable role was set to {role.mention}')
+
+        await interaction.followup.send(f'Reliable role was set to {role.mention}')
 
 # ---------------------------------------------------------------------------------------------------------------
 
@@ -1002,6 +1018,8 @@ async def set_reliable_role(interaction: discord.Interaction, role: discord.Role
 @bot.tree.command(name='remove_failed_role', description='Removes the failed role feature')
 @app_commands.default_permissions(manage_guild=True)
 async def remove_failed_role(interaction: discord.Interaction):
+    await interaction.response.defer()
+
     guild_id = interaction.guild.id
     bot.server_configs[guild_id].failed_role_id = None
     bot.server_configs[guild_id].failed_member_id = None
@@ -1013,9 +1031,9 @@ async def remove_failed_role(interaction: discord.Interaction):
         for member in role.members:
             await member.remove_roles(role)
         bot.server_failed_roles[guild_id] = None
-        await interaction.response.send_message('Failed role removed')
+        await interaction.followup.send('Failed role removed')
     else:
-        await interaction.response.send_message('Failed role was already removed')
+        await interaction.followup.send('Failed role was already removed')
 
 # ---------------------------------------------------------------------------------------------------------------
 
@@ -1023,6 +1041,8 @@ async def remove_failed_role(interaction: discord.Interaction):
 @bot.tree.command(name='remove_reliable_role', description='Removes the reliable role feature')
 @app_commands.default_permissions(manage_guild=True)
 async def remove_reliable_role(interaction: discord.Interaction):
+    await interaction.response.defer()
+
     guild_id = interaction.guild.id
     bot.server_configs[guild_id].reliable_role_id = None
     await bot.server_configs[guild_id].sync_to_db(bot.db_connection)
@@ -1032,9 +1052,9 @@ async def remove_reliable_role(interaction: discord.Interaction):
         for member in role.members:
             await member.remove_roles(role)
         bot.server_reliable_roles[guild_id] = None
-        await interaction.response.send_message('Reliable role removed')
+        await interaction.followup.send('Reliable role removed')
     else:
-        await interaction.response.send_message('Reliable role was already removed')
+        await interaction.followup.send('Reliable role was already removed')
 
 # ---------------------------------------------------------------------------------------------------------------
 
@@ -1204,10 +1224,12 @@ class StatsCmdGroup(app_commands.Group):
     @app_commands.command(description='Show the server stats for the word chain game')
     async def server(self, interaction: discord.Interaction) -> None:
         """Command to show the stats of the server"""
+        await interaction.response.defer()
+
         config: ServerConfig = bot.server_configs[interaction.guild.id]
 
         if config.channel_id is None:  # channel not set yet
-            await interaction.response.send_message("Counting channel not set yet!")
+            await interaction.followup.send("Counting channel not set yet!")
             return
 
         server_stats_embed = discord.Embed(
@@ -1219,7 +1241,7 @@ Longest chain length: {config.high_score}
         )
         server_stats_embed.set_author(name=interaction.guild, icon_url=interaction.guild.icon if interaction.guild.icon else None)
 
-        await interaction.response.send_message(embed=server_stats_embed)
+        await interaction.followup.send(embed=server_stats_embed)
 
     # ---------------------------------------------------------------------------------------------------------------
 
