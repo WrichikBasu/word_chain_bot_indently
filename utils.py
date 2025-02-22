@@ -1,3 +1,5 @@
+"""A place to consolidate all utility methods that can be made `static` if included in a class."""
+
 import math
 from collections import deque
 

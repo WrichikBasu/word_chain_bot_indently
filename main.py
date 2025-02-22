@@ -21,7 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection, create_async_engine
 from sqlalchemy.sql.functions import count
 
 from consts import *
-from data import calculate_total_karma
+from utils import calculate_total_karma
 from model import (BlacklistModel, Member, MemberModel, ServerConfig, ServerConfigModel, UsedWordsModel, WhitelistModel,
                    WordCacheModel)
 
