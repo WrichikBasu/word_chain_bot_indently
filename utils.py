@@ -16,7 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from consts import FIRST_CHAR_SCORE, LOGGER_NAME
 
 if TYPE_CHECKING:
-    from main import Bot  # Thanks to https://stackoverflow.com/a/39757388/8387076
+    from main import WordChainBot  # Thanks to https://stackoverflow.com/a/39757388/8387076
 
 
 def calculate_decay(n: float, drop_rate: float = .33) -> float:
@@ -102,13 +102,13 @@ def calculate_total_karma(word: str, last_words: deque[str]) -> float:
 
 
 @contextlib.asynccontextmanager
-async def db_connection(bot: Bot, locked: bool = True) -> AsyncIterator[AsyncConnection]:
+async def db_connection(bot: WordChainBot, locked: bool = True) -> AsyncIterator[AsyncConnection]:
     """
     Creates a connection to the database.
 
     Parameters
     ----------
-    bot : Bot
+    bot : WordChainBot
         Instance of the main bot.
     locked : bool
         Whether to lock the DB or not.
@@ -123,13 +123,13 @@ async def db_connection(bot: Bot, locked: bool = True) -> AsyncIterator[AsyncCon
 
     if locked:
         start_time = time.monotonic()
-        async with bot.__LOCK:
+        async with bot._LOCK:
             wait_time = time.monotonic() - start_time
             logger.debug(f'Waited {wait_time:.4f} seconds for DB lock')
-            async with bot.__SQL_ENGINE.begin() as connection:
+            async with bot._SQL_ENGINE.begin() as connection:
                 yield connection
     else:
-        async with bot.__SQL_ENGINE.begin() as connection:
+        async with bot._SQL_ENGINE.begin() as connection:
             yield connection
 
     logger.debug(f'connection done')

@@ -9,7 +9,7 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from utils import db_connection
 
 if TYPE_CHECKING:
-    from main import Bot  # Thanks to https://stackoverflow.com/a/39757388/8387076
+    from main import WordChainBot  # Thanks to https://stackoverflow.com/a/39757388/8387076
 
 
 class Base(DeclarativeBase):
@@ -134,7 +134,7 @@ class ServerConfig(BaseModel):
         ).where(ServerConfigModel.server_id == self.server_id)
         return stmt
 
-    async def sync_to_db(self, bot: Bot):
+    async def sync_to_db(self, bot: WordChainBot):
         """
         Synchronizes itself with the DB.
         """
