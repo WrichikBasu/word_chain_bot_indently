@@ -33,7 +33,7 @@ DEV_MODE = os.getenv('DEV_MODE', False) not in {False, 'False', 'false', '0'}
 ADMIN_GUILD_ID = int(os.environ['ADMIN_GUILD_ID'])
 
 logging.basicConfig(level=logging.INFO, format='[%(asctime)s] [%(levelname)s] %(name)s: %(message)s')
-logger = logging.getLogger(__name__)
+logger = logging.getLogger(LOGGER_NAME)
 
 
 class Bot(commands.AutoShardedBot):

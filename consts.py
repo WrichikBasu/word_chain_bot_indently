@@ -6,6 +6,8 @@ If the input has any character(s) other than these, it will be ignored by the bo
 """
 POSSIBLE_CHARACTERS: str = string.ascii_lowercase + "-"
 
+LOGGER_NAME: str = "word_chain_logger"
+
 """
 This dictionary maps each character to its frequency as the first letter in an english word. It is calculated by
 multiplying the frequency with the total character count of 26. This results in scores around 1, with scores below 1
