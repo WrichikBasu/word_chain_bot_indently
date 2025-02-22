@@ -1,10 +1,15 @@
-import contextlib
-from typing import Callable, Optional
+from __future__ import annotations
+from typing import Optional, TYPE_CHECKING
 
 from pydantic import BaseModel
 from sqlalchemy import Boolean, Float, Integer, String, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+
+from utils import db_connection
+
+if TYPE_CHECKING:
+    from main import Bot  # Thanks to https://stackoverflow.com/a/39757388/8387076
 
 
 class Base(DeclarativeBase):
@@ -129,11 +134,11 @@ class ServerConfig(BaseModel):
         ).where(ServerConfigModel.server_id == self.server_id)
         return stmt
 
-    async def sync_to_db(self, async_engine_generator: Callable[[bool], contextlib.AbstractAsyncContextManager[AsyncConnection]]):
+    async def sync_to_db(self, bot: Bot):
         """
         Synchronizes itself with the DB.
         """
-        async with async_engine_generator(True) as connection:
+        async with db_connection(bot, locked=True) as connection:
             stmt = self.__update_statement()
             await connection.execute(stmt)
             await connection.commit()

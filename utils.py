@@ -1,9 +1,22 @@
-"""A place to consolidate all utility methods that can be made `static` if included in a class."""
+"""
+A place to consolidate all utility methods that can be made `static` if included in a class.
 
+Place static methods here to avoid cyclic imports.
+"""
+from __future__ import annotations
+import contextlib
+import logging
 import math
+import time
 from collections import deque
+from typing import AsyncIterator, TYPE_CHECKING
 
-from consts import FIRST_CHAR_SCORE
+from sqlalchemy.ext.asyncio import AsyncConnection
+
+from consts import FIRST_CHAR_SCORE, LOGGER_NAME
+
+if TYPE_CHECKING:
+    from main import Bot  # Thanks to https://stackoverflow.com/a/39757388/8387076
 
 
 def calculate_decay(n: float, drop_rate: float = .33) -> float:
@@ -23,6 +36,8 @@ def calculate_decay(n: float, drop_rate: float = .33) -> float:
         A decay factor between 1 and -1 that can be multiplied with the karma.
     """
     return (2 * math.e ** (-n * drop_rate)) - 1
+
+# ==================================================================================================================
 
 
 def calculate_base_karma(word: str, last_char_bias: float = .7) -> float:
@@ -55,6 +70,8 @@ def calculate_base_karma(word: str, last_char_bias: float = .7) -> float:
     # apply bias to last characters karma to fine tune the total influence
     return (first_char_karma if first_char_karma > 0 else 0) + (last_char_karma * last_char_bias)
 
+# ==================================================================================================================
+
 
 def calculate_total_karma(word: str, last_words: deque[str]) -> float:
     """
@@ -80,3 +97,40 @@ def calculate_total_karma(word: str, last_words: deque[str]) -> float:
     decay: float = calculate_decay(n)
     base_karma: float = calculate_base_karma(word)
     return decay * base_karma if base_karma > 0 else base_karma
+
+# =================================================================================================================
+
+
+@contextlib.asynccontextmanager
+async def db_connection(bot: Bot, locked: bool = True) -> AsyncIterator[AsyncConnection]:
+    """
+    Creates a connection to the database.
+
+    Parameters
+    ----------
+    bot : Bot
+        Instance of the main bot.
+    locked : bool
+        Whether to lock the DB or not.
+
+    Yields
+    ------
+    AsyncIterator[AsyncConnection]
+        The connection to the database.
+    """
+    logger = logging.getLogger(LOGGER_NAME)
+    logger.debug(f'requesting connection with {locked=}')
+
+    if locked:
+        start_time = time.monotonic()
+        async with bot.__LOCK:
+            wait_time = time.monotonic() - start_time
+            logger.debug(f'Waited {wait_time:.4f} seconds for DB lock')
+            async with bot.__SQL_ENGINE.begin() as connection:
+                yield connection
+    else:
+        async with bot.__SQL_ENGINE.begin() as connection:
+            yield connection
+
+    logger.debug(f'connection done')
+
