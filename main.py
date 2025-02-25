@@ -6,6 +6,7 @@ import logging
 import os
 import time
 from collections import defaultdict, deque
+from logging.config import fileConfig
 from typing import AsyncIterator, Optional, Sequence
 
 import discord
@@ -32,7 +33,8 @@ SINGLE_PLAYER = os.getenv('SINGLE_PLAYER', False) not in {False, 'False', 'false
 DEV_MODE = os.getenv('DEV_MODE', False) not in {False, 'False', 'false', '0'}
 ADMIN_GUILD_ID = int(os.environ['ADMIN_GUILD_ID'])
 
-logging.basicConfig(level=logging.INFO, format='[%(asctime)s] [%(levelname)s] %(name)s: %(message)s')
+# load logging config from alembic file because it would be loaded anyway when using alembic
+fileConfig(fname='alembic.ini')
 logger = logging.getLogger(__name__)
 
 
