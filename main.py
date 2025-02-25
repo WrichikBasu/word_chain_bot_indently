@@ -4,6 +4,8 @@ import concurrent.futures
 import contextlib
 import logging
 import os
+import random
+import inspect
 import time
 from collections import defaultdict, deque
 from logging.config import fileConfig
@@ -62,18 +64,27 @@ class Bot(commands.AutoShardedBot):
 
     @contextlib.asynccontextmanager
     async def db_connection(self, locked=True) -> AsyncIterator[AsyncConnection]:
-        logger.debug(f'requesting connection with {locked=}')
+        call_id = ''.join(random.choices(string.ascii_letters + string.digits, k=6))
+
+        caller_frame = inspect.currentframe().f_back.f_back
+        caller_function_name = caller_frame.f_code.co_name
+        caller_filename = caller_frame.f_code.co_filename.removeprefix(os.getcwd() + os.sep)
+        caller_lineno = caller_frame.f_lineno
+
+        logger.debug(f'{call_id}: {caller_function_name} at {caller_filename}:{caller_lineno}')
+
+        logger.debug(f'{call_id}: requesting connection with {locked=}')
         if locked:
             start_time = time.monotonic()
             async with self.__LOCK:
                 wait_time = time.monotonic() - start_time
-                logger.debug(f'Waited {wait_time:.4f} seconds for DB lock')
+                logger.debug(f'{call_id}: waited {wait_time:.4f} seconds for DB lock')
                 async with self.__SQL_ENGINE.begin() as connection:
                     yield connection
         else:
             async with self.__SQL_ENGINE.begin() as connection:
                 yield connection
-        logger.debug(f'connection done')
+        logger.debug(f'{call_id}: connection done')
 
     # ---------------------------------------------------------------------------------------------------------------
 
