@@ -13,7 +13,7 @@ from typing import AsyncIterator, TYPE_CHECKING
 
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from consts import FIRST_CHAR_SCORE, LOGGER_NAME
+from consts import FIRST_CHAR_SCORE
 
 if TYPE_CHECKING:
     from main import WordChainBot  # Thanks to https://stackoverflow.com/a/39757388/8387076
@@ -118,7 +118,7 @@ async def db_connection(bot: WordChainBot, locked: bool = True) -> AsyncIterator
     AsyncIterator[AsyncConnection]
         The connection to the database.
     """
-    logger = logging.getLogger(LOGGER_NAME)
+    logger = logging.getLogger(__name__)
     logger.debug(f'requesting connection with {locked=}')
 
     if locked:
