@@ -1,4 +1,3 @@
-"""Word chain bot for the Indently server"""
 import asyncio
 import concurrent.futures
 import logging
@@ -9,8 +8,8 @@ from typing import Optional, Sequence
 import discord
 from alembic import command as alembic_command
 from alembic.config import Config as AlembicConfig
-from discord import app_commands
-from discord.ext import commands
+from discord import app_commands, Interaction, Object, Member, Embed, Colour
+from discord.ext.commands import ExtensionNotLoaded, AutoShardedBot, Cog
 from dotenv import load_dotenv
 from requests_futures.sessions import FuturesSession
 from sqlalchemy import CursorResult, delete, exists, func, insert, select, update
@@ -30,12 +29,12 @@ SINGLE_PLAYER = os.getenv('SINGLE_PLAYER', False) not in {False, 'False', 'false
 DEV_MODE = os.getenv('DEV_MODE', False) not in {False, 'False', 'false', '0'}
 ADMIN_GUILD_ID = int(os.environ['ADMIN_GUILD_ID'])
 
-logging.basicConfig(level=logging.INFO, format='[%(asctime)s] [%(levelname)s] %(name)s: %(message)s')
-logger = logging.getLogger(LOGGER_NAME)
+logging.basicConfig(level=logging.DEBUG, format='[%(asctime)s] [%(levelname)s] %(name)s: %(message)s')
+logger = logging.getLogger(__name__)
 
 
-class WordChainBot(commands.AutoShardedBot):
-    """Word chain bot for Indently discord server."""
+class WordChainBot(AutoShardedBot):
+    """Word chain bot"""
 
     _SQL_ENGINE: AsyncEngine = create_async_engine('sqlite+aiosqlite:///database_word_chain.sqlite3')
     _LOCK: asyncio.Lock = asyncio.Lock()
@@ -718,10 +717,16 @@ The above entered word is **NOT** being taken into account.''')
     # ---------------------------------------------------------------------------------------------------------------
 
     async def setup_hook(self) -> None:
+
         if not DEV_MODE:
             # only sync when not in dev mode to avoid syncing over and over again - use sync command explicitly
+
+            for cog in COGS_LIST:
+                await self.load_extension(cog)
+
             global_sync = await self.tree.sync()
             admin_sync = await self.tree.sync(guild=discord.Object(id=ADMIN_GUILD_ID))
+
             logger.info(f'Synchronized {len(global_sync)} global commands and {len(admin_sync)} admin commands')
 
         alembic_cfg = AlembicConfig('alembic.ini')
@@ -731,125 +736,66 @@ The above entered word is **NOT** being taken into account.''')
 word_chain_bot: WordChainBot = WordChainBot()
 
 
-@word_chain_bot.tree.command(name='sync', description='Syncs the slash commands to the bot')
-@app_commands.guilds(ADMIN_GUILD_ID)
-@app_commands.default_permissions(ban_members=True)
-async def sync(interaction: discord.Interaction):
-    """Sync all the slash commands to the bot"""
-    await interaction.response.defer()
-    global_sync = await word_chain_bot.tree.sync()
-    admin_sync = await word_chain_bot.tree.sync(guild=discord.Object(id=ADMIN_GUILD_ID))
-    await interaction.followup.send(f'Synchronized {len(global_sync)} global commands and {len(admin_sync)} admin commands')
-
 # ---------------------------------------------------------------------------------------------------------------
 
 
-@word_chain_bot.tree.command(name='clean_server', description='Removes all config data for given guild id.')
+@word_chain_bot.tree.command(name='reload', description='Unload and reload a cog')
 @app_commands.guilds(ADMIN_GUILD_ID)
-@app_commands.describe(guild_id='ID of the guild to be removed from the DB')
-@app_commands.default_permissions(manage_guild=True)
-async def clean_server(interaction: discord.Interaction, guild_id: str):
+@app_commands.default_permissions(administrator=True)
+@app_commands.describe(cog_name='The cog to reload')
+@app_commands.choices(cog_name=[
+    app_commands.Choice(name='Admin Commands', value=COG_NAME_ADMIN_CMDS),
+    app_commands.Choice(name='Manager Commands', value=COG_NAME_MANAGER_CMDS),
+    app_commands.Choice(name='All cogs', value='all')
+])
+async def reload(interaction: Interaction, cog_name: str):
+    """Reloads a particular cog/all cogs."""
+
     await interaction.response.defer()
 
-    # cannot use int directly in type annotation, because it would allow just 32-bit integers, but most IDs are 64-bit
-    try:
-        guild_id_as_number = int(guild_id)
-    except ValueError:
-        await interaction.followup.send('This is not a valid ID!')
-        return
+    match cog_name:
 
-    async with db_connection(word_chain_bot) as connection:
-        total_rows_changed = 0
+        case 'all':
+            # First clear the tree.
+            word_chain_bot.tree.clear_commands(guild=None)
 
-        # delete used words
-        stmt = delete(UsedWordsModel).where(UsedWordsModel.server_id == guild_id_as_number)
-        result = await connection.execute(stmt)
-        total_rows_changed += result.rowcount
+            for cog_name in COGS_LIST:
+                try:  # Try to unload each cog
+                    await word_chain_bot.unload_extension(cog_name)
+                except ExtensionNotLoaded:
+                    logger.info(f'Extension {cog_name} not loaded.')
 
-        # delete members
-        stmt = delete(MemberModel).where(MemberModel.server_id == guild_id_as_number)
-        result = await connection.execute(stmt)
-        total_rows_changed += result.rowcount
+                await word_chain_bot.load_extension(cog_name)  # Then reload the cog
 
-        # delete blacklist
-        stmt = delete(BlacklistModel).where(BlacklistModel.server_id == guild_id_as_number)
-        result = await connection.execute(stmt)
-        total_rows_changed += result.rowcount
+        case _:
 
-        # delete whitelist
-        stmt = delete(WhitelistModel).where(WhitelistModel.server_id == guild_id_as_number)
-        result = await connection.execute(stmt)
-        total_rows_changed += result.rowcount
+            cog: Cog = word_chain_bot.get_cog(cog_name)
+            full_cog_path: str = f'cogs.{cog_name}'
 
-        # delete config
-        if guild_id_as_number in word_chain_bot.server_configs:
-            # just reset the data instead to make sure that every current guild has an existing config
-            config = word_chain_bot.server_configs[guild_id_as_number]
-            config.channel_id = None
-            config.current_count = 0
-            config.current_word = None
-            config.high_score = 0
-            config.used_high_score_emoji = False
-            config.reliable_role_id = None
-            config.failed_role_id = None
-            config.last_member_id = None
-            config.failed_member_id = None
-            config.correct_inputs_by_failed_member = 0
+            if not cog:
+                await interaction.followup.send(f'Cog {cog_name} not found.')
+                logger.error(f'Cog {cog_name} not found.')
+                return
 
-            total_rows_changed += await config.sync_to_db_with_connection(connection)
-        else:
-            stmt = delete(ServerConfigModel).where(ServerConfigModel.server_id == guild_id_as_number)
-            result = await connection.execute(stmt)
-            total_rows_changed += result.rowcount
+            for command in word_chain_bot.tree.get_commands():  # Loop through all commands in the bot
+                if command in cog.__cog_commands__:  # And remove the ones that are in the specified cog
+                    word_chain_bot.tree.remove_command(command.name)
 
-        await connection.commit()
+            try:
+                await word_chain_bot.unload_extension(full_cog_path)
+            except ExtensionNotLoaded:
+                logger.info(f'Extension {cog_name} not loaded.')
 
-        if total_rows_changed > 0:
-            await interaction.followup.send(f'Removed data for server {guild_id_as_number}')
-        else:
-            await interaction.followup.send(f'No data to remove for server {guild_id_as_number}')
+            await word_chain_bot.load_extension(full_cog_path)
 
-# ---------------------------------------------------------------------------------------------------------------
+    global_sync: list[app_commands.AppCommand] = await word_chain_bot.tree.sync()
+    admin_sync: list[app_commands.AppCommand] = await word_chain_bot.tree.sync(guild=Object(id=ADMIN_GUILD_ID))
 
+    emb: Embed = Embed(title=f'Sync status', description=f'Synchronization complete.', colour=Colour.dark_magenta())
+    emb.add_field(name="Global commands synced", value=f"{len(global_sync)}")
+    emb.add_field(name="Admin commands synced", value=f"{len(admin_sync)}")
 
-@word_chain_bot.tree.command(name='clean_user', description='Removes all saved data for given user id.')
-@app_commands.guilds(ADMIN_GUILD_ID)
-@app_commands.describe(user_id='ID of the user to be removed from the DB')
-@app_commands.default_permissions(manage_guild=True)
-async def clean_user(interaction: discord.Interaction, user_id: str):
-    await interaction.response.defer()
-
-    # cannot use int directly in type annotation, because it would allow just 32-bit integers, but most IDs are 64-bit
-    try:
-        user_id_as_number = int(user_id)
-    except ValueError:
-        await interaction.followup.send('This is not a valid ID!')
-        return
-
-    async with db_connection(word_chain_bot) as connection:
-        stmt = delete(MemberModel).where(MemberModel.member_id == user_id_as_number)
-        result = await connection.execute(stmt)
-        await connection.commit()
-        rows_deleted: int = result.rowcount
-        if rows_deleted > 0:
-            await interaction.followup.send(f'Removed data for user {user_id_as_number} in {rows_deleted} servers')
-        else:
-            await interaction.followup.send(f'No data to remove for user {user_id_as_number}')
-
-# ---------------------------------------------------------------------------------------------------------------
-
-
-@word_chain_bot.tree.command(name='set_channel', description='Sets the channel to count in')
-@app_commands.describe(channel='The channel to count in')
-@app_commands.default_permissions(manage_guild=True)
-async def set_channel(interaction: discord.Interaction, channel: discord.TextChannel):
-    """Command to set the channel to count in"""
-    await interaction.response.defer()
-
-    word_chain_bot.server_configs[interaction.guild.id].channel_id = channel.id
-    await word_chain_bot.server_configs[interaction.guild.id].sync_to_db(word_chain_bot)
-
-    await interaction.followup.send(f'Word chain channel was set to {channel.mention}')
+    await interaction.followup.send(embed=emb)
 
 # ---------------------------------------------------------------------------------------------------------------
 
@@ -953,93 +899,6 @@ async def check_word(interaction: discord.Interaction, word: str):
 
         await interaction.followup.send(embed=emb)
 
-# ---------------------------------------------------------------------------------------------------------------
-
-
-@word_chain_bot.tree.command(name='set_failed_role',
-                             description='Sets the role to be used when a user puts a wrong word')
-@app_commands.describe(role='The role to be used when a user puts a wrong word')
-@app_commands.default_permissions(manage_guild=True)
-async def set_failed_role(interaction: discord.Interaction, role: discord.Role):
-    """Command to set the role to be used when a user fails to count"""
-    await interaction.response.defer()
-
-    guild_id = interaction.guild.id
-    word_chain_bot.server_configs[guild_id].failed_role_id = role.id
-
-    async with db_connection(word_chain_bot) as connection:
-        await word_chain_bot.server_configs[guild_id].sync_to_db_with_connection(connection)
-        word_chain_bot.server_failed_roles[guild_id] = role  # Assign role directly if we already have it in this context
-        await word_chain_bot.add_remove_failed_role(interaction.guild, connection)
-        await connection.commit()
-        await interaction.followup.send(f'Failed role was set to {role.mention}')
-
-# ---------------------------------------------------------------------------------------------------------------
-
-
-@word_chain_bot.tree.command(name='set_reliable_role',
-                             description='Sets the role to be used when a user attains a score of 100')
-@app_commands.describe(role='The role to be used when a user attains a score of 100')
-@app_commands.default_permissions(manage_guild=True)
-async def set_reliable_role(interaction: discord.Interaction, role: discord.Role):
-    """Command to set the role to be used when a user gets 100 of score"""
-    await interaction.response.defer()
-
-    guild_id = interaction.guild.id
-    word_chain_bot.server_configs[guild_id].reliable_role_id = role.id
-
-    async with db_connection(word_chain_bot) as connection:
-        await word_chain_bot.server_configs[guild_id].sync_to_db_with_connection(connection)
-        word_chain_bot.server_reliable_roles[guild_id] = role  # Assign role directly if we already have it in this context
-        await word_chain_bot.add_remove_reliable_role(interaction.guild, connection)
-        await connection.commit()
-
-        await interaction.followup.send(f'Reliable role was set to {role.mention}')
-
-# ---------------------------------------------------------------------------------------------------------------
-
-
-@word_chain_bot.tree.command(name='remove_failed_role', description='Removes the failed role feature')
-@app_commands.default_permissions(manage_guild=True)
-async def remove_failed_role(interaction: discord.Interaction):
-    await interaction.response.defer()
-
-    guild_id = interaction.guild.id
-    word_chain_bot.server_configs[guild_id].failed_role_id = None
-    word_chain_bot.server_configs[guild_id].failed_member_id = None
-    word_chain_bot.server_configs[guild_id].correct_inputs_by_failed_member = 0
-    await word_chain_bot.server_configs[guild_id].sync_to_db(word_chain_bot)
-
-    if word_chain_bot.server_failed_roles[guild_id]:
-        role = word_chain_bot.server_failed_roles[guild_id]
-        for member in role.members:
-            await member.remove_roles(role)
-        word_chain_bot.server_failed_roles[guild_id] = None
-        await interaction.followup.send('Failed role removed')
-    else:
-        await interaction.followup.send('Failed role was already removed')
-
-# ---------------------------------------------------------------------------------------------------------------
-
-
-@word_chain_bot.tree.command(name='remove_reliable_role', description='Removes the reliable role feature')
-@app_commands.default_permissions(manage_guild=True)
-async def remove_reliable_role(interaction: discord.Interaction):
-    await interaction.response.defer()
-
-    guild_id = interaction.guild.id
-    word_chain_bot.server_configs[guild_id].reliable_role_id = None
-    await word_chain_bot.server_configs[guild_id].sync_to_db(word_chain_bot)
-
-    if word_chain_bot.server_reliable_roles[guild_id]:
-        role = word_chain_bot.server_reliable_roles[guild_id]
-        for member in role.members:
-            await member.remove_roles(role)
-        word_chain_bot.server_reliable_roles[guild_id] = None
-        await interaction.followup.send('Reliable role removed')
-    else:
-        await interaction.followup.send('Reliable role was already removed')
-
 # ===================================================================================================================
 
 
@@ -1127,7 +986,7 @@ class LeaderboardCmdGroup(app_commands.Group):
 
             await interaction.followup.send(embed=emb)
 
-# ---------------------------------------------------------------------------------------------------------------
+    # ---------------------------------------------------------------------------------------------------------------
 
     @app_commands.command(description='Shows the first 10 servers with the highest highscore')
     async def server(self, interaction: discord.Interaction):
@@ -1251,181 +1110,7 @@ Longest chain length: {config.high_score}
 # ===================================================================================================================
 
 
-@app_commands.default_permissions(ban_members=True)
-class BlacklistCmdGroup(app_commands.Group):
-
-    def __init__(self):
-        super().__init__(name='blacklist')
-
-    # ---------------------------------------------------------------------------------------------------------------
-
-    # subcommand of Group
-    @app_commands.command(description='Add a word to the blacklist')
-    @app_commands.describe(word="The word to be added to the blacklist")
-    async def add(self, interaction: discord.Interaction, word: str) -> None:
-        await interaction.response.defer()
-
-        emb: discord.Embed = discord.Embed(colour=discord.Color.blurple())
-
-        if not all(c in POSSIBLE_CHARACTERS for c in word.lower()):
-            emb.description = f'⚠️ The word *{word.lower()}* is not a legal word.'
-            await interaction.followup.send(embed=emb)
-            return
-
-        async with db_connection(word_chain_bot) as connection:
-            stmt = insert(BlacklistModel).values(
-                server_id=interaction.guild.id,
-                word=word.lower()
-            ).prefix_with('OR IGNORE')
-            await connection.execute(stmt)
-            await connection.commit()
-
-        emb.description = f'✅ The word *{word.lower()}* was successfully added to the blacklist.'
-        await interaction.followup.send(embed=emb)
-
-    # ---------------------------------------------------------------------------------------------------------------
-
-    @app_commands.command(description='Remove a word from the blacklist')
-    @app_commands.describe(word='The word to be removed from the blacklist')
-    async def remove(self, interaction: discord.Interaction, word: str) -> None:
-        await interaction.response.defer()
-
-        emb: discord.Embed = discord.Embed(colour=discord.Color.blurple())
-
-        if not all(c in POSSIBLE_CHARACTERS for c in word.lower()):
-            emb.description = f'⚠️ The word *{word.lower()}* is not a legal word.'
-            await interaction.followup.send(embed=emb)
-            return
-
-        async with db_connection(word_chain_bot) as connection:
-            stmt = delete(BlacklistModel).where(
-                BlacklistModel.server_id == interaction.guild.id,
-                BlacklistModel.word == word.lower()
-            )
-            await connection.execute(stmt)
-            await connection.commit()
-
-        emb.description = f'✅ The word *{word.lower()}* was successfully removed from the blacklist.'
-        await interaction.followup.send(embed=emb)
-
-    # ---------------------------------------------------------------------------------------------------------------
-
-    @app_commands.command(description='List the blacklisted words')
-    async def show(self, interaction: discord.Interaction) -> None:
-        await interaction.response.defer()
-
-        async with db_connection(word_chain_bot, locked=False) as connection:
-            stmt = select(BlacklistModel.word).where(BlacklistModel.server_id == interaction.guild.id)
-            result: CursorResult = await connection.execute(stmt)
-            words = [row[0] for row in result]
-
-            emb = discord.Embed(title=f'Blacklisted words', description='', colour=discord.Color.dark_orange())
-
-            if len(words) == 0:
-                emb.description = f'No word has been blacklisted in this server.'
-                await interaction.followup.send(embed=emb)
-            else:
-                i: int = 0
-                for word in words:
-                    i += 1
-                    emb.description += f'{i}. {word}\n'
-
-                await interaction.followup.send(embed=emb)
-
-
-# ================================================================================================================
-
-
-@app_commands.default_permissions(ban_members=True)
-class WhitelistCmdGroup(app_commands.Group):
-    """
-    Whitelisting a word will make the bot skip the blacklist check and the valid word check for that word.
-    Whitelist has higher priority than blacklist.
-    This feature can also be used to include words which are not present in the English dictionary.
-    """
-
-    def __init__(self):
-        super().__init__(name='whitelist')
-
-    # ---------------------------------------------------------------------------------------------------------------
-
-    # subcommand of Group
-    @app_commands.command(description='Add a word to the whitelist')
-    @app_commands.describe(word="The word to be added")
-    async def add(self, interaction: discord.Interaction, word: str) -> None:
-        await interaction.response.defer()
-
-        emb: discord.Embed = discord.Embed(colour=discord.Color.blurple())
-
-        if not all(c in POSSIBLE_CHARACTERS for c in word.lower()):
-            emb.description = f'⚠️ The word *{word.lower()}* is not a legal word.'
-            await interaction.followup.send(embed=emb)
-            return
-
-        async with db_connection(word_chain_bot) as connection:
-            stmt = insert(WhitelistModel).values(
-                server_id=interaction.guild.id,
-                word=word.lower()
-            ).prefix_with('OR IGNORE')
-            await connection.execute(stmt)
-            await connection.commit()
-
-        emb.description = f'✅ The word *{word.lower()}* was successfully added to the whitelist.'
-        await interaction.followup.send(embed=emb)
-
-    # ---------------------------------------------------------------------------------------------------------------
-
-    @app_commands.command(description='Remove a word from the whitelist')
-    @app_commands.describe(word='The word to be removed')
-    async def remove(self, interaction: discord.Interaction, word: str) -> None:
-        await interaction.response.defer()
-
-        emb: discord.Embed = discord.Embed(colour=discord.Color.blurple())
-
-        if not all(c in POSSIBLE_CHARACTERS for c in word.lower()):
-            emb.description = f'⚠️ The word *{word.lower()}* is not a legal word.'
-            await interaction.followup.send(embed=emb)
-            return
-
-        async with db_connection(word_chain_bot) as connection:
-            stmt = delete(WhitelistModel).where(
-                WhitelistModel.server_id == interaction.guild.id,
-                WhitelistModel.word == word.lower()
-            )
-            await connection.execute(stmt)
-            await connection.commit()
-
-        emb.description = f'✅ The word *{word.lower()}* has been removed from the whitelist.'
-        await interaction.followup.send(embed=emb)
-
-    # ---------------------------------------------------------------------------------------------------------------
-
-    @app_commands.command(description='List the whitelisted words')
-    async def show(self, interaction: discord.Interaction) -> None:
-        await interaction.response.defer()
-
-        async with db_connection(word_chain_bot, locked=False) as connection:
-            stmt = select(WhitelistModel.word).where(WhitelistModel.server_id == interaction.guild.id)
-            result: CursorResult = await connection.execute(stmt)
-            words = [row[0] for row in result]
-
-            emb = discord.Embed(title=f'Whitelisted words', description='', colour=discord.Color.dark_orange())
-
-            if len(words) == 0:
-                emb.description = f'No word has been whitelisted in this server.'
-                await interaction.followup.send(embed=emb)
-            else:
-                i: int = 0
-                for word in words:
-                    i += 1
-                    emb.description += f'{i}. {word}\n'
-
-                await interaction.followup.send(embed=emb)
-
-
 if __name__ == '__main__':
     word_chain_bot.tree.add_command(LeaderboardCmdGroup())
     word_chain_bot.tree.add_command(StatsCmdGroup())
-    word_chain_bot.tree.add_command(BlacklistCmdGroup())
-    word_chain_bot.tree.add_command(WhitelistCmdGroup())
     word_chain_bot.run(os.getenv('TOKEN'), log_handler=None)
