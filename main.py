@@ -546,7 +546,10 @@ The above entered word is **NOT** being taken into account.''')
             does not exist, or `bot.API_RESPONSE_ERROR` if an error (of any type) was raised in the query.
         """
         try:
+            start_time = time.monotonic()
             response = future.result(timeout=5)
+            query_time = time.monotonic() - start_time
+            logger.debug(f"querying API took {query_time}")
 
             if response.status_code >= 400:
                 logger.error(f'Received status code {response.status_code} from Wiktionary API query.')
