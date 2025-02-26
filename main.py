@@ -103,8 +103,13 @@ class WordChainBot(AutoShardedBot):
                         if member:
                             emb.add_field(name='Last input by', value=f'{member.mention}', inline=True)
 
-                await channel.send(embed=emb)
+                try:
+                    await channel.send(embed=emb)
+                except discord.errors.Forbidden:
+                    logger.info(f'Could not send ready message to {guild.name} ({guild.id}) due to missing permissions.')
+
                 self.load_discord_roles(guild)
+                
         logger.info(f'Loaded {len(self.server_configs)} server configs, running on {len(self.guilds)} servers')
 
     # ---------------------------------------------------------------------------------------------------------------
