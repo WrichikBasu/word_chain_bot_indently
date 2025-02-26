@@ -85,7 +85,7 @@ class WordChainBot(AutoShardedBot):
         for guild in self.guilds:
             config = self.server_configs[guild.id]
 
-            channel: Optional[discord.TextChannel] = word_chain_bot.get_channel(config.channel_id)
+            channel: Optional[discord.TextChannel] = self.get_channel(config.channel_id)
             if channel:
 
                 emb: discord.Embed = discord.Embed(description='**I\'m now online!**',
@@ -796,8 +796,8 @@ async def reload(interaction: Interaction, cog_name: str):
     admin_sync: list[app_commands.AppCommand] = await word_chain_bot.tree.sync(guild=Object(id=ADMIN_GUILD_ID))
 
     emb: Embed = Embed(title=f'Sync status', description=f'Synchronization complete.', colour=Colour.dark_magenta())
-    emb.add_field(name="Global commands synced", value=f"{len(global_sync)}")
-    emb.add_field(name="Admin commands synced", value=f"{len(admin_sync)}")
+    emb.add_field(name="Global commands", value=f"{len(global_sync)}")
+    emb.add_field(name="Admin commands", value=f"{len(admin_sync)}")
 
     await interaction.followup.send(embed=emb)
 

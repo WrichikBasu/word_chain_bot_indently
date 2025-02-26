@@ -3,9 +3,9 @@ from __future__ import annotations
 
 import logging
 import os
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
-from discord import app_commands, Interaction, Object, Permissions
+from discord import app_commands, Interaction, Object, Permissions, Embed, Colour, TextChannel, Forbidden
 from discord.ext.commands import Cog
 from dotenv import load_dotenv
 from sqlalchemy import delete
@@ -39,6 +39,37 @@ class AdminCommandsCog(Cog, name=COG_NAME_ADMIN_CMDS):
 
     def cog_unload(self) -> None:
         logger.info(f'Cog {self.qualified_name} unloaded.')
+
+    @app_commands.command(name='announce', description='Announce something to all servers')
+    @app_commands.describe(msg='The message to announce')
+    async def announce(self, interaction: Interaction, msg: str):
+
+        await interaction.response.defer()
+
+        emb: Embed = Embed(title='Announcement', description=msg, colour=Colour.yellow())
+        emb.set_author(name='Word Chain Bot Devs', icon_url=self.bot.get_guild(ADMIN_GUILD_ID).icon.url
+                                                            if self.bot.get_guild(ADMIN_GUILD_ID).icon else None)
+        emb.description += f'''
+\n*For support and updates, join our Discord server:\nhttps://discord.gg/yhbzVGBNw3*
+'''
+        count_sent: int = 0
+        count_failed: int = 0
+        for guild in self.bot.guilds:
+            config = self.bot.server_configs[guild.id]
+
+            channel: Optional[TextChannel] = self.bot.get_channel(config.channel_id)
+            if channel:
+                try:
+                    await channel.send(embed=emb)
+                    count_sent += 1
+                except Forbidden as _:
+                    logger.error(f'Failed to send announcement to {guild.name} (ID: {guild.id}) due to missing perms.')
+                    count_failed += 1
+
+        emb2: Embed = Embed(title='Announcement status', colour=Colour.yellow(), description='Command completed.')
+        emb2.add_field(name='Success', value=f'{count_sent} servers', inline=True)
+        emb2.add_field(name='Failed', value=f'{count_failed} servers', inline=True)
+        await interaction.followup.send(embed=emb2)
 
     # ============================================================================================================
 
@@ -116,7 +147,7 @@ class AdminCommandsCog(Cog, name=COG_NAME_ADMIN_CMDS):
                     await interaction.followup.send(f'Removed data for server {guild_id_as_number}')
                 else:
                     await interaction.followup.send(f'No data to remove for server {guild_id_as_number}')
-    
+
         # ---------------------------------------------------------------------------------------------------------------
 
         @app_commands.command(name='user', description='Removes all saved data for given user id.')
