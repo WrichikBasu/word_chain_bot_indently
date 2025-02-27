@@ -9,7 +9,7 @@ import discord
 from alembic import command as alembic_command
 from alembic.config import Config as AlembicConfig
 from discord import app_commands, Interaction, Object, Embed, Colour
-from discord.ext.commands import ExtensionNotLoaded, AutoShardedBot, Cog
+from discord.ext.commands import ExtensionNotLoaded, AutoShardedBot
 from dotenv import load_dotenv
 from requests_futures.sessions import FuturesSession
 from sqlalchemy import CursorResult, delete, exists, func, insert, select, update
@@ -724,8 +724,8 @@ The above entered word is **NOT** being taken into account.''')
         if not DEV_MODE:
             # only sync when not in dev mode to avoid syncing over and over again - use sync command explicitly
 
-            for cog in COGS_LIST:
-                await self.load_extension(cog)
+            for cog_name in COGS_LIST:
+                await self.load_extension(f'cogs.{cog_name}')
 
             global_sync = await self.tree.sync()
             admin_sync = await self.tree.sync(guild=discord.Object(id=ADMIN_GUILD_ID))
@@ -760,37 +760,21 @@ async def reload(interaction: Interaction, cog_name: str):
     match cog_name:
 
         case 'all':
-            # First clear the tree.
-            word_chain_bot.tree.clear_commands(guild=None)
-
             for cog_name in COGS_LIST:
                 try:  # Try to unload each cog
-                    await word_chain_bot.unload_extension(cog_name)
+                    await word_chain_bot.unload_extension(f'cogs.{cog_name}')
                 except ExtensionNotLoaded:
                     logger.info(f'Extension {cog_name} not loaded.')
 
-                await word_chain_bot.load_extension(cog_name)  # Then reload the cog
+                await word_chain_bot.load_extension(f'cogs.{cog_name}')  # Then reload the cog
 
         case _:
-
-            cog: Cog = word_chain_bot.get_cog(cog_name)
-            full_cog_path: str = f'cogs.{cog_name}'
-
-            if not cog:
-                await interaction.followup.send(f'Cog {cog_name} not found.')
-                logger.error(f'Cog {cog_name} not found.')
-                return
-
-            for command in word_chain_bot.tree.get_commands():  # Loop through all commands in the bot
-                if command in cog.__cog_commands__:  # And remove the ones that are in the specified cog
-                    word_chain_bot.tree.remove_command(command.name)
-
             try:
-                await word_chain_bot.unload_extension(full_cog_path)
+                await word_chain_bot.unload_extension(f'cogs.{cog_name}')
             except ExtensionNotLoaded:
                 logger.info(f'Extension {cog_name} not loaded.')
 
-            await word_chain_bot.load_extension(full_cog_path)
+            await word_chain_bot.load_extension(f'cogs.{cog_name}')
 
     global_sync: list[app_commands.AppCommand] = await word_chain_bot.tree.sync()
     admin_sync: list[app_commands.AppCommand] = await word_chain_bot.tree.sync(guild=Object(id=ADMIN_GUILD_ID))

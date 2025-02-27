@@ -27,18 +27,24 @@ logger = logging.getLogger(__name__)
 class AdminCommandsCog(Cog, name=COG_NAME_ADMIN_CMDS):
 
     def __init__(self, bot: WordChainBot):
-
         self.bot: WordChainBot = bot
-
         self.bot.tree.add_command(AdminCommandsCog.PurgeCmdGroup(self))
-        # Add command groups here
-        # TODO
 
     def cog_load(self) -> None:
         logger.info(f'Cog {self.qualified_name} loaded.')
 
     def cog_unload(self) -> None:
+        logger.info('Removing commands...')
+
+        for command in self.bot.tree.get_commands():  # Loop through all commands in the bot
+            if command in self.__cog_commands__:  # And remove the ones that are in the specified cog
+                self.bot.tree.remove_command(command.name)
+
         logger.info(f'Cog {self.qualified_name} unloaded.')
+
+    @app_commands.command(name='admin-test', description='Test command')
+    async def admin_test(self, interaction: Interaction):
+        await interaction.response.send_message('Admin test')
 
     @app_commands.command(name='announce', description='Announce something to all servers')
     @app_commands.describe(msg='The message to announce')

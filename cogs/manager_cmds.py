@@ -33,7 +33,17 @@ class ManagerCommandsCog(Cog, name=COG_NAME_MANAGER_CMDS):
         logger.info(f'Cog {self.qualified_name} loaded.')
 
     def cog_unload(self) -> None:
+        logger.info('Removing commands...')
+
+        for command in self.bot.tree.get_commands():  # Loop through all commands in the bot
+            if command in self.__cog_commands__:  # And remove the ones that are in the specified cog
+                self.bot.tree.remove_command(command.name)
+
         logger.info(f'Cog {self.qualified_name} unloaded.')
+
+    @app_commands.command(name='manager-test', description='Test command')
+    async def manager_test(self, interaction: Interaction):
+        await interaction.response.send_message('Manager test')
 
     # =============================================================================================================
 

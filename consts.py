@@ -10,7 +10,7 @@ COG_NAME_ADMIN_CMDS: str = "admin_cmds"
 COG_NAME_MANAGER_CMDS: str = "manager_cmds"
 COG_NAME_USER_CMDS: str = "user_cmds"
 
-COGS_LIST: list[str] = ["cogs." + cog for cog in [COG_NAME_MANAGER_CMDS, COG_NAME_ADMIN_CMDS, COG_NAME_USER_CMDS]]
+COGS_LIST: list[str] = [COG_NAME_ADMIN_CMDS, COG_NAME_MANAGER_CMDS,  COG_NAME_USER_CMDS]
 
 """
 This dictionary maps each character to its frequency as the first letter in an english word. It is calculated by
