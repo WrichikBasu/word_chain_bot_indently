@@ -32,12 +32,15 @@ class UserCommandsCog(Cog, name=COG_NAME_USER_CMDS):
 
     def __init__(self, bot: WordChainBot) -> None:
         self.bot = bot
-
         self.bot.tree.add_command(UserCommandsCog.StatsCmdGroup(self))
         self.bot.tree.add_command(UserCommandsCog.LeaderboardCmdGroup(self))
 
+    # ---------------------------------------------------------------------------------------------------------------
+
     def cog_load(self) -> None:
         logger.info(f'Cog {self.qualified_name} loaded.')
+
+    # ---------------------------------------------------------------------------------------------------------------
 
     def cog_unload(self) -> None:
 
@@ -49,11 +52,7 @@ class UserCommandsCog(Cog, name=COG_NAME_USER_CMDS):
 
         logger.info(f'Cog {self.qualified_name} unloaded.')
 
-    @app_commands.command(name='user-test', description='Test command')
-    async def user_test(self, interaction: Interaction):
-        await interaction.response.send_message('Userr test')
-
-    # =============================================================================================================
+    # ---------------------------------------------------------------------------------------------------------------
 
     @app_commands.command(name='list_commands', description='List all slash commands')
     @app_commands.describe(ephemeral="Whether the list will be publicly displayed")

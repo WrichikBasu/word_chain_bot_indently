@@ -29,8 +29,12 @@ class ManagerCommandsCog(Cog, name=COG_NAME_MANAGER_CMDS):
         self.bot.tree.add_command(ManagerCommandsCog.BlacklistCmdGroup(self))
         self.bot.tree.add_command(ManagerCommandsCog.WhitelistCmdGroup(self))
 
+    # ----------------------------------------------------------------------------------------------------------------
+
     def cog_load(self) -> None:
         logger.info(f'Cog {self.qualified_name} loaded.')
+
+    # ----------------------------------------------------------------------------------------------------------------
 
     def cog_unload(self) -> None:
         logger.info('Removing commands...')
@@ -40,10 +44,6 @@ class ManagerCommandsCog(Cog, name=COG_NAME_MANAGER_CMDS):
                 self.bot.tree.remove_command(command.name)
 
         logger.info(f'Cog {self.qualified_name} unloaded.')
-
-    @app_commands.command(name='manager-test', description='Test command')
-    async def manager_test(self, interaction: Interaction):
-        await interaction.response.send_message('Manager test')
 
     # =============================================================================================================
 

@@ -30,8 +30,12 @@ class AdminCommandsCog(Cog, name=COG_NAME_ADMIN_CMDS):
         self.bot: WordChainBot = bot
         self.bot.tree.add_command(AdminCommandsCog.PurgeCmdGroup(self))
 
+    # -----------------------------------------------------------------------------------------------------------------
+
     def cog_load(self) -> None:
         logger.info(f'Cog {self.qualified_name} loaded.')
+
+    # -----------------------------------------------------------------------------------------------------------------
 
     def cog_unload(self) -> None:
         logger.info('Removing commands...')
@@ -42,9 +46,7 @@ class AdminCommandsCog(Cog, name=COG_NAME_ADMIN_CMDS):
 
         logger.info(f'Cog {self.qualified_name} unloaded.')
 
-    @app_commands.command(name='admin-test', description='Test command')
-    async def admin_test(self, interaction: Interaction):
-        await interaction.response.send_message('Admin test')
+    # -----------------------------------------------------------------------------------------------------------------
 
     @app_commands.command(name='announce', description='Announce something to all servers')
     @app_commands.describe(msg='The message to announce')
@@ -52,9 +54,7 @@ class AdminCommandsCog(Cog, name=COG_NAME_ADMIN_CMDS):
 
         await interaction.response.defer()
 
-        emb: Embed = Embed(title='Announcement', description=msg, colour=Colour.yellow())
-        emb.set_author(name='Word Chain Bot Devs', icon_url=self.bot.get_guild(ADMIN_GUILD_ID).icon.url
-                                                            if self.bot.get_guild(ADMIN_GUILD_ID).icon else None)
+        emb: Embed = Embed(title='Announcement from devs', description=msg, colour=Colour.yellow())
         emb.description += f'''
 \n*For support and updates, join our Discord server:\nhttps://discord.gg/yhbzVGBNw3*
 '''
