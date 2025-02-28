@@ -61,6 +61,7 @@ class ManagerCommandsCog(Cog, name=COG_NAME_MANAGER_CMDS):
         @app_commands.describe(role='The role to be used when a user attains a score of 100')
         @app_commands.default_permissions(manage_guild=True)
         async def set_reliable_role(self, interaction: Interaction, role: Role):
+            
             """Command to set the role to be used when a user gets 100 of score"""
 
             await interaction.response.defer()
@@ -69,8 +70,14 @@ class ManagerCommandsCog(Cog, name=COG_NAME_MANAGER_CMDS):
 
             if role.position > bot_member.top_role.position:
                 emb: Embed = Embed(title='Error', colour=Colour.red(),
-                                   description=f'''Yu cannot set a role that is higher than my top role 
+                                   description=f'''You cannot set a role that is higher than my top role 
 ({bot_member.top_role.mention}) in the hierarchy!''')
+                await interaction.followup.send(embed=emb)
+                return
+
+            if not bot_member.guild_permissions.manage_roles:
+                emb: Embed = Embed(title='Error', colour=Colour.red(),
+                                   description=f'''I do not have the `Manage Roles` permission!''')
                 await interaction.followup.send(embed=emb)
                 return
 
@@ -118,6 +125,12 @@ class ManagerCommandsCog(Cog, name=COG_NAME_MANAGER_CMDS):
                 emb: Embed = Embed(title='Error', colour=Colour.red(),
                                    description=f'''You cannot set a role that is higher than my top role 
 ({bot_member.top_role.mention}) in the hierarchy!''')
+                await interaction.followup.send(embed=emb)
+                return
+
+            if not bot_member.guild_permissions.manage_roles:
+                emb: Embed = Embed(title='Error', colour=Colour.red(),
+                                   description=f'''I do not have the `Manage Roles` permission!''')
                 await interaction.followup.send(embed=emb)
                 return
 
