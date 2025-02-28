@@ -4,6 +4,7 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
+import discord
 from discord import app_commands, Interaction, Permissions, Role, Embed, Colour, TextChannel
 from discord.app_commands import Group
 from discord.ext.commands import Cog
@@ -61,7 +62,17 @@ class ManagerCommandsCog(Cog, name=COG_NAME_MANAGER_CMDS):
         @app_commands.default_permissions(manage_guild=True)
         async def set_reliable_role(self, interaction: Interaction, role: Role):
             """Command to set the role to be used when a user gets 100 of score"""
+
             await interaction.response.defer()
+
+            bot_member: discord.Member = interaction.guild.me
+
+            if role.position > bot_member.top_role.position:
+                emb: Embed = Embed(title='Error', colour=Colour.red(),
+                                   description=f'''Yu cannot set a role that is higher than my top role 
+({bot_member.top_role.mention}) in the hierarchy!''')
+                await interaction.followup.send(embed=emb)
+                return
 
             guild_id = interaction.guild.id
             self.cog.bot.server_configs[guild_id].reliable_role_id = role.id
@@ -73,7 +84,9 @@ class ManagerCommandsCog(Cog, name=COG_NAME_MANAGER_CMDS):
                 await self.cog.bot.add_remove_reliable_role(interaction.guild, connection)
                 await connection.commit()
 
-                await interaction.followup.send(f'Reliable role was set to {role.mention}')
+                emb: Embed = Embed(title='Success', colour=Colour.green(),
+                                   description=f'''Reliable role was set to {role.mention}!''')
+                await interaction.followup.send(embed=emb)
 
         # ---------------------------------------------------------------------------------------------------------
 
@@ -99,6 +112,15 @@ class ManagerCommandsCog(Cog, name=COG_NAME_MANAGER_CMDS):
 
             await interaction.response.defer()
 
+            bot_member: discord.Member = interaction.guild.me
+
+            if role.position > bot_member.top_role.position:
+                emb: Embed = Embed(title='Error', colour=Colour.red(),
+                                   description=f'''You cannot set a role that is higher than my top role 
+({bot_member.top_role.mention}) in the hierarchy!''')
+                await interaction.followup.send(embed=emb)
+                return
+
             guild_id = interaction.guild.id
             self.cog.bot.server_configs[guild_id].failed_role_id = role.id
 
@@ -108,7 +130,10 @@ class ManagerCommandsCog(Cog, name=COG_NAME_MANAGER_CMDS):
                     guild_id] = role  # Assign role directly if we already have it in this context
                 await self.cog.bot.add_remove_failed_role(interaction.guild, connection)
                 await connection.commit()
-                await interaction.followup.send(f'Failed role was set to {role.mention}')
+
+                emb: Embed = Embed(title='Success', colour=Colour.green(),
+                                   description=f'''Failed role was set to {role.mention}.''')
+                await interaction.followup.send(embed=emb)
 
     # =================================================================================================================
 
@@ -136,9 +161,13 @@ class ManagerCommandsCog(Cog, name=COG_NAME_MANAGER_CMDS):
                 for member in role.members:
                     await member.remove_roles(role)
                 self.cog.bot.server_failed_roles[guild_id] = None
-                await interaction.followup.send('Failed role removed')
+                emb: Embed = Embed(title='Success', colour=Colour.green(),
+                                   description=f'''Failed role has been removed.''')
+                await interaction.followup.send(embed=emb)
             else:
-                await interaction.followup.send('Failed role was already removed')
+                emb: Embed = Embed(title='Error', colour=Colour.red(),
+                                   description=f'''Failed role was already unset!''')
+                await interaction.followup.send(embed=emb)
 
         # ---------------------------------------------------------------------------------------------------------------
 
@@ -157,9 +186,13 @@ class ManagerCommandsCog(Cog, name=COG_NAME_MANAGER_CMDS):
                 for member in role.members:
                     await member.remove_roles(role)
                 self.cog.bot.server_reliable_roles[guild_id] = None
-                await interaction.followup.send('Reliable role removed')
+                emb: Embed = Embed(title='Success', colour=Colour.green(),
+                                   description=f'''Reliable role has been removed.''')
+                await interaction.followup.send(embed=emb)
             else:
-                await interaction.followup.send('Reliable role was already removed')
+                emb: Embed = Embed(title='Error', colour=Colour.red(),
+                                   description=f'''Reliable role was already unset!''')
+                await interaction.followup.send(embed=emb)
 
     # ================================================================================================================
 
@@ -335,6 +368,8 @@ class ManagerCommandsCog(Cog, name=COG_NAME_MANAGER_CMDS):
                         emb.description += f'{i}. {word}\n'
 
                     await interaction.followup.send(embed=emb)
+
+# ================================================================================================================
 
 
 async def setup(bot: WordChainBot):
