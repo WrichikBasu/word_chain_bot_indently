@@ -604,7 +604,6 @@ GLOBAL_BLACKLIST_2_LETTER_WORDS: set[str] = {
     'mv',
     'mw',
     'mx',
-    'my',
     'mz',
     'na',
     'nb',
@@ -943,6 +942,8 @@ GLOBAL_WHITELIST_3_LETTER_WORDS: set[str] = {
     'ewe',
     'sap',
     'taj',
+    'hid',
+    'orb',
     'www',
     'usa',
     'hop',
@@ -1287,7 +1288,10 @@ GLOBAL_WHITELIST_3_LETTER_WORDS: set[str] = {
     'non',
     'rig',
     'sag',
-    'ups'
+    'ups',
+    'orc',
+    'sol',
+    'yen'
 }
 
 """
