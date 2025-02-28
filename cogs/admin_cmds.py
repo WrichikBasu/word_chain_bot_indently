@@ -48,6 +48,8 @@ class AdminCommandsCog(Cog, name=COG_NAME_ADMIN_CMDS):
     # -----------------------------------------------------------------------------------------------------------------
 
     @app_commands.command(name='announce', description='Announce something to all servers')
+    @app_commands.default_permissions(administrator=True)
+    @app_commands.guilds(ADMIN_GUILD_ID)
     @app_commands.describe(msg='The message to announce')
     async def announce(self, interaction: Interaction, msg: str):
 
