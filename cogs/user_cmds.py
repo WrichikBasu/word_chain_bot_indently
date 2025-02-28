@@ -107,18 +107,18 @@ class UserCommandsCog(Cog, name=COG_NAME_USER_CMDS):
         5. Check word cache.
         6. Query API.
         """
-        await interaction.response.defer()
+        await interaction.response.defer(ephemeral=True)
 
         emb = Embed(color=Colour.blurple())
 
         if not all(c in POSSIBLE_CHARACTERS for c in word.lower()):
             emb.description = f'❌ **{word}** is **not** a legal word.'
-            await interaction.followup.send(embed=emb, ephemeral=True)
+            await interaction.followup.send(embed=emb)
             return
 
         if len(word) == 1:
             emb.description = f'❌ **{word}** is **not** a valid word.'
-            await interaction.followup.send(embed=emb, ephemeral=True)
+            await interaction.followup.send(embed=emb)
             return
 
         word = word.lower()
@@ -126,17 +126,17 @@ class UserCommandsCog(Cog, name=COG_NAME_USER_CMDS):
         async with self.bot.db_connection() as connection:
             if await self.bot.is_word_whitelisted(word, interaction.guild.id, connection):
                 emb.description = f'✅ The word **{word}** is valid.'
-                await interaction.followup.send(embed=emb, ephemeral=True)
+                await interaction.followup.send(embed=emb)
                 return
 
             if await self.bot.is_word_blacklisted(word, interaction.guild.id, connection):
                 emb.description = f'❌ The word **{word}** is **blacklisted** and hence, **not** valid.'
-                await interaction.followup.send(embed=emb, ephemeral=True)
+                await interaction.followup.send(embed=emb)
                 return
 
             if await self.bot.is_word_in_cache(word, connection):
                 emb.description = f'✅ The word **{word}** is valid.'
-                await interaction.followup.send(embed=emb, ephemeral=True)
+                await interaction.followup.send(embed=emb)
                 return
 
             future: concurrent.futures.Future = self.bot.start_api_query(word)
@@ -153,7 +153,7 @@ class UserCommandsCog(Cog, name=COG_NAME_USER_CMDS):
                 case _:
                     emb.description = f'⚠️ There was an issue in fetching the result.'
 
-            await interaction.followup.send(embed=emb, ephemeral=True)
+            await interaction.followup.send(embed=emb)
 
     # ===================================================================================================================
 
