@@ -1,9 +1,13 @@
 import asyncio
 import concurrent.futures
+import contextlib
+import inspect
 import logging
 import os
+import time
 from collections import defaultdict, deque
-from typing import Optional
+import random
+from typing import Optional, AsyncIterator
 
 import discord
 from alembic import command as alembic_command
@@ -18,7 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection, create_async_engine, AsyncEn
 from consts import *
 from model import (BlacklistModel, MemberModel, ServerConfig, ServerConfigModel, UsedWordsModel, WhitelistModel,
                    WordCacheModel)
-from utils import calculate_total_karma, db_connection
+from karma_calcs import calculate_total_karma
 
 load_dotenv('.env')
 # running in single player mode changes some game rules - you can chain words alone now
@@ -27,7 +31,7 @@ SINGLE_PLAYER = os.getenv('SINGLE_PLAYER', False) not in {False, 'False', 'false
 DEV_MODE = os.getenv('DEV_MODE', False) not in {False, 'False', 'false', '0'}
 ADMIN_GUILD_ID = int(os.environ['ADMIN_GUILD_ID'])
 
-logging.basicConfig(level=logging.DEBUG, format='[%(asctime)s] [%(levelname)s] %(name)s: %(message)s')
+logging.basicConfig(level=logging.INFO, format='[%(asctime)s] [%(levelname)s] %(name)s: %(message)s')
 logger = logging.getLogger(__name__)
 
 
@@ -62,7 +66,7 @@ class WordChainBot(AutoShardedBot):
         logger.info(f'Bot is ready as {self.user.name}#{self.user.discriminator}')
 
         # load all configs and make sure each guild has one entry
-        async with db_connection(self) as connection:
+        async with self.db_connection() as connection:
             stmt = select(ServerConfigModel)
             result: CursorResult = await connection.execute(stmt)
             configs = [ServerConfig.model_validate(row) for row in result]
@@ -118,7 +122,7 @@ class WordChainBot(AutoShardedBot):
         """Override the on_guild_join method"""
         logger.info(f'Joined guild {guild.name} ({guild.id})')
 
-        async with db_connection(self) as connection:
+        async with self.db_connection() as connection:
             new_config = ServerConfig(server_id=guild.id)
             stmt = insert(ServerConfigModel).values(**new_config.model_dump()).prefix_with('OR IGNORE')
             await connection.execute(stmt)
@@ -253,7 +257,7 @@ class WordChainBot(AutoShardedBot):
 The chain has **not** been broken. Please enter another word.''')
             return
 
-        async with db_connection(self) as connection:
+        async with self.db_connection() as connection:
             # ----------------------------------------------------------------------------------------
             # ADD USER TO THE DATABASE
             # ----------------------------------------------------------------------------------------
@@ -278,7 +282,7 @@ The chain has **not** been broken. Please enter another word.''')
                 await connection.execute(stmt)
                 await connection.commit()
 
-        async with db_connection(self) as connection:
+        async with self.db_connection() as connection:
             # -------------------------------
             # Check if word is whitelisted
             # -------------------------------
@@ -717,6 +721,34 @@ The above entered word is **NOT** being taken into account.''')
         result: CursorResult = await connection.execute(stmt)
         return result.scalar()
 
+    # ---------------------------------------------------------------------------------------------------------------
+
+    @contextlib.asynccontextmanager
+    async def db_connection(self, locked=True) -> AsyncIterator[AsyncConnection]:
+        
+        call_id = ''.join(random.choices(string.ascii_letters + string.digits, k=6))
+
+        caller_frame = inspect.currentframe().f_back.f_back
+        caller_function_name = caller_frame.f_code.co_name
+        caller_filename = caller_frame.f_code.co_filename.removeprefix(os.getcwd() + os.sep)
+        caller_lineno = caller_frame.f_lineno
+
+        logger.debug(f'{call_id}: {caller_function_name} at {caller_filename}:{caller_lineno}')
+
+        logger.debug(f'{call_id}: requesting connection with {locked=}')
+        if locked:
+            start_time = time.monotonic()
+            async with self._LOCK:
+                wait_time = time.monotonic() - start_time
+                logger.debug(f'{call_id}: waited {wait_time:.4f} seconds for DB lock')
+                async with self._SQL_ENGINE.begin() as connection:
+                    yield connection
+        else:
+            async with self._SQL_ENGINE.begin() as connection:
+                yield connection
+                
+        logger.debug(f'{call_id}: connection done')
+    
     # ---------------------------------------------------------------------------------------------------------------
 
     async def setup_hook(self) -> None:

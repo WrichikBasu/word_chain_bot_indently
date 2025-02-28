@@ -12,7 +12,6 @@ from sqlalchemy import delete
 
 from consts import COG_NAME_ADMIN_CMDS
 from model import UsedWordsModel, MemberModel, BlacklistModel, WhitelistModel, ServerConfigModel
-from utils import db_connection
 
 if TYPE_CHECKING:
     from main import WordChainBot
@@ -103,7 +102,7 @@ class AdminCommandsCog(Cog, name=COG_NAME_ADMIN_CMDS):
                 await interaction.followup.send('This is not a valid ID!')
                 return
 
-            async with db_connection(self.cog.bot) as connection:
+            async with self.cog.bot.db_connection() as connection:
                 total_rows_changed = 0
 
                 # delete used words
@@ -170,7 +169,7 @@ class AdminCommandsCog(Cog, name=COG_NAME_ADMIN_CMDS):
                 await interaction.followup.send('This is not a valid ID!')
                 return
 
-            async with db_connection(self.cog.bot) as connection:
+            async with self.cog.bot.db_connection() as connection:
                 stmt = delete(MemberModel).where(MemberModel.member_id == user_id_as_number)
                 result = await connection.execute(stmt)
                 await connection.commit()

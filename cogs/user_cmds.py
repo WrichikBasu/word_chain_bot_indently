@@ -16,7 +16,6 @@ from dotenv import load_dotenv
 
 from consts import *
 from model import (Member, MemberModel, ServerConfig, ServerConfigModel)
-from utils import db_connection
 
 if TYPE_CHECKING:
     from main import WordChainBot
@@ -124,7 +123,7 @@ class UserCommandsCog(Cog, name=COG_NAME_USER_CMDS):
 
         word = word.lower()
 
-        async with db_connection(self.bot) as connection:
+        async with self.bot.db_connection() as connection:
             if await self.bot.is_word_whitelisted(word, interaction.guild.id, connection):
                 emb.description = f'✅ The word **{word}** is valid.'
                 await interaction.followup.send(embed=emb, ephemeral=True)
@@ -199,7 +198,7 @@ class UserCommandsCog(Cog, name=COG_NAME_USER_CMDS):
                 case 'global':
                     emb.set_author(name='Global')
 
-            async with db_connection(self.cog.bot, locked=False) as connection:
+            async with self.cog.bot.db_connection(locked=False) as connection:
                 limit = 10
 
                 match board_metric:
@@ -257,7 +256,7 @@ class UserCommandsCog(Cog, name=COG_NAME_USER_CMDS):
                 description=''
             ).set_author(name='Global')
 
-            async with db_connection(self.cog.bot, locked=False) as connection:
+            async with self.cog.bot.db_connection(locked=False) as connection:
                 limit = 10
 
                 stmt = (select(ServerConfigModel.server_id, ServerConfigModel.high_score)
@@ -326,7 +325,7 @@ Longest chain length: {config.high_score}
                 else:
                     return None
 
-            async with db_connection(self.cog.bot, locked=False) as connection:
+            async with self.cog.bot.db_connection(locked=False) as connection:
                 stmt = select(MemberModel).where(
                     MemberModel.server_id == member.guild.id,
                     MemberModel.member_id == member.id

@@ -6,8 +6,6 @@ from sqlalchemy import Boolean, Float, Integer, String, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
-from utils import db_connection
-
 if TYPE_CHECKING:
     from main import WordChainBot  # Thanks to https://stackoverflow.com/a/39757388/8387076
 
@@ -138,7 +136,7 @@ class ServerConfig(BaseModel):
         """
         Synchronizes itself with the DB.
         """
-        async with db_connection(bot, locked=True) as connection:
+        async with bot.db_connection(locked=True) as connection:
             stmt = self.__update_statement()
             await connection.execute(stmt)
             await connection.commit()

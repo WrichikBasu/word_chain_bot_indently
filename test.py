@@ -3,7 +3,7 @@ from collections import deque
 
 import pytest
 
-from utils import calculate_total_karma
+from karma_calcs import calculate_total_karma
 
 LIST_LENGTH = 5
 

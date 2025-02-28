@@ -1,22 +1,13 @@
-"""
-A place to consolidate all utility methods that can be made `static` if included in a class.
-
-Place static methods here to avoid cyclic imports.
-"""
 from __future__ import annotations
-import contextlib
+
 import logging
 import math
-import time
 from collections import deque
-from typing import AsyncIterator, TYPE_CHECKING
-
-from sqlalchemy.ext.asyncio import AsyncConnection
 
 from consts import FIRST_CHAR_SCORE
 
-if TYPE_CHECKING:
-    from main import WordChainBot  # Thanks to https://stackoverflow.com/a/39757388/8387076
+logging.basicConfig(level=logging.INFO, format='[%(asctime)s] [%(levelname)s] %(name)s: %(message)s')
+logger: logging.Logger = logging.getLogger(__name__)
 
 
 def calculate_decay(n: float, drop_rate: float = .33) -> float:
@@ -98,39 +89,4 @@ def calculate_total_karma(word: str, last_words: deque[str]) -> float:
     base_karma: float = calculate_base_karma(word)
     return decay * base_karma if base_karma > 0 else base_karma
 
-# =================================================================================================================
-
-
-@contextlib.asynccontextmanager
-async def db_connection(bot: WordChainBot, locked: bool = True) -> AsyncIterator[AsyncConnection]:
-    """
-    Creates a connection to the database.
-
-    Parameters
-    ----------
-    bot : WordChainBot
-        Instance of the main bot.
-    locked : bool
-        Whether to lock the DB or not.
-
-    Yields
-    ------
-    AsyncIterator[AsyncConnection]
-        The connection to the database.
-    """
-    logger = logging.getLogger(__name__)
-    logger.debug(f'requesting connection with {locked=}')
-
-    if locked:
-        start_time = time.monotonic()
-        async with bot._LOCK:
-            wait_time = time.monotonic() - start_time
-            logger.debug(f'Waited {wait_time:.4f} seconds for DB lock')
-            async with bot._SQL_ENGINE.begin() as connection:
-                yield connection
-    else:
-        async with bot._SQL_ENGINE.begin() as connection:
-            yield connection
-
-    logger.debug(f'connection done')
 

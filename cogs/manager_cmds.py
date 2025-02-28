@@ -11,7 +11,6 @@ from sqlalchemy import CursorResult, delete, insert, select
 
 from consts import COG_NAME_MANAGER_CMDS, POSSIBLE_CHARACTERS
 from model import BlacklistModel, WhitelistModel
-from utils import db_connection
 
 if TYPE_CHECKING:
     from main import WordChainBot
@@ -67,7 +66,7 @@ class ManagerCommandsCog(Cog, name=COG_NAME_MANAGER_CMDS):
             guild_id = interaction.guild.id
             self.cog.bot.server_configs[guild_id].reliable_role_id = role.id
 
-            async with db_connection(self.cog.bot) as connection:
+            async with self.cog.bot.db_connection() as connection:
                 await self.cog.bot.server_configs[guild_id].sync_to_db_with_connection(connection)
                 self.cog.bot.server_reliable_roles[
                     guild_id] = role  # Assign role directly if we already have it in this context
@@ -103,7 +102,7 @@ class ManagerCommandsCog(Cog, name=COG_NAME_MANAGER_CMDS):
             guild_id = interaction.guild.id
             self.cog.bot.server_configs[guild_id].failed_role_id = role.id
 
-            async with db_connection(self.cog.bot) as connection:
+            async with self.cog.bot.db_connection() as connection:
                 await self.cog.bot.server_configs[guild_id].sync_to_db_with_connection(connection)
                 self.cog.bot.server_failed_roles[
                     guild_id] = role  # Assign role directly if we already have it in this context
@@ -186,7 +185,7 @@ class ManagerCommandsCog(Cog, name=COG_NAME_MANAGER_CMDS):
                 await interaction.followup.send(embed=emb)
                 return
 
-            async with db_connection(self.cog.bot) as connection:
+            async with self.cog.bot.db_connection() as connection:
                 stmt = insert(BlacklistModel).values(
                     server_id=interaction.guild.id,
                     word=word.lower()
@@ -211,7 +210,7 @@ class ManagerCommandsCog(Cog, name=COG_NAME_MANAGER_CMDS):
                 await interaction.followup.send(embed=emb)
                 return
 
-            async with db_connection(self.cog.bot) as connection:
+            async with self.cog.bot.db_connection() as connection:
                 stmt = delete(BlacklistModel).where(
                     BlacklistModel.server_id == interaction.guild.id,
                     BlacklistModel.word == word.lower()
@@ -229,7 +228,7 @@ class ManagerCommandsCog(Cog, name=COG_NAME_MANAGER_CMDS):
 
             await interaction.response.defer()
 
-            async with db_connection(self.cog.bot, locked=False) as connection:
+            async with self.cog.bot.db_connection(locked=False) as connection:
                 stmt = select(BlacklistModel.word).where(BlacklistModel.server_id == interaction.guild.id)
                 result: CursorResult = await connection.execute(stmt)
                 words = [row[0] for row in result]
@@ -277,7 +276,7 @@ class ManagerCommandsCog(Cog, name=COG_NAME_MANAGER_CMDS):
                 await interaction.followup.send(embed=emb)
                 return
 
-            async with db_connection(self.cog.bot) as connection:
+            async with self.cog.bot.db_connection() as connection:
                 stmt = insert(WhitelistModel).values(
                     server_id=interaction.guild.id,
                     word=word.lower()
@@ -302,7 +301,7 @@ class ManagerCommandsCog(Cog, name=COG_NAME_MANAGER_CMDS):
                 await interaction.followup.send(embed=emb)
                 return
 
-            async with db_connection(self.cog.bot) as connection:
+            async with self.cog.bot.db_connection() as connection:
                 stmt = delete(WhitelistModel).where(
                     WhitelistModel.server_id == interaction.guild.id,
                     WhitelistModel.word == word.lower()
@@ -319,7 +318,7 @@ class ManagerCommandsCog(Cog, name=COG_NAME_MANAGER_CMDS):
         async def show(self, interaction: Interaction) -> None:
             await interaction.response.defer()
 
-            async with db_connection(self.cog.bot, locked=False) as connection:
+            async with self.cog.bot.db_connection(locked=False) as connection:
                 stmt = select(WhitelistModel.word).where(WhitelistModel.server_id == interaction.guild.id)
                 result: CursorResult = await connection.execute(stmt)
                 words = [row[0] for row in result]
