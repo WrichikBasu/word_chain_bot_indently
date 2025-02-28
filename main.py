@@ -4,8 +4,11 @@ import concurrent.futures
 import contextlib
 import logging
 import os
+import random
+import inspect
 import time
 from collections import defaultdict, deque
+from logging.config import fileConfig
 from typing import AsyncIterator, Optional, Sequence
 
 import discord
@@ -32,7 +35,8 @@ SINGLE_PLAYER = os.getenv('SINGLE_PLAYER', False) not in {False, 'False', 'false
 DEV_MODE = os.getenv('DEV_MODE', False) not in {False, 'False', 'false', '0'}
 ADMIN_GUILD_ID = int(os.environ['ADMIN_GUILD_ID'])
 
-logging.basicConfig(level=logging.INFO, format='[%(asctime)s] [%(levelname)s] %(name)s: %(message)s')
+# load logging config from alembic file because it would be loaded anyway when using alembic
+fileConfig(fname='config.ini')
 logger = logging.getLogger(__name__)
 
 
@@ -60,18 +64,27 @@ class Bot(commands.AutoShardedBot):
 
     @contextlib.asynccontextmanager
     async def db_connection(self, locked=True) -> AsyncIterator[AsyncConnection]:
-        logger.debug(f'requesting connection with {locked=}')
+        call_id = ''.join(random.choices(string.ascii_letters + string.digits, k=6))
+
+        caller_frame = inspect.currentframe().f_back.f_back
+        caller_function_name = caller_frame.f_code.co_name
+        caller_filename = caller_frame.f_code.co_filename.removeprefix(os.getcwd() + os.sep)
+        caller_lineno = caller_frame.f_lineno
+
+        logger.debug(f'{call_id}: {caller_function_name} at {caller_filename}:{caller_lineno}')
+
+        logger.debug(f'{call_id}: requesting connection with {locked=}')
         if locked:
             start_time = time.monotonic()
             async with self.__LOCK:
                 wait_time = time.monotonic() - start_time
-                logger.debug(f'Waited {wait_time:.4f} seconds for DB lock')
+                logger.debug(f'{call_id}: waited {wait_time:.4f} seconds for DB lock')
                 async with self.__SQL_ENGINE.begin() as connection:
                     yield connection
         else:
             async with self.__SQL_ENGINE.begin() as connection:
                 yield connection
-        logger.debug(f'connection done')
+        logger.debug(f'{call_id}: connection done')
 
     # ---------------------------------------------------------------------------------------------------------------
 
@@ -533,7 +546,10 @@ The above entered word is **NOT** being taken into account.''')
             does not exist, or `bot.API_RESPONSE_ERROR` if an error (of any type) was raised in the query.
         """
         try:
+            start_time = time.monotonic()
             response = future.result(timeout=5)
+            query_time = time.monotonic() - start_time
+            logger.debug(f"querying API took {query_time}")
 
             if response.status_code >= 400:
                 logger.error(f'Received status code {response.status_code} from Wiktionary API query.')
@@ -741,7 +757,7 @@ The above entered word is **NOT** being taken into account.''')
             admin_sync = await self.tree.sync(guild=discord.Object(id=ADMIN_GUILD_ID))
             logger.info(f'Synchronized {len(global_sync)} global commands and {len(admin_sync)} admin commands')
 
-        alembic_cfg = AlembicConfig('alembic.ini')
+        alembic_cfg = AlembicConfig('config.ini')
         alembic_command.upgrade(alembic_cfg, 'head')
 
 bot = Bot()
