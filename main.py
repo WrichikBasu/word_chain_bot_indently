@@ -38,8 +38,8 @@ logger = logging.getLogger(__name__)
 class WordChainBot(AutoShardedBot):
     """Word chain bot"""
 
-    _SQL_ENGINE: AsyncEngine = create_async_engine('sqlite+aiosqlite:///database_word_chain.sqlite3')
-    _LOCK: asyncio.Lock = asyncio.Lock()
+    __SQL_ENGINE: AsyncEngine = create_async_engine('sqlite+aiosqlite:///database_word_chain.sqlite3')
+    __LOCK: asyncio.Lock = asyncio.Lock()
 
     API_RESPONSE_WORD_EXISTS: int = 1
     API_RESPONSE_WORD_DOESNT_EXIST: int = 0
@@ -738,13 +738,13 @@ The above entered word is **NOT** being taken into account.''')
         logger.debug(f'{call_id}: requesting connection with {locked=}')
         if locked:
             start_time = time.monotonic()
-            async with self._LOCK:
+            async with self.__LOCK:
                 wait_time = time.monotonic() - start_time
                 logger.debug(f'{call_id}: waited {wait_time:.4f} seconds for DB lock')
-                async with self._SQL_ENGINE.begin() as connection:
+                async with self.__SQL_ENGINE.begin() as connection:
                     yield connection
         else:
-            async with self._SQL_ENGINE.begin() as connection:
+            async with self.__SQL_ENGINE.begin() as connection:
                 yield connection
                 
         logger.debug(f'{call_id}: connection done')
