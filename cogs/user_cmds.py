@@ -54,9 +54,10 @@ class UserCommandsCog(Cog, name=COG_NAME_USER_CMDS):
     # ---------------------------------------------------------------------------------------------------------------
 
     @app_commands.command(name='list_commands', description='List all slash commands')
-    @app_commands.describe(ephemeral="Whether the list will be publicly displayed")
-    async def list_commands(self, interaction: Interaction, ephemeral: bool = True):
+    async def list_commands(self, interaction: Interaction,):
         """Command to list all the slash commands"""
+
+        await interaction.response.defer(ephemeral=True, thinking=True)
 
         emb = Embed(title='Slash Commands', color=Colour.blue(),
                     description='''
@@ -66,7 +67,6 @@ class UserCommandsCog(Cog, name=COG_NAME_USER_CMDS):
 `/leaderboard` - Shows the leaderboard of the server.''')
 
         if interaction.user.guild_permissions.manage_guild:
-            ephemeral = True
             emb.description += '''\n
 **Restricted commands — Server Managers only**
 `/set channel` - Sets the channel to chain words.
@@ -82,14 +82,13 @@ class UserCommandsCog(Cog, name=COG_NAME_USER_CMDS):
 `/whitelist show` - Show the whitelist words for this server.'''
 
         if interaction.user.guild_permissions.administrator and interaction.guild.id == ADMIN_GUILD_ID:
-            ephemeral = True
             emb.description += '''\n
 **Restricted commands — Bot Admins only**
 `/purge_data server` - Remove all data associated with a server.
 `/purge_data user` - Remove all data associated with a user.
 `/reload` - Reload a specific Cog (or all Cogs).'''
 
-        await interaction.response.send_message(embed=emb, ephemeral=ephemeral)
+        await interaction.followup.send(embed=emb)
 
     # ---------------------------------------------------------------------------------------------------------------
 
