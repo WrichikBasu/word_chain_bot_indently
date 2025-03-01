@@ -34,7 +34,7 @@ ADMIN_GUILD_ID = int(os.environ['ADMIN_GUILD_ID'])
 
 # load logging config from alembic file because it would be loaded anyway when using alembic
 fileConfig(fname='config.ini')
-logger = logging.getLogger(__name__)
+logger = logging.getLogger(LOGGER_NAME_MAIN)
 
 
 class WordChainBot(AutoShardedBot):

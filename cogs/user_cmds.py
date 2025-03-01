@@ -21,7 +21,7 @@ if TYPE_CHECKING:
     from main import WordChainBot
 
 logging.basicConfig(level=logging.INFO, format='[%(asctime)s] [%(levelname)s] %(name)s: %(message)s')
-logger: logging.Logger = logging.getLogger(__name__)
+logger: logging.Logger = logging.getLogger(LOGGER_NAME_USER_COG)
 
 load_dotenv()
 ADMIN_GUILD_ID: int = int(os.environ['ADMIN_GUILD_ID'])

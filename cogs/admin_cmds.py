@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import logging
 import os
+from logging import Logger
 from typing import TYPE_CHECKING, Optional
 
 from discord import app_commands, Interaction, Object, Permissions, Embed, Colour, TextChannel, Forbidden
@@ -10,7 +11,8 @@ from discord.ext.commands import Cog
 from dotenv import load_dotenv
 from sqlalchemy import delete
 
-from consts import COG_NAME_ADMIN_CMDS
+from consts import COG_NAME_ADMIN_CMDS, LOGGER_NAME_MAIN, LOGGER_NAME_ADMIN_COG, LOGGER_NAME_MANAGER_COG, \
+    LOGGER_NAME_USER_COG, LOGGERS_LIST
 from model import UsedWordsModel, MemberModel, BlacklistModel, WhitelistModel, ServerConfigModel
 
 if TYPE_CHECKING:
@@ -20,7 +22,7 @@ load_dotenv()
 ADMIN_GUILD_ID = int(os.environ['ADMIN_GUILD_ID'])
 
 logging.basicConfig(level=logging.INFO, format='[%(asctime)s] [%(levelname)s] %(name)s: %(message)s')
-logger = logging.getLogger(__name__)
+logger = logging.getLogger(LOGGER_NAME_ADMIN_COG)
 
 
 class AdminCommandsCog(Cog, name=COG_NAME_ADMIN_CMDS):
@@ -44,6 +46,64 @@ class AdminCommandsCog(Cog, name=COG_NAME_ADMIN_CMDS):
                 self.bot.tree.remove_command(command.name)
 
         logger.info(f'Cog {self.qualified_name} unloaded.')
+
+    # -----------------------------------------------------------------------------------------------------------------
+
+    @app_commands.command(name='set_log_level', description='Set the log level for a specific/all logger(s)')
+    @app_commands.default_permissions(administrator=True)
+    @app_commands.guilds(ADMIN_GUILD_ID)
+    @app_commands.describe(level='The logging level to be set',
+                           logger_name='The logger for which the level has to be set')
+    @app_commands.choices(level=[
+        app_commands.Choice(name='Debug', value=logging.DEBUG),
+        app_commands.Choice(name='Info', value=logging.INFO),
+        app_commands.Choice(name='Warning', value=logging.WARNING),
+        app_commands.Choice(name='Error', value=logging.ERROR),
+        app_commands.Choice(name='Critical', value=logging.CRITICAL)
+    ])
+    @app_commands.choices(logger_name=[
+        app_commands.Choice(name='Main', value=LOGGER_NAME_MAIN),
+        app_commands.Choice(name='Admin Commands', value=LOGGER_NAME_ADMIN_COG),
+        app_commands.Choice(name='Manager Commands', value=LOGGER_NAME_MANAGER_COG),
+        app_commands.Choice(name='User Commands', value=LOGGER_NAME_USER_COG),
+        app_commands.Choice(name='All', value='all')
+    ])
+    async def log_level_set(self, interaction: Interaction, level: int, logger_name: str):
+
+        await interaction.response.defer()
+
+        emb: Embed = Embed(title='Log level status', colour=Colour.yellow(), description='')
+
+        match logger_name:
+
+            case 'all':
+                for logger_name1 in LOGGERS_LIST:
+
+                    # Retrieve the existing logger; do NOT create a new logger
+                    queried_logger: Optional[Logger] = logging.root.manager.loggerDict.get(logger_name1, None)
+
+                    if not queried_logger:
+                        emb.description += f'❌ Logger `{logger_name1}` not found.\n'
+                        logger.error(f'Logger {logger_name1} not found.')
+                        continue
+
+                    queried_logger.setLevel(level)
+                    logger.info(f'Level of logger {queried_logger.name} set to `{logging.getLevelName(level)}`.')
+                    emb.description += (f'✅ Level of logger '
+                                        f'`{logger_name1}` set to `{logging.getLevelName(level)}`.\n')
+
+            case _:
+                queried_logger: Optional[logging.Logger] = logging.root.manager.loggerDict.get(logger_name, None)
+
+                if queried_logger:
+                    queried_logger.setLevel(level)
+                    logger.info(f'Level of logger {queried_logger.name} set to {logging.getLevelName(level)}.')
+                    emb.description += (f'✅ Level of logger '
+                                        f'`{logger_name}` set to `{logging.getLevelName(level)}`.')
+                else:
+                    emb.description += f'❌ Logger `{logger_name}` not found.'
+
+        await interaction.followup.send(embed=emb)
 
     # -----------------------------------------------------------------------------------------------------------------
 

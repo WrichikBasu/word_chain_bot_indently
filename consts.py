@@ -6,11 +6,24 @@ If the input has any character(s) other than these, it will be ignored by the bo
 """
 POSSIBLE_CHARACTERS: str = string.ascii_lowercase + "-"
 
+"""
+Names of individual cogs
+"""
 COG_NAME_ADMIN_CMDS: str = "admin_cmds"
 COG_NAME_MANAGER_CMDS: str = "manager_cmds"
 COG_NAME_USER_CMDS: str = "user_cmds"
 
+"""
+List of all cogs.
+"""
 COGS_LIST: list[str] = [COG_NAME_ADMIN_CMDS, COG_NAME_MANAGER_CMDS,  COG_NAME_USER_CMDS]
+
+LOGGER_NAME_MAIN: str = "__main__"
+LOGGER_NAME_ADMIN_COG: str = f"__{COG_NAME_ADMIN_CMDS}__"
+LOGGER_NAME_MANAGER_COG: str = f"__{COG_NAME_MANAGER_CMDS}__"
+LOGGER_NAME_USER_COG: str = f"__{COG_NAME_USER_CMDS}__"
+
+LOGGERS_LIST: list[str] = [LOGGER_NAME_MAIN, LOGGER_NAME_ADMIN_COG, LOGGER_NAME_MANAGER_COG, LOGGER_NAME_USER_COG]
 
 """
 This dictionary maps each character to its frequency as the first letter in an english word. It is calculated by

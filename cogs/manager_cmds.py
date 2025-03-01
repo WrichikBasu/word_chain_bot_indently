@@ -10,14 +10,14 @@ from discord.app_commands import Group
 from discord.ext.commands import Cog
 from sqlalchemy import CursorResult, delete, insert, select
 
-from consts import COG_NAME_MANAGER_CMDS, POSSIBLE_CHARACTERS
+from consts import COG_NAME_MANAGER_CMDS, POSSIBLE_CHARACTERS, LOGGER_NAME_MANAGER_COG
 from model import BlacklistModel, WhitelistModel
 
 if TYPE_CHECKING:
     from main import WordChainBot
 
 logging.basicConfig(level=logging.INFO, format='[%(asctime)s] [%(levelname)s] %(name)s: %(message)s')
-logger = logging.getLogger(__name__)
+logger = logging.getLogger(LOGGER_NAME_MANAGER_COG)
 
 
 class ManagerCommandsCog(Cog, name=COG_NAME_MANAGER_CMDS):
