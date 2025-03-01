@@ -27,9 +27,10 @@ logger = logging.getLogger(LOGGER_NAME_ADMIN_COG)
 
 class AdminCommandsCog(Cog, name=COG_NAME_ADMIN_CMDS):
 
-    def __init__(self, bot: WordChainBot):
+    def __init__(self, bot: WordChainBot) -> None:
         self.bot: WordChainBot = bot
         self.bot.tree.add_command(AdminCommandsCog.PurgeCmdGroup(self))
+        self.bot.tree.add_command(AdminCommandsCog.LoggingControlCmdGroup(self))
 
     # -----------------------------------------------------------------------------------------------------------------
 
@@ -46,64 +47,6 @@ class AdminCommandsCog(Cog, name=COG_NAME_ADMIN_CMDS):
                 self.bot.tree.remove_command(command.name)
 
         logger.info(f'Cog {self.qualified_name} unloaded.')
-
-    # -----------------------------------------------------------------------------------------------------------------
-
-    @app_commands.command(name='set_log_level', description='Set the log level for a specific/all logger(s)')
-    @app_commands.default_permissions(administrator=True)
-    @app_commands.guilds(ADMIN_GUILD_ID)
-    @app_commands.describe(level='The logging level to be set',
-                           logger_name='The logger for which the level has to be set')
-    @app_commands.choices(level=[
-        app_commands.Choice(name='Debug', value=logging.DEBUG),
-        app_commands.Choice(name='Info', value=logging.INFO),
-        app_commands.Choice(name='Warning', value=logging.WARNING),
-        app_commands.Choice(name='Error', value=logging.ERROR),
-        app_commands.Choice(name='Critical', value=logging.CRITICAL)
-    ])
-    @app_commands.choices(logger_name=[
-        app_commands.Choice(name='Main', value=LOGGER_NAME_MAIN),
-        app_commands.Choice(name='Admin Commands', value=LOGGER_NAME_ADMIN_COG),
-        app_commands.Choice(name='Manager Commands', value=LOGGER_NAME_MANAGER_COG),
-        app_commands.Choice(name='User Commands', value=LOGGER_NAME_USER_COG),
-        app_commands.Choice(name='All', value='all')
-    ])
-    async def log_level_set(self, interaction: Interaction, level: int, logger_name: str):
-
-        await interaction.response.defer()
-
-        emb: Embed = Embed(title='Log level status', colour=Colour.yellow(), description='')
-
-        match logger_name:
-
-            case 'all':
-                for logger_name1 in LOGGERS_LIST:
-
-                    # Retrieve the existing logger; do NOT create a new logger
-                    queried_logger: Optional[Logger] = logging.root.manager.loggerDict.get(logger_name1, None)
-
-                    if not queried_logger:
-                        emb.description += f'❌ Logger `{logger_name1}` not found.\n'
-                        logger.error(f'Logger {logger_name1} not found.')
-                        continue
-
-                    queried_logger.setLevel(level)
-                    logger.info(f'Level of logger {queried_logger.name} set to `{logging.getLevelName(level)}`.')
-                    emb.description += (f'✅ Level of logger '
-                                        f'`{logger_name1}` set to `{logging.getLevelName(level)}`.\n')
-
-            case _:
-                queried_logger: Optional[logging.Logger] = logging.root.manager.loggerDict.get(logger_name, None)
-
-                if queried_logger:
-                    queried_logger.setLevel(level)
-                    logger.info(f'Level of logger {queried_logger.name} set to {logging.getLevelName(level)}.')
-                    emb.description += (f'✅ Level of logger '
-                                        f'`{logger_name}` set to `{logging.getLevelName(level)}`.')
-                else:
-                    emb.description += f'❌ Logger `{logger_name}` not found.'
-
-        await interaction.followup.send(embed=emb)
 
     # -----------------------------------------------------------------------------------------------------------------
 
@@ -137,6 +80,75 @@ class AdminCommandsCog(Cog, name=COG_NAME_ADMIN_CMDS):
         emb2.add_field(name='Success', value=f'{count_sent} servers', inline=True)
         emb2.add_field(name='Failed', value=f'{count_failed} servers', inline=True)
         await interaction.followup.send(embed=emb2)
+
+    # ============================================================================================================
+
+    class LoggingControlCmdGroup(app_commands.Group):
+        """A group of commands to allow the devs to control logging dynamically without restarting the bot."""
+
+        def __init__(self, cog: AdminCommandsCog):
+            super().__init__(name='logging', description='Admin commands for setting the log level',
+                             guild_ids=[ADMIN_GUILD_ID], guild_only=True,
+                             default_permissions=Permissions(administrator=True))
+            self.cog: AdminCommandsCog = cog
+
+        # -----------------------------------------------------------------------------------------------------------
+
+        @app_commands.command(name='set_level', description='Set the log level for a specific/all logger(s)')
+        @app_commands.describe(level='The logging level to be set',
+                               logger_name='The logger for which the level has to be set')
+        @app_commands.choices(level=[
+            app_commands.Choice(name='Debug', value=logging.DEBUG),
+            app_commands.Choice(name='Info', value=logging.INFO),
+            app_commands.Choice(name='Warning', value=logging.WARNING),
+            app_commands.Choice(name='Error', value=logging.ERROR),
+            app_commands.Choice(name='Critical', value=logging.CRITICAL)
+        ])
+        @app_commands.choices(logger_name=[
+            app_commands.Choice(name='Main', value=LOGGER_NAME_MAIN),
+            app_commands.Choice(name='Admin Commands', value=LOGGER_NAME_ADMIN_COG),
+            app_commands.Choice(name='Manager Commands', value=LOGGER_NAME_MANAGER_COG),
+            app_commands.Choice(name='User Commands', value=LOGGER_NAME_USER_COG),
+            app_commands.Choice(name='All', value='all')
+        ])
+        async def set_log_level(self, interaction: Interaction, logger_name: str, level: int):
+
+            await interaction.response.defer()
+
+            emb: Embed = Embed(title='Log level status', colour=Colour.yellow(), description='')
+
+            match logger_name:
+
+                case 'all':
+                    for logger_name1 in LOGGERS_LIST:
+
+                        # Retrieve the existing logger; do NOT create a new logger
+                        queried_logger: Optional[Logger] = logging.root.manager.loggerDict.get(logger_name1, None)
+
+                        if not queried_logger:
+                            emb.description += f'❌ Logger `{logger_name1}` not found.\n'
+                            logger.error(f'Logger {logger_name1} not found.')
+                            continue
+
+                        queried_logger.setLevel(level)
+                        logger.info(f'Level of logger {queried_logger.name} set to `{logging.getLevelName(level)}`.')
+                        emb.description += (f'✅ Level of logger '
+                                            f'`{logger_name1}` set to `{logging.getLevelName(level)}`.\n')
+
+                case _:
+                    # Retrieve the existing logger; do NOT create a new logger
+                    queried_logger: Optional[logging.Logger] = logging.root.manager.loggerDict.get(logger_name, None)
+
+                    if queried_logger:
+                        queried_logger.setLevel(level)
+                        logger.info(f'Level of logger {queried_logger.name} set to {logging.getLevelName(level)}.')
+                        emb.description += (f'✅ Level of logger '
+                                            f'`{logger_name}` set to `{logging.getLevelName(level)}`.')
+                    else:
+                        emb.description += f'❌ Logger `{logger_name}` not found.'
+                        logger.error(f'Logger {logger_name} not found.')
+
+            await interaction.followup.send(embed=emb)
 
     # ============================================================================================================
 
