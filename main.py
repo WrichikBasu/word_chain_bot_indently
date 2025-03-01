@@ -36,7 +36,7 @@ DEV_MODE = os.getenv('DEV_MODE', False) not in {False, 'False', 'false', '0'}
 ADMIN_GUILD_ID = int(os.environ['ADMIN_GUILD_ID'])
 
 # load logging config from alembic file because it would be loaded anyway when using alembic
-fileConfig(fname='alembic.ini')
+fileConfig(fname='config.ini')
 logger = logging.getLogger(__name__)
 
 
@@ -757,7 +757,7 @@ The above entered word is **NOT** being taken into account.''')
             admin_sync = await self.tree.sync(guild=discord.Object(id=ADMIN_GUILD_ID))
             logger.info(f'Synchronized {len(global_sync)} global commands and {len(admin_sync)} admin commands')
 
-        alembic_cfg = AlembicConfig('alembic.ini')
+        alembic_cfg = AlembicConfig('config.ini')
         alembic_command.upgrade(alembic_cfg, 'head')
 
 bot = Bot()
