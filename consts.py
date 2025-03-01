@@ -6,6 +6,12 @@ If the input has any character(s) other than these, it will be ignored by the bo
 """
 POSSIBLE_CHARACTERS: str = string.ascii_lowercase + "-"
 
+COG_NAME_ADMIN_CMDS: str = "admin_cmds"
+COG_NAME_MANAGER_CMDS: str = "manager_cmds"
+COG_NAME_USER_CMDS: str = "user_cmds"
+
+COGS_LIST: list[str] = [COG_NAME_ADMIN_CMDS, COG_NAME_MANAGER_CMDS,  COG_NAME_USER_CMDS]
+
 """
 This dictionary maps each character to its frequency as the first letter in an english word. It is calculated by
 multiplying the frequency with the total character count of 26. This results in scores around 1, with scores below 1
@@ -598,7 +604,6 @@ GLOBAL_BLACKLIST_2_LETTER_WORDS: set[str] = {
     'mv',
     'mw',
     'mx',
-    'my',
     'mz',
     'na',
     'nb',
@@ -937,6 +942,8 @@ GLOBAL_WHITELIST_3_LETTER_WORDS: set[str] = {
     'ewe',
     'sap',
     'taj',
+    'hid',
+    'orb',
     'www',
     'usa',
     'hop',
@@ -1281,7 +1288,10 @@ GLOBAL_WHITELIST_3_LETTER_WORDS: set[str] = {
     'non',
     'rig',
     'sag',
-    'ups'
+    'ups',
+    'orc',
+    'sol',
+    'yen'
 }
 
 """

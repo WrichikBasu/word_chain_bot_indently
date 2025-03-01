@@ -1,7 +1,13 @@
+from __future__ import annotations
+
+import logging
 import math
 from collections import deque
 
 from consts import FIRST_CHAR_SCORE
+
+logging.basicConfig(level=logging.INFO, format='[%(asctime)s] [%(levelname)s] %(name)s: %(message)s')
+logger: logging.Logger = logging.getLogger(__name__)
 
 
 def calculate_decay(n: float, drop_rate: float = .33) -> float:
@@ -21,6 +27,8 @@ def calculate_decay(n: float, drop_rate: float = .33) -> float:
         A decay factor between 1 and -1 that can be multiplied with the karma.
     """
     return (2 * math.e ** (-n * drop_rate)) - 1
+
+# ==================================================================================================================
 
 
 def calculate_base_karma(word: str, last_char_bias: float = .7) -> float:
@@ -53,6 +61,8 @@ def calculate_base_karma(word: str, last_char_bias: float = .7) -> float:
     # apply bias to last characters karma to fine tune the total influence
     return (first_char_karma if first_char_karma > 0 else 0) + (last_char_karma * last_char_bias)
 
+# ==================================================================================================================
+
 
 def calculate_total_karma(word: str, last_words: deque[str]) -> float:
     """
@@ -78,3 +88,5 @@ def calculate_total_karma(word: str, last_words: deque[str]) -> float:
     decay: float = calculate_decay(n)
     base_karma: float = calculate_base_karma(word)
     return decay * base_karma if base_karma > 0 else base_karma
+
+
