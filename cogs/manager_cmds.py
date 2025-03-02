@@ -5,19 +5,19 @@ import logging
 from typing import TYPE_CHECKING
 
 import discord
-from discord import app_commands, Interaction, Permissions, Role, Embed, Colour, TextChannel
+from discord import Colour, Embed, Interaction, Permissions, Role, TextChannel, app_commands
 from discord.app_commands import Group
 from discord.ext.commands import Cog
 from sqlalchemy import CursorResult, delete, insert, select
 
-from consts import COG_NAME_MANAGER_CMDS, POSSIBLE_CHARACTERS
+from consts import COG_NAME_MANAGER_CMDS, POSSIBLE_CHARACTERS, LOGGER_NAME_MANAGER_COG
 from model import BlacklistModel, WhitelistModel
 
 if TYPE_CHECKING:
     from main import WordChainBot
 
 logging.basicConfig(level=logging.INFO, format='[%(asctime)s] [%(levelname)s] %(name)s: %(message)s')
-logger = logging.getLogger(__name__)
+logger = logging.getLogger(LOGGER_NAME_MANAGER_COG)
 
 
 class ManagerCommandsCog(Cog, name=COG_NAME_MANAGER_CMDS):
@@ -57,12 +57,12 @@ class ManagerCommandsCog(Cog, name=COG_NAME_MANAGER_CMDS):
         # ------------------------------------------------------------------------------------------------------------
 
         @app_commands.command(name='reliable_role',
-                              description='Sets the role to be used when a user attains a score of 100')
-        @app_commands.describe(role='The role to be used when a user attains a score of 100')
+                              description='Sets the role that a user gets upon reaching'
+                                          ' a karma of 50 and accuracy > 99%')
+        @app_commands.describe(role='The role to be used')
         @app_commands.default_permissions(manage_guild=True)
         async def set_reliable_role(self, interaction: Interaction, role: Role):
-            
-            """Command to set the role to be used when a user gets 100 of score"""
+            """Command to set the role to be used when a user attains 50 karma and accuracy > 99%"""
 
             await interaction.response.defer()
 
@@ -97,17 +97,19 @@ class ManagerCommandsCog(Cog, name=COG_NAME_MANAGER_CMDS):
 
         # ---------------------------------------------------------------------------------------------------------
 
-        @app_commands.command(name='channel', description='Sets the channel to count in')
-        @app_commands.describe(channel='The channel to count in')
+        @app_commands.command(name='channel', description='Sets the game channel')
+        @app_commands.describe(channel='The channel where the game will be played')
         async def set_channel(self, interaction: Interaction, channel: TextChannel):
-            """Command to set the channel to count in"""
+            """Command to set the play channel"""
 
             await interaction.response.defer()
 
             self.cog.bot.server_configs[interaction.guild.id].channel_id = channel.id
             await self.cog.bot.server_configs[interaction.guild.id].sync_to_db(self.cog.bot)
 
-            await interaction.followup.send(f'Word chain channel was set to {channel.mention}')
+            emb: Embed = Embed(title='Success', colour=Colour.green(),
+                               description=f'''Word chain channel was set to {channel.mention}.''')
+            await interaction.followup.send(embed=emb)
 
         # ---------------------------------------------------------------------------------------------------------
 
@@ -115,7 +117,7 @@ class ManagerCommandsCog(Cog, name=COG_NAME_MANAGER_CMDS):
                               description='Sets the role to be used when a user puts a wrong word')
         @app_commands.describe(role='The role to be used when a user puts a wrong word')
         async def set_failed_role(self, interaction: Interaction, role: Role):
-            """Command to set the role to be used when a user fails to count"""
+            """Command to set the role to be used when a user fails"""
 
             await interaction.response.defer()
 

@@ -4,24 +4,24 @@ import concurrent.futures
 import logging
 import os
 from collections import defaultdict
-from typing import Optional, Sequence, TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional, Sequence
 
 import discord
-from discord import app_commands, Interaction, Embed, Colour
+from discord import Colour, Embed, Interaction, app_commands
 from discord.ext.commands import Cog
+from dotenv import load_dotenv
 from sqlalchemy import CursorResult, func, select
 from sqlalchemy.engine.row import Row
 from sqlalchemy.sql.functions import count
-from dotenv import load_dotenv
 
 from consts import *
-from model import (Member, MemberModel, ServerConfig, ServerConfigModel)
+from model import Member, MemberModel, ServerConfig, ServerConfigModel
 
 if TYPE_CHECKING:
     from main import WordChainBot
 
 logging.basicConfig(level=logging.INFO, format='[%(asctime)s] [%(levelname)s] %(name)s: %(message)s')
-logger: logging.Logger = logging.getLogger(__name__)
+logger: logging.Logger = logging.getLogger(LOGGER_NAME_USER_COG)
 
 load_dotenv()
 ADMIN_GUILD_ID: int = int(os.environ['ADMIN_GUILD_ID'])
@@ -61,10 +61,11 @@ class UserCommandsCog(Cog, name=COG_NAME_USER_CMDS):
 
         emb = Embed(title='Slash Commands', color=Colour.blue(),
                     description='''
-`/list_commands` - Lists all the slash commands.
-`/stats` - Shows the stats of a specific user/the current server
+`/stats user` - Shows the stats of a specific user.
+`/stats server` - Shows the stats of the current server.
 `/check_word` - Check if a word exists/check the spelling.
-`/leaderboard` - Shows the leaderboard of the server.''')
+`/leaderboard` - Shows the leaderboard of the server.
+`/list_commands` - Lists all the slash commands.''')
 
         if interaction.user.guild_permissions.manage_guild:
             emb.description += '''\n
@@ -84,9 +85,17 @@ class UserCommandsCog(Cog, name=COG_NAME_USER_CMDS):
         if interaction.user.guild_permissions.administrator and interaction.guild.id == ADMIN_GUILD_ID:
             emb.description += '''\n
 **Restricted commands — Bot Admins only**
+`/reload` - Reload a specific Cog (or all Cogs).
 `/purge_data server` - Remove all data associated with a server.
 `/purge_data user` - Remove all data associated with a user.
-`/reload` - Reload a specific Cog (or all Cogs).'''
+`/logging status` - Shows the status of the loggers.
+`/logging enable_all` - Enables the loggers.
+`/logging disable_all` - Disables the loggers.
+`/logging enable_logger` - Enables a specific logger.
+`/logging disable_logger` - Disables a specific logger.
+`/logging set_level` - Sets the log level of a specific logger/all loggers.
+`/logging test` - Tests a specific logger.
+'''
 
         await interaction.followup.send(embed=emb)
 
