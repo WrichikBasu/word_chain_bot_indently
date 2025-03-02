@@ -114,7 +114,7 @@ class AdminCommandsCog(Cog, name=COG_NAME_ADMIN_CMDS):
         async def set_log_level(self, interaction: Interaction, logger_name: str, level: int):
 
             await interaction.response.defer()
-            emb: Embed = Embed(title='Log level', colour=Colour.yellow(), description='')
+            emb: Embed = Embed(title='Set log level', colour=Colour.yellow(), description='')
 
             match logger_name:
                 case 'all':
@@ -124,29 +124,36 @@ class AdminCommandsCog(Cog, name=COG_NAME_ADMIN_CMDS):
                         queried_logger: Optional[Logger] = logging.root.manager.loggerDict.get(logger_name1, None)
 
                         if not queried_logger:
-                            emb.description += f'❌ Logger `{logger_name1}` not found.\n'
+                            emb.description += f'❌ Logger not found.\n'
                             continue
 
+                        emb.description += f'### `{logger_name1}`\n'
+
                         queried_logger.setLevel(level)
-                        emb.description += (f'✅ Level of logger '
-                                            f'`{logger_name1}` set to `{logging.getLevelName(level)}`.\n')
+                        emb.description += f'✅ Level set to `{logging.getLevelName(level)}`.\n'
+
+                        if queried_logger.disabled:
+                            emb.description += f'⚠️ Logger is disabled!\n\n'
                 case _:
                     # Retrieve the existing logger; do NOT create a new logger
                     queried_logger: Optional[logging.Logger] = logging.root.manager.loggerDict.get(logger_name, None)
+                    emb.description += f'### `{logger_name}`\n'
 
                     if queried_logger:
                         queried_logger.setLevel(level)
-                        emb.description += (f'✅ Level of logger '
-                                            f'`{logger_name}` set to `{logging.getLevelName(level)}`.')
+                        emb.description += f'✅ Level set to `{logging.getLevelName(level)}`.'
+
+                        if queried_logger.disabled:
+                            emb.description += f'\n\n⚠️ Logger is disabled!'
                     else:
-                        emb.description += f'❌ Logger `{logger_name}` not found.'
+                        emb.description += f'❌ Logger not found.'
 
             await interaction.followup.send(embed=emb)
 
         # -----------------------------------------------------------------------------------------------------------
 
-        @app_commands.command(name='turn_off_all', description='Turn off logging completely')
-        async def turn_off_all(self, interaction: Interaction):
+        @app_commands.command(name='disable_all', description='Disable logging completely')
+        async def disable_all(self, interaction: Interaction):
 
             await interaction.response.defer()
             emb: Embed = Embed(title='Logging status', colour=Colour.green(), description='')
@@ -156,8 +163,11 @@ class AdminCommandsCog(Cog, name=COG_NAME_ADMIN_CMDS):
                 # Retrieve the existing logger; do NOT create a new logger
                 queried_logger: Optional[logging.Logger] = logging.root.manager.loggerDict.get(logger_name, None)
                 if queried_logger:
-                    queried_logger.disabled = True
-                    emb.description += f'✅ Disabled logger `{queried_logger.name}`.\n'
+                    if queried_logger.disabled:
+                        emb.description += f'☑️ Logger `{queried_logger.name}` was already disabled.\n'
+                    else:
+                        queried_logger.disabled = True
+                        emb.description += f'✅ Disabled logger `{queried_logger.name}`.\n'
                 else:
                     emb.description += f'❌ Logger `{logger_name}` not found.\n'
 
@@ -165,36 +175,38 @@ class AdminCommandsCog(Cog, name=COG_NAME_ADMIN_CMDS):
 
         # -----------------------------------------------------------------------------------------------------------
 
-        @app_commands.command(name='turn_on_all', description='Turn on logging')
-        @app_commands.describe(reset_individual_loggers='Whether to reset the log levels of individual loggers')
-        async def turn_on_all(self, interaction: Interaction, reset_individual_loggers: bool = True):
+        @app_commands.command(name='enable_all', description='Enable all loggers')
+        @app_commands.describe(reset_level='Whether to reset the levels of loggers to INFO')
+        async def enable_all(self, interaction: Interaction, reset_level: bool = True):
 
             await interaction.response.defer()
 
             logging.disable(logging.NOTSET)
 
-            emb: Embed = Embed(title='Logging status', colour=Colour.dark_orange(), description='')
+            emb: Embed = Embed(title='Logger status', colour=Colour.dark_orange(), description='')
 
             for logger_name in LOGGERS_LIST:
 
                 # Retrieve the existing logger; do NOT create a new logger
                 queried_logger: Optional[logging.Logger] = logging.root.manager.loggerDict.get(logger_name, None)
                 if queried_logger:
-                    queried_logger.disabled = False
-
-                    if reset_individual_loggers:
-                        queried_logger.setLevel(logging.INFO)
-                        emb.description += f'✅ Enabled logger `{queried_logger.name}` and set level to `INFO`.\n'
+                    if not queried_logger.disabled:
+                        emb.description += f'☑️ Logger `{queried_logger.name}` was already enabled.\n'
                     else:
+                        queried_logger.disabled = False
                         emb.description += f'✅ Enabled logger `{queried_logger.name}`.\n'
+
+                    if reset_level:
+                        queried_logger.setLevel(logging.INFO)
+                        emb.description += f'Log level set to `INFO`.\n\n'
                 else:
-                    emb.description += f'❌ Logger `{logger_name}` not found.\n'
+                    emb.description += f'❌ Logger `{logger_name}` not found.\n\n'
 
             await interaction.followup.send(embed=emb)
 
         # -----------------------------------------------------------------------------------------------------------
 
-        @app_commands.command(name='turn_off_specific_logger', description='Turn off a specific logger')
+        @app_commands.command(name='disable_logger', description='Turn off a specific logger')
         @app_commands.describe(logger_name='The logger for which the level has to be set')
         @app_commands.choices(logger_name=[
             app_commands.Choice(name='Main', value=LOGGER_NAME_MAIN),
@@ -202,15 +214,18 @@ class AdminCommandsCog(Cog, name=COG_NAME_ADMIN_CMDS):
             app_commands.Choice(name='Manager Commands', value=LOGGER_NAME_MANAGER_COG),
             app_commands.Choice(name='User Commands', value=LOGGER_NAME_USER_COG)
         ])
-        async def turn_off_specific_logger(self, interaction: Interaction, logger_name: str):
+        async def disable_specific_logger(self, interaction: Interaction, logger_name: str):
 
             await interaction.response.defer()
-            emb: Embed = Embed(title='Specific logger status', description='')
+            emb: Embed = Embed(title='Logger status', description='')
 
             queried_logger: Optional[logging.Logger] = logging.root.manager.loggerDict.get(logger_name, None)
             if queried_logger:
-                queried_logger.disabled = True
-                emb.description += f'✅ Disabled logger `{queried_logger.name}`.'
+                if queried_logger.disabled:
+                    emb.description += f'☑️ Logger `{queried_logger.name}` was already disabled.'
+                else:
+                    queried_logger.disabled = True
+                    emb.description += f'✅ Disabled logger `{queried_logger.name}`.'
                 emb.colour = Colour.green()
             else:
                 emb.description += f'❌ Logger `{logger_name}` not found.'
@@ -220,8 +235,8 @@ class AdminCommandsCog(Cog, name=COG_NAME_ADMIN_CMDS):
 
         # -----------------------------------------------------------------------------------------------------------
 
-        @app_commands.command(name='turn_on_specific_logger',
-                              description='Turns on a specific logger and sets it to INFO by default')
+        @app_commands.command(name='enable_logger',
+                              description='Turns on a specific logger and sets its level to INFO by default')
         @app_commands.describe(logger_name='The logger for which the level has to be set',
                                reset_level='Whether the level should be explicitly reset to INFO')
         @app_commands.choices(logger_name=[
@@ -230,33 +245,36 @@ class AdminCommandsCog(Cog, name=COG_NAME_ADMIN_CMDS):
             app_commands.Choice(name='Manager Commands', value=LOGGER_NAME_MANAGER_COG),
             app_commands.Choice(name='User Commands', value=LOGGER_NAME_USER_COG)
         ])
-        async def turn_on_specific_logger(self, interaction: Interaction, logger_name: str, reset_level: bool = False):
+        async def enable_specific_logger(self, interaction: Interaction, logger_name: str, reset_level: bool = True):
 
             await interaction.response.defer()
-            emb: Embed = Embed(title='Specific logger status', description='')
+            emb: Embed = Embed(title='Logger status', description='')
 
             queried_logger: Optional[logging.Logger] = logging.root.manager.loggerDict.get(logger_name, None)
             if not queried_logger:
                 emb.description += f'❌ Logger `{logger_name}` not found.'
                 emb.colour = Colour.red()
             else:
-                queried_logger.disabled = False
+                if not queried_logger.disabled:
+                    emb.description += f'☑️ Logger `{queried_logger.name}` was already enabled.'
+                else:
+                    queried_logger.disabled = False
+                    emb.description += f'✅ Enabled logger `{queried_logger.name}`'
+
                 if reset_level:
                     queried_logger.setLevel(logging.INFO)
-                    emb.description += (f'✅ Enabled logger `{queried_logger.name}` & '
-                                        f'set to level `{logging.getLevelName(queried_logger.level)}`.')
-                else:
-                    emb.description += f'✅ Enabled logger `{queried_logger.name}`.'
+                    emb.description += f'\n\nLogging level set to `{logging.getLevelName(queried_logger.level)}`.'
+
                 emb.colour = Colour.green()
 
             await interaction.followup.send(embed=emb)
 
         # -----------------------------------------------------------------------------------------------------------
 
-        @app_commands.command(name='test_logger',
+        @app_commands.command(name='test',
                               description='Tests a specific logger')
         @app_commands.describe(logger_name='The logger for which the level has to be set',
-                               level='The logging level to be set (default: INFO)',
+                               level='The logging level via which the message will be sent',
                                message='The message to be logged')
         @app_commands.choices(logger_name=[
             app_commands.Choice(name='Main', value=LOGGER_NAME_MAIN),
@@ -271,8 +289,8 @@ class AdminCommandsCog(Cog, name=COG_NAME_ADMIN_CMDS):
             app_commands.Choice(name='Error', value=logging.ERROR),
             app_commands.Choice(name='Critical', value=logging.CRITICAL)
         ])
-        async def test_loggers(self, interaction: Interaction, logger_name: str, message: str,
-                               level: int = logging.INFO):
+        async def test_logger(self, interaction: Interaction, logger_name: str, message: str,
+                              level: int = logging.INFO):
 
             await interaction.response.defer()
             emb: Embed = Embed(title='Logging Test', description='')
@@ -285,11 +303,17 @@ class AdminCommandsCog(Cog, name=COG_NAME_ADMIN_CMDS):
                 if queried_logger.disabled:
                     emb.description += f'❌ Logger `{queried_logger.name}` is disabled.'
                     emb.colour = Colour.red()
+
                 else:
                     queried_logger.log(level=level, msg=message)
                     emb.description += (f'✅ Sent message via `{queried_logger.name}` '
-                                        f'& at level `{logging.getLevelName(level)}`.')
+                                        f'at level `{logging.getLevelName(level)}`.')
                     emb.colour = Colour.green()
+
+                    if queried_logger.level > level:
+                        emb.description += (f'\n\n⚠️ Message won\'t appear since the logger level is higher than the '
+                                            f'message level.')
+                        emb.colour = Colour.orange()
 
             await interaction.followup.send(embed=emb)
 
@@ -315,23 +339,24 @@ class AdminCommandsCog(Cog, name=COG_NAME_ADMIN_CMDS):
                     for logger_name1 in LOGGERS_LIST:
 
                         logger1: Optional[logging.Logger] = logging.root.manager.loggerDict.get(logger_name1, None)
-                        emb.description += f'`{logger_name1}`\n'
+                        emb.description += f'### `{logger_name1}`\n'
 
                         if logger1:
-                            emb.description += f'''> Status: {'Disabled' if logger1.disabled else 'Enabled'}
-> Level: {logging.getLevelName(logger.level)}\n\n'''
+                            emb.description += f'''> **Status:** {'Disabled' if logger1.disabled else 'Enabled'}
+> **Level:** `{logging.getLevelName(logger1.level)}`\n\n'''
                         else:
                             emb.description += f'❌ Logger not found.\n\n'
 
                 case _:
                     logger1: Optional[logging.Logger] = logging.root.manager.loggerDict.get(logger_name, None)
-                    emb.description += f'`{logger_name}`\n'
+                    emb.description += f'### `{logger1.name}`\n'
 
                     if logger1:
-                        emb.description += f'''> Status: {'Disabled' if logger1.disabled else 'Enabled'}
-> Level: {logging.getLevelName(logger.level)}\n\n'''
+                        emb.description += f'''> **Status:** {'Disabled' if logger1.disabled else 'Enabled'}
+> **Level:** `{logging.getLevelName(logger1.level)}`'''
                     else:
-                        emb.description += f'❌ Logger not found.\n\n'
+                        emb.description += f'### `{logger_name}`\n'
+                        emb.description += f'❌ Logger not found.'
 
             emb.colour = Colour.green()
             await interaction.followup.send(embed=emb)
