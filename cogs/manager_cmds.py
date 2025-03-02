@@ -5,7 +5,7 @@ import logging
 from typing import TYPE_CHECKING
 
 import discord
-from discord import app_commands, Interaction, Permissions, Role, Embed, Colour, TextChannel
+from discord import Colour, Embed, Interaction, Permissions, Role, TextChannel, app_commands
 from discord.app_commands import Group
 from discord.ext.commands import Cog
 from sqlalchemy import CursorResult, delete, insert, select

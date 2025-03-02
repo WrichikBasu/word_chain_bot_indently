@@ -5,13 +5,13 @@ import logging
 import os
 from typing import TYPE_CHECKING, Optional
 
-from discord import app_commands, Interaction, Object, Permissions, Embed, Colour, TextChannel, Forbidden
+from discord import Colour, Embed, Forbidden, Interaction, Object, Permissions, TextChannel, app_commands
 from discord.ext.commands import Cog
 from dotenv import load_dotenv
 from sqlalchemy import delete
 
 from consts import COG_NAME_ADMIN_CMDS
-from model import UsedWordsModel, MemberModel, BlacklistModel, WhitelistModel, ServerConfigModel
+from model import BlacklistModel, MemberModel, ServerConfigModel, UsedWordsModel, WhitelistModel
 
 if TYPE_CHECKING:
     from main import WordChainBot

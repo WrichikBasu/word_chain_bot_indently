@@ -7,21 +7,21 @@ import os
 import random
 import time
 from collections import defaultdict, deque
-from functools import wraps
 from logging.config import fileConfig
 from typing import AsyncIterator, Optional
 
 import discord
 from alembic import command as alembic_command
 from alembic.config import Config as AlembicConfig
-from discord import app_commands, Interaction, Object, Embed, Colour
-from discord.ext.commands import ExtensionNotLoaded, AutoShardedBot
+from discord import Colour, Embed, Interaction, Object, app_commands
+from discord.ext.commands import AutoShardedBot, ExtensionNotLoaded
 from dotenv import load_dotenv
 from requests_futures.sessions import FuturesSession
 from sqlalchemy import CursorResult, delete, exists, func, insert, select, update
-from sqlalchemy.ext.asyncio import AsyncConnection, create_async_engine, AsyncEngine
+from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, create_async_engine
 
 from consts import *
+from decorator import log_execution_time
 from karma_calcs import calculate_total_karma
 from model import (BlacklistModel, MemberModel, ServerConfig, ServerConfigModel, UsedWordsModel, WhitelistModel,
                    WordCacheModel)
@@ -36,31 +36,6 @@ ADMIN_GUILD_ID = int(os.environ['ADMIN_GUILD_ID'])
 # load logging config from alembic file because it would be loaded anyway when using alembic
 fileConfig(fname='config.ini')
 logger = logging.getLogger(__name__)
-
-
-def log_execution_time(target_logger: logging.Logger = logger):
-    def decorator(function):
-        if asyncio.iscoroutinefunction(function):
-            @wraps(function)
-            async def async_wrapper(*args, **kwargs):
-                start_time = time.monotonic()
-                result = await function(*args, **kwargs)
-                end_time = time.monotonic()
-                elapsed_time = end_time - start_time
-                target_logger.debug(f"{function.__name__} executed in {elapsed_time:.4f} seconds")
-                return result
-            return async_wrapper
-        else:
-            @wraps(function)
-            def sync_wrapper(*args, **kwargs):
-                start_time = time.monotonic()
-                result = function(*args, **kwargs)
-                end_time = time.monotonic()
-                elapsed_time = end_time - start_time
-                target_logger.debug(f"{function.__name__} executed in {elapsed_time:.4f} seconds")
-                return result
-            return sync_wrapper
-    return decorator
 
 
 class WordChainBot(AutoShardedBot):
@@ -203,7 +178,7 @@ class WordChainBot(AutoShardedBot):
 
     # ---------------------------------------------------------------------------------------------------------------
 
-    @log_execution_time()
+    @log_execution_time(logger)
     async def add_remove_reliable_role(self, guild: discord.Guild, connection: AsyncConnection):
         """
         Adds/removes the reliable role if present to make sure it matches the rules.
@@ -238,7 +213,7 @@ class WordChainBot(AutoShardedBot):
 
     # ---------------------------------------------------------------------------------------------------------------
 
-    @log_execution_time()
+    @log_execution_time(logger)
     async def add_remove_failed_role(self, guild: discord.Guild, connection: AsyncConnection):
         """
         Adds the `failed_role` to the user whose id is stored in `failed_member_id`.
@@ -273,7 +248,7 @@ class WordChainBot(AutoShardedBot):
 
     # ---------------------------------------------------------------------------------------------------------------
 
-    @log_execution_time()
+    @log_execution_time(logger)
     async def on_message(self, message: discord.Message) -> None:
         """
         Hierarchy of checking:
@@ -497,7 +472,7 @@ The above entered word is **NOT** being taken into account.''')
 
     # ---------------------------------------------------------------------------------------------------------------
 
-    @log_execution_time()
+    @log_execution_time(logger)
     async def handle_mistake(self, message: discord.Message,
                              response: str, connection: AsyncConnection) -> None:
         """Handles when someone messes up the count with a wrong number"""
@@ -565,7 +540,7 @@ The above entered word is **NOT** being taken into account.''')
     # ---------------------------------------------------------------------------------------------------------------
 
     @staticmethod
-    @log_execution_time()
+    @log_execution_time(logger)
     def get_query_response(future: concurrent.futures.Future) -> int:
         """
         Get the result of a query that was started in the background.

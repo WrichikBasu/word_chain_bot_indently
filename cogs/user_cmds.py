@@ -4,18 +4,18 @@ import concurrent.futures
 import logging
 import os
 from collections import defaultdict
-from typing import Optional, Sequence, TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional, Sequence
 
 import discord
-from discord import app_commands, Interaction, Embed, Colour
+from discord import Colour, Embed, Interaction, app_commands
 from discord.ext.commands import Cog
+from dotenv import load_dotenv
 from sqlalchemy import CursorResult, func, select
 from sqlalchemy.engine.row import Row
 from sqlalchemy.sql.functions import count
-from dotenv import load_dotenv
 
 from consts import *
-from model import (Member, MemberModel, ServerConfig, ServerConfigModel)
+from model import Member, MemberModel, ServerConfig, ServerConfigModel
 
 if TYPE_CHECKING:
     from main import WordChainBot
