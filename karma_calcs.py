@@ -1,13 +1,9 @@
 from __future__ import annotations
 
-import logging
 import math
 from collections import deque
 
 from consts import FIRST_CHAR_SCORE
-
-logging.basicConfig(level=logging.INFO, format='[%(asctime)s] [%(levelname)s] %(name)s: %(message)s')
-logger: logging.Logger = logging.getLogger(__name__)
 
 
 def calculate_decay(n: float, drop_rate: float = .33) -> float:

@@ -1,24 +1,29 @@
 import string
 
+POSSIBLE_CHARACTERS: str = string.ascii_lowercase + "-"
 """
 The allowed characters in the input.
 If the input has any character(s) other than these, it will be ignored by the bot.
 """
-POSSIBLE_CHARACTERS: str = string.ascii_lowercase + "-"
 
+# Names of individual cogs
 COG_NAME_ADMIN_CMDS: str = "admin_cmds"
 COG_NAME_MANAGER_CMDS: str = "manager_cmds"
 COG_NAME_USER_CMDS: str = "user_cmds"
 
 COGS_LIST: list[str] = [COG_NAME_ADMIN_CMDS, COG_NAME_MANAGER_CMDS,  COG_NAME_USER_CMDS]
+"""List of all cogs."""
 
-"""
-This dictionary maps each character to its frequency as the first letter in an english word. It is calculated by
-multiplying the frequency with the total character count of 26. This results in scores around 1, with scores below 1
-meaning that this character occurs less than average as the first character, and scores above 1 meaning that this
-character occurs more than average as the first character.
-"""
-FIRST_CHAR_SCORE = {
+# Names of individual loggers
+LOGGER_NAME_MAIN: str = "__main__"
+LOGGER_NAME_ADMIN_COG: str = f"__{COG_NAME_ADMIN_CMDS}__"
+LOGGER_NAME_MANAGER_COG: str = f"__{COG_NAME_MANAGER_CMDS}__"
+LOGGER_NAME_USER_COG: str = f"__{COG_NAME_USER_CMDS}__"
+
+LOGGERS_LIST: list[str] = [LOGGER_NAME_MAIN, LOGGER_NAME_ADMIN_COG, LOGGER_NAME_MANAGER_COG, LOGGER_NAME_USER_COG]
+"""List of all loggers."""
+
+FIRST_CHAR_SCORE: dict[str, float] = {
     "a": 1.7855527485443319,
     "b": 1.293519406654868,
     "c": 2.25552748544332,
@@ -46,22 +51,25 @@ FIRST_CHAR_SCORE = {
     "y": 0.08029613217870604,
     "z": 0.09743721376366166
 }
+"""
+This dictionary maps each character to its frequency as the first letter in an english word. It is calculated by
+multiplying the frequency with the total character count of 26. This results in scores around 1, with scores below 1
+meaning that this character occurs less than average as the first character, and scores above 1 meaning that this
+character occurs more than average as the first character.
+"""
 
+HISTORY_LENGTH: int = 5
 """Amount of words kept in history per user"""
-HISTORY_LENGTH = 5
 
+MISTAKE_PENALTY: int = 5
 """Amount of karma subtracted for a mistake"""
-MISTAKE_PENALTY = 5
 
+RELIABLE_ROLE_KARMA_THRESHOLD: int = 50
 """Minimum karma needed for the reliable role"""
-RELIABLE_ROLE_KARMA_THRESHOLD = 50
 
+RELIABLE_ROLE_ACCURACY_THRESHOLD: float = .99
 """Minimum accuracy needed for the reliable role"""
-RELIABLE_ROLE_ACCURACY_THRESHOLD = .99
 
-"""
-A dictionary mapping the words to the corresponding special emojis.
-"""
 SPECIAL_REACTION_EMOJIS: dict[str, str] = {
     'afghanistan': '🇦🇫',
     'albania': '🇦🇱',
@@ -278,10 +286,10 @@ SPECIAL_REACTION_EMOJIS: dict[str, str] = {
     'russia': '🇷🇺',
     'indently': '<:python:1041232509628850247>'
 }
+"""
+A dictionary mapping the words to the corresponding special emojis.
+"""
 
-"""
-A list of 2-letter words that are not legal words.
-"""
 GLOBAL_BLACKLIST_2_LETTER_WORDS: set[str] = {
     'aa',
     'ab',
@@ -932,11 +940,10 @@ GLOBAL_BLACKLIST_2_LETTER_WORDS: set[str] = {
     'zy',
     'zz'
 }
+"""
+A list of 2-letter words that are not legal words.
+"""
 
-"""
-A global whitelist containing all LEGAL three letter words.
-NOTE: This is a WHITElist, i.e. an inverted blacklist.
-"""
 GLOBAL_WHITELIST_3_LETTER_WORDS: set[str] = {
     'eve',
     'ewe',
@@ -1293,10 +1300,11 @@ GLOBAL_WHITELIST_3_LETTER_WORDS: set[str] = {
     'sol',
     'yen'
 }
+"""
+A global whitelist containing all LEGAL three letter words.
+NOTE: This is a WHITElist, i.e. an inverted blacklist.
+"""
 
-"""
-A list of N-letter words that are not legal words (N > 3).
-"""
 GLOBAL_BLACKLIST_N_LETTER_WORDS: set[str] = {
     'aaaa',
     'bbbb',
@@ -1319,3 +1327,7 @@ GLOBAL_BLACKLIST_N_LETTER_WORDS: set[str] = {
     'mmmmmm',
     'pppppp'
 }
+"""
+A list of N-letter words that are not legal words (N > 3).
+"""
+
