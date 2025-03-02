@@ -13,14 +13,15 @@ from typing import AsyncIterator, Optional
 import discord
 from alembic import command as alembic_command
 from alembic.config import Config as AlembicConfig
-from discord import app_commands, Interaction, Object, Embed, Colour
-from discord.ext.commands import ExtensionNotLoaded, AutoShardedBot
+from discord import Colour, Embed, Interaction, Object, app_commands
+from discord.ext.commands import AutoShardedBot, ExtensionNotLoaded
 from dotenv import load_dotenv
 from requests_futures.sessions import FuturesSession
 from sqlalchemy import CursorResult, delete, exists, func, insert, select, update
-from sqlalchemy.ext.asyncio import AsyncConnection, create_async_engine, AsyncEngine
+from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, create_async_engine
 
 from consts import *
+from decorator import log_execution_time
 from karma_calcs import calculate_total_karma
 from model import (BlacklistModel, MemberModel, ServerConfig, ServerConfigModel, UsedWordsModel, WhitelistModel,
                    WordCacheModel)
@@ -65,7 +66,6 @@ class WordChainBot(AutoShardedBot):
 
     @contextlib.asynccontextmanager
     async def db_connection(self, locked=True) -> AsyncIterator[AsyncConnection]:
-
         call_id = ''.join(random.choices(string.ascii_letters + string.digits, k=6))
 
         caller_frame = inspect.currentframe().f_back.f_back
@@ -73,20 +73,21 @@ class WordChainBot(AutoShardedBot):
         caller_filename = caller_frame.f_code.co_filename.removeprefix(os.getcwd() + os.sep)
         caller_lineno = caller_frame.f_lineno
 
-        logger.debug(f'{call_id}: {caller_function_name} at {caller_filename}:{caller_lineno}')
-
-        logger.debug(f'{call_id}: requesting connection with {locked=}')
+        logger.debug(f'{call_id}: {caller_function_name} at {caller_filename}:{caller_lineno} requests connection with {locked=}')
         if locked:
-            start_time = time.monotonic()
+            lock_start_time = time.monotonic()
             async with self.__LOCK:
-                wait_time = time.monotonic() - start_time
-                logger.debug(f'{call_id}: waited {wait_time:.4f} seconds for DB lock')
+                lock_wait_time = time.monotonic() - lock_start_time
+                logger.debug(f'{call_id}: waited {lock_wait_time:.4f} seconds for DB lock')
+                connection_start_time = time.monotonic()
                 async with self.__SQL_ENGINE.begin() as connection:
                     yield connection
         else:
+            connection_start_time = time.monotonic()
             async with self.__SQL_ENGINE.begin() as connection:
                 yield connection
-        logger.debug(f'{call_id}: connection done')
+        connection_wait_time = time.monotonic() - connection_start_time
+        logger.debug(f'{call_id}: connection done in {connection_wait_time:.4f}')
 
     # ---------------------------------------------------------------------------------------------------------------
 
@@ -177,6 +178,7 @@ class WordChainBot(AutoShardedBot):
 
     # ---------------------------------------------------------------------------------------------------------------
 
+    @log_execution_time(logger)
     async def add_remove_reliable_role(self, guild: discord.Guild, connection: AsyncConnection):
         """
         Adds/removes the reliable role if present to make sure it matches the rules.
@@ -211,6 +213,7 @@ class WordChainBot(AutoShardedBot):
 
     # ---------------------------------------------------------------------------------------------------------------
 
+    @log_execution_time(logger)
     async def add_remove_failed_role(self, guild: discord.Guild, connection: AsyncConnection):
         """
         Adds the `failed_role` to the user whose id is stored in `failed_member_id`.
@@ -245,6 +248,7 @@ class WordChainBot(AutoShardedBot):
 
     # ---------------------------------------------------------------------------------------------------------------
 
+    @log_execution_time(logger)
     async def on_message(self, message: discord.Message) -> None:
         """
         Hierarchy of checking:
@@ -468,6 +472,7 @@ The above entered word is **NOT** being taken into account.''')
 
     # ---------------------------------------------------------------------------------------------------------------
 
+    @log_execution_time(logger)
     async def handle_mistake(self, message: discord.Message,
                              response: str, connection: AsyncConnection) -> None:
         """Handles when someone messes up the count with a wrong number"""
@@ -535,6 +540,7 @@ The above entered word is **NOT** being taken into account.''')
     # ---------------------------------------------------------------------------------------------------------------
 
     @staticmethod
+    @log_execution_time(logger)
     def get_query_response(future: concurrent.futures.Future) -> int:
         """
         Get the result of a query that was started in the background.
@@ -551,10 +557,7 @@ The above entered word is **NOT** being taken into account.''')
             does not exist, or `bot.API_RESPONSE_ERROR` if an error (of any type) was raised in the query.
         """
         try:
-            start_time = time.monotonic()
             response = future.result(timeout=5)
-            query_time = time.monotonic() - start_time
-            logger.debug(f"querying API took {query_time}")
 
             if response.status_code >= 400:
                 logger.error(f'Received status code {response.status_code} from Wiktionary API query.')
