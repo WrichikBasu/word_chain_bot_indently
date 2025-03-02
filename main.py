@@ -65,7 +65,6 @@ class WordChainBot(AutoShardedBot):
 
     @contextlib.asynccontextmanager
     async def db_connection(self, locked=True) -> AsyncIterator[AsyncConnection]:
-
         call_id = ''.join(random.choices(string.ascii_letters + string.digits, k=6))
 
         caller_frame = inspect.currentframe().f_back.f_back
@@ -73,20 +72,21 @@ class WordChainBot(AutoShardedBot):
         caller_filename = caller_frame.f_code.co_filename.removeprefix(os.getcwd() + os.sep)
         caller_lineno = caller_frame.f_lineno
 
-        logger.debug(f'{call_id}: {caller_function_name} at {caller_filename}:{caller_lineno}')
-
-        logger.debug(f'{call_id}: requesting connection with {locked=}')
+        logger.debug(f'{call_id}: {caller_function_name} at {caller_filename}:{caller_lineno} requests connection with {locked=}')
         if locked:
-            start_time = time.monotonic()
+            lock_start_time = time.monotonic()
             async with self.__LOCK:
-                wait_time = time.monotonic() - start_time
-                logger.debug(f'{call_id}: waited {wait_time:.4f} seconds for DB lock')
+                lock_wait_time = time.monotonic() - lock_start_time
+                logger.debug(f'{call_id}: waited {lock_wait_time:.4f} seconds for DB lock')
+                connection_start_time = time.monotonic()
                 async with self.__SQL_ENGINE.begin() as connection:
                     yield connection
         else:
+            connection_start_time = time.monotonic()
             async with self.__SQL_ENGINE.begin() as connection:
                 yield connection
-        logger.debug(f'{call_id}: connection done')
+        connection_wait_time = time.monotonic() - connection_start_time
+        logger.debug(f'{call_id}: connection done in {connection_wait_time:.4f}')
 
     # ---------------------------------------------------------------------------------------------------------------
 
