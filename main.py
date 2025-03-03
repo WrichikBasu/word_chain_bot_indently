@@ -65,7 +65,7 @@ class WordChainBot(AutoShardedBot):
     # ----------------------------------------------------------------------------------------------------------------
 
     @contextlib.asynccontextmanager
-    async def db_connection(self, locked=False) -> AsyncIterator[AsyncConnection]:
+    async def db_connection(self, locked=True) -> AsyncIterator[AsyncConnection]:
         call_id = ''.join(random.choices(string.ascii_letters + string.digits, k=6))
 
         caller_frame = inspect.currentframe().f_back.f_back
