@@ -249,7 +249,7 @@ class WordChainBot(AutoShardedBot):
     # ---------------------------------------------------------------------------------------------------------------
 
     @log_execution_time(logger)
-    async def on_message(self, message: discord.Message) -> None:
+    async def on_message_for_word_chain(self, message: discord.Message) -> None:
         """
         Hierarchy of checking:
         1. Word length must be > 1.
@@ -261,19 +261,7 @@ class WordChainBot(AutoShardedBot):
         7. Wrong starting letter?
         """
 
-        if message.author == self.user:
-            return
-
         server_id = message.guild.id
-
-        # Check if we have a config ready for this server
-        if server_id not in self.server_configs:
-            return
-
-        # Check if the message is in the channel
-        if message.channel.id != self.server_configs[server_id].channel_id:
-            return
-
         word: str = message.content.lower()
 
         if not all(c in POSSIBLE_CHARACTERS for c in word):
@@ -469,6 +457,24 @@ The above entered word is **NOT** being taken into account.''')
             await self.server_configs[server_id].sync_to_db_with_connection(connection)
 
             await connection.commit()
+
+    # ---------------------------------------------------------------------------------------------------------------
+
+    async def on_message(self, message: discord.Message) -> None:
+        if message.author == self.user:
+            return
+
+        server_id = message.guild.id
+
+        # Check if we have a config ready for this server
+        if server_id not in self.server_configs:
+            return
+
+        # Check if the message is in the channel
+        if message.channel.id != self.server_configs[server_id].channel_id:
+            return
+
+        await self.on_message_for_word_chain(message)
 
     # ---------------------------------------------------------------------------------------------------------------
 
