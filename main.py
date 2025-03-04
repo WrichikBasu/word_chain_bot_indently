@@ -311,7 +311,7 @@ The chain has **not** been broken. Please enter another word.''')
 
             # -------------------------------
             # Check if word is blacklisted
-            # (iff not whitelisted)
+            # (if and onl if not whitelisted)
             # -------------------------------
             if not word_whitelisted and await self.is_word_blacklisted(word, message.guild.id, connection):
                 await message.add_reaction('⚠️')
