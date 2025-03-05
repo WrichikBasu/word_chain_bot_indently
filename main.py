@@ -65,8 +65,9 @@ class WordChainBot(AutoShardedBot):
     # ----------------------------------------------------------------------------------------------------------------
 
     @contextlib.asynccontextmanager
-    async def db_connection(self, locked=True) -> AsyncIterator[AsyncConnection]:
-        call_id = ''.join(random.choices(string.ascii_letters + string.digits, k=6))
+    async def db_connection(self, locked=True, call_id: str | None = None) -> AsyncIterator[AsyncConnection]:
+        if call_id is None:
+            call_id = ''.join(random.choices(string.ascii_letters + string.digits, k=6))
 
         caller_frame = inspect.currentframe().f_back.f_back
         caller_function_name = caller_frame.f_code.co_name
@@ -178,7 +179,6 @@ class WordChainBot(AutoShardedBot):
 
     # ---------------------------------------------------------------------------------------------------------------
 
-    @log_execution_time(logger)
     async def add_remove_reliable_role(self, guild: discord.Guild, connection: AsyncConnection):
         """
         Adds/removes the reliable role if present to make sure it matches the rules.
@@ -213,7 +213,6 @@ class WordChainBot(AutoShardedBot):
 
     # ---------------------------------------------------------------------------------------------------------------
 
-    @log_execution_time(logger)
     async def add_remove_failed_role(self, guild: discord.Guild, connection: AsyncConnection):
         """
         Adds the `failed_role` to the user whose id is stored in `failed_member_id`.
@@ -260,7 +259,8 @@ class WordChainBot(AutoShardedBot):
         6. Wrong member?
         7. Wrong starting letter?
         """
-
+        call_id = ''.join(random.choices(string.ascii_letters + string.digits, k=6))
+        time_frames = [time.monotonic()]  # t1
         server_id = message.guild.id
         word: str = message.content.lower()
 
@@ -278,7 +278,7 @@ class WordChainBot(AutoShardedBot):
 The chain has **not** been broken. Please enter another word.''')
             return
 
-        async with self.db_connection() as connection:
+        async with self.db_connection(call_id=call_id) as connection:
             # ----------------------------------------------------------------------------------------
             # ADD USER TO THE DATABASE
             # ----------------------------------------------------------------------------------------
@@ -303,7 +303,7 @@ The chain has **not** been broken. Please enter another word.''')
                 await connection.execute(stmt)
                 await connection.commit()
 
-        async with self.db_connection() as connection:
+        async with self.db_connection(call_id=call_id) as connection:
             # -------------------------------
             # Check if word is whitelisted
             # -------------------------------
@@ -416,6 +416,7 @@ The above entered word is **NOT** being taken into account.''')
             # ---------------------
             self.server_configs[server_id].update_current(member_id=message.author.id, current_word=word)
 
+            time_frames.append(time.monotonic())  # t2
             await message.add_reaction(
                 SPECIAL_REACTION_EMOJIS.get(word, self.server_configs[server_id].reaction_emoji()))
 
@@ -423,6 +424,7 @@ The above entered word is **NOT** being taken into account.''')
             karma: float = calculate_total_karma(word, last_words)
             self._server_histories[server_id][message.author.id].append(word)
 
+            time_frames.append(time.monotonic())  # t3
             stmt = update(MemberModel).where(
                 MemberModel.server_id == message.guild.id,
                 MemberModel.member_id == message.author.id
@@ -441,6 +443,7 @@ The above entered word is **NOT** being taken into account.''')
 
             current_count = self.server_configs[server_id].current_count
 
+            time_frames.append(time.monotonic())  # t4
             if current_count > 0 and current_count % 100 == 0:
                 await message.channel.send(f'{current_count} words! Nice work, keep it up!')
 
@@ -456,7 +459,10 @@ The above entered word is **NOT** being taken into account.''')
             await self.add_remove_reliable_role(message.guild, connection)
             await self.server_configs[server_id].sync_to_db_with_connection(connection)
 
+            time_frames.append(time.monotonic())  # t5
             await connection.commit()
+            t_end = time.monotonic()
+            logger.debug(f"{call_id}: time frames: {["{:.4f}".format(t_end - t) for t in time_frames]}")
 
     # ---------------------------------------------------------------------------------------------------------------
 
@@ -478,7 +484,6 @@ The above entered word is **NOT** being taken into account.''')
 
     # ---------------------------------------------------------------------------------------------------------------
 
-    @log_execution_time(logger)
     async def handle_mistake(self, message: discord.Message,
                              response: str, connection: AsyncConnection) -> None:
         """Handles when someone messes up the count with a wrong number"""
@@ -546,7 +551,6 @@ The above entered word is **NOT** being taken into account.''')
     # ---------------------------------------------------------------------------------------------------------------
 
     @staticmethod
-    @log_execution_time(logger)
     def get_query_response(future: concurrent.futures.Future) -> int:
         """
         Get the result of a query that was started in the background.
