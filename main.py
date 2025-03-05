@@ -766,12 +766,11 @@ The above entered word is **NOT** being taken into account.''')
 
     async def setup_hook(self) -> None:
 
+        for cog_name in COGS_LIST:
+            await self.load_extension(f'cogs.{cog_name}')
+
         if not DEV_MODE:
             # only sync when not in dev mode to avoid syncing over and over again - use sync command explicitly
-
-            for cog_name in COGS_LIST:
-                await self.load_extension(f'cogs.{cog_name}')
-
             global_sync = await self.tree.sync()
             admin_sync = await self.tree.sync(guild=discord.Object(id=ADMIN_GUILD_ID))
 
