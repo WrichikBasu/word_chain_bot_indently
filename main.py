@@ -260,7 +260,7 @@ class WordChainBot(AutoShardedBot):
         7. Wrong starting letter?
         """
         call_id = ''.join(random.choices(string.ascii_letters + string.digits, k=6))
-        time_frames = [time.monotonic()]  # t1
+        timestamps = [time.monotonic()]  # t1
         server_id = message.guild.id
         word: str = message.content.lower()
 
@@ -416,7 +416,7 @@ The above entered word is **NOT** being taken into account.''')
             # ---------------------
             self.server_configs[server_id].update_current(member_id=message.author.id, current_word=word)
 
-            time_frames.append(time.monotonic())  # t2
+            timestamps.append(time.monotonic())  # t2
             await message.add_reaction(
                 SPECIAL_REACTION_EMOJIS.get(word, self.server_configs[server_id].reaction_emoji()))
 
@@ -424,7 +424,7 @@ The above entered word is **NOT** being taken into account.''')
             karma: float = calculate_total_karma(word, last_words)
             self._server_histories[server_id][message.author.id].append(word)
 
-            time_frames.append(time.monotonic())  # t3
+            timestamps.append(time.monotonic())  # t3
             stmt = update(MemberModel).where(
                 MemberModel.server_id == message.guild.id,
                 MemberModel.member_id == message.author.id
@@ -443,7 +443,7 @@ The above entered word is **NOT** being taken into account.''')
 
             current_count = self.server_configs[server_id].current_count
 
-            time_frames.append(time.monotonic())  # t4
+            timestamps.append(time.monotonic())  # t4
             if current_count > 0 and current_count % 100 == 0:
                 await message.channel.send(f'{current_count} words! Nice work, keep it up!')
 
@@ -459,10 +459,10 @@ The above entered word is **NOT** being taken into account.''')
             await self.add_remove_reliable_role(message.guild, connection)
             await self.server_configs[server_id].sync_to_db_with_connection(connection)
 
-            time_frames.append(time.monotonic())  # t5
+            timestamps.append(time.monotonic())  # t5
             await connection.commit()
-            t_end = time.monotonic()
-            logger.debug(f"{call_id}: time frames: {["{:.4f}".format(t_end - t) for t in time_frames]}")
+            timestamps.append(time.monotonic())  # t_end
+            logger.debug(f"{call_id}: time frames: {["{:.4f}".format(t2 - t1) for t1, t2 in zip(timestamps, timestamps[1:])]}")
 
     # ---------------------------------------------------------------------------------------------------------------
 
