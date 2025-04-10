@@ -7,21 +7,22 @@ We take privacy very seriously; as developers who love to use and contribute to 
 ### Applicability of this privacy policy
 This privacy policy is applicable for the bot that is hosted from the `main` branch, by the Indently Bot Dev Team. To be specific, it applies to the bot with the application ID `1222301436054999181`. Any bots hosted by others, whether from the same branch or a fork, is not covered under this privacy policy.
 
-### Informaion we collect
+### Information we collect
 - When you are using the bot, we collect and store your user ID, along with the server ID where you are playing the game. This means, if you are playing the game in multiple servers, we store your user ID and the corresponding server ID for each of those servers.
 - In addition, we also store how many words you have entered correctly, how many mistakes you have made, and statistics based on those two values.
+- We also access but do not store your user and server name.
 
 ### Information we do NOT collect
-We do **not** collect any information on the words you have entered in any server such that you can be traced back from the word in the database. We maintain a mapping for each server so that the bot can track which words have already been used, but that mapping does **not** contain any information about who entered the word. If you are the person who entered the last word, we store your user ID and the corresponding word in the configuration, but that is only to keep track of who the last user was and what the current word is. As soon as someone else enters another word, that information is erased. Therefore, it is safe to say that there is no way to determine from the Bot's database that you sent a particular word.
+We do **not** collect any information on the words you have entered on any server such that you can be traced back from the word in the database. We maintain a mapping for each server so that the bot can track which words have already been used, but that mapping does **not** contain any information about who entered the word. If you are the person who entered the last word, we store your user ID and the corresponding word in the configuration, but that is only to keep track of who the last user was and what the current word is. As soon as someone else enters another word, that information is erased. Therefore, it is safe to say that there is no way to determine from the Bot's database that you sent a particular word.
 
 ### How we use the stored information
-The stored information is only used in the game. The Bot maintains statistics of how many correct and wrong inputs you have entered. And we use that to determine the score and karma, and display a leaderboard. That's pretty much it.
+The stored information is only used in the game. The Bot maintains statistics of how many correct and wrong inputs you have entered. And we use that to determine the score and karma, and display a leaderboard. User and server names on the global leaderboard are visible to users outside your server. That's pretty much it.
 
 ### Third-party entities with whom we share your data
 We do NOT share any stored data with any third-party entity. Everything remains within our database, that can only be accessed by the bot owners and the admin of the host where we have hosted our bot.
 
 ### Data deletion on user request
-We can delete your data associated with the bot. This incudes your user ID, the corresponding servers where you have played the game, and metrics like score or karma. If you would like to delete your data, please reach out to us via `basulabs.developer@gmail.com`.
+We can delete your data associated with the bot. This includes your user ID, the corresponding servers where you have played the game, and metrics like score or karma. If you would like to delete your data, please reach out to us via `basulabs.developer@gmail.com`.
 
 ### Privileged Intents that the Bot requires, and why they are needed
 The Bot requires two privileged intents:
