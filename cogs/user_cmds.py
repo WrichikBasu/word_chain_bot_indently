@@ -7,8 +7,9 @@ from collections import defaultdict
 from typing import TYPE_CHECKING, Optional, Sequence
 
 import discord
-from discord import Colour, Embed, Interaction, app_commands
+from discord import Colour, Embed, Interaction, app_commands, SelectOption
 from discord.ext.commands import Cog
+from discord.ui import View
 from dotenv import load_dotenv
 from sqlalchemy import CursorResult, func, select
 from sqlalchemy.engine.row import Row
@@ -16,6 +17,7 @@ from sqlalchemy.sql.functions import count
 
 from consts import *
 from model import Member, MemberModel, ServerConfig, ServerConfigModel
+from views.dropdown import Dropdown
 
 if TYPE_CHECKING:
     from main import WordChainBot
@@ -50,54 +52,6 @@ class UserCommandsCog(Cog, name=COG_NAME_USER_CMDS):
                 self.bot.tree.remove_command(command.name)
 
         logger.info(f'Cog {self.qualified_name} unloaded.')
-
-    # ---------------------------------------------------------------------------------------------------------------
-
-    @app_commands.command(name='list_commands', description='List all slash commands')
-    async def list_commands(self, interaction: Interaction,):
-        """Command to list all the slash commands"""
-
-        await interaction.response.defer(ephemeral=True, thinking=True)
-
-        emb = Embed(title='Slash Commands', color=Colour.blue(),
-                    description='''
-`/stats user` - Shows the stats of a specific user.
-`/stats server` - Shows the stats of the current server.
-`/check_word` - Check if a word exists/check the spelling.
-`/leaderboard` - Shows the leaderboard of the server.
-`/list_commands` - Lists all the slash commands.''')
-
-        if interaction.user.guild_permissions.manage_guild:
-            emb.description += '''\n
-**Restricted commands — Server Managers only**
-`/set channel` - Sets the channel to chain words.
-`/set failed_role` - Sets the role to give when a user fails.
-`/set reliable_role` - Sets the reliable role.
-`/unset failed_role` - Unsets the role to give when a user fails.
-`/unset reliable_role` - Unset the reliable role.
-`/blacklist add` - Add a word to the blacklist for this server.
-`/blacklist remove` - Remove a word from the blacklist of this server.
-`/blacklist show` - Show the blacklisted words for this server.
-`/whitelist add` - Add a word to the whitelist for this server.
-`/whitelist remove` - Remove a word from the whitelist of this server.
-`/whitelist show` - Show the whitelist words for this server.'''
-
-        if interaction.user.guild_permissions.administrator and interaction.guild.id == ADMIN_GUILD_ID:
-            emb.description += '''\n
-**Restricted commands — Bot Admins only**
-`/reload` - Reload a specific Cog (or all Cogs).
-`/purge_data server` - Remove all data associated with a server.
-`/purge_data user` - Remove all data associated with a user.
-`/logging status` - Shows the status of the loggers.
-`/logging enable_all` - Enables the loggers.
-`/logging disable_all` - Disables the loggers.
-`/logging enable_logger` - Enables a specific logger.
-`/logging disable_logger` - Disables a specific logger.
-`/logging set_level` - Sets the log level of a specific logger/all loggers.
-`/logging test` - Tests a specific logger.
-'''
-
-        await interaction.followup.send(embed=emb)
 
     # ---------------------------------------------------------------------------------------------------------------
 
@@ -162,6 +116,305 @@ class UserCommandsCog(Cog, name=COG_NAME_USER_CMDS):
                     emb.description = f'⚠️ There was an issue in fetching the result.'
 
             await interaction.followup.send(embed=emb)
+
+    # ---------------------------------------------------------------------------------------------------------------
+
+    @app_commands.command(name='help', description='Shows the help menu')
+    async def help(self, interaction: Interaction) -> None:
+
+        await interaction.response.defer(ephemeral=True, thinking=True)
+
+        help_cmd: UserCommandsCog.HelpCommand = UserCommandsCog.HelpCommand(self.bot, interaction)
+        view1: discord.ui.View = discord.ui.View().add_item(help_cmd.get_dropdown())
+        embed: Embed = Embed(title='Help Menu', colour=Colour.blurple(), description=f'Please choose an option below.')
+
+        msg: discord.Message = await interaction.followup.send(embed=embed, view=view1, wait=True)
+        help_cmd.original_message_id = msg.id
+
+    # =================================================================================================================
+
+    class HelpCommand:
+
+        __HOW_TO_PLAY: str = "how_to_play"
+        __GAME_RULES: str = "game_rules"
+        __SETUP_IN_SERVER: str = "setup_in_server"
+        __KARMA_SYSTEM: str = "karma_system"
+        __LIST_OF_COMMANDS: str = "list_commands"
+        __PRIVACY_POLICY: str = "privacy_policy"
+        __SUPPORT_SERVER: str = "support_server"
+        __OTHER_INFO: str = "other_info"
+        __VOTE: str = "vote"
+
+        # ------------------------------------------------------------------------------------------------------------
+
+        def __init__(self, bot: WordChainBot, original_interaction: Interaction, original_message_id: int = -1) -> None:
+            super().__init__()
+            self.bot: WordChainBot = bot
+            self.original_interaction: Interaction = original_interaction
+            self.original_message_id: int = original_message_id  # This has to be set later, after sending the initial message
+
+        # ------------------------------------------------------------------------------------------------------------
+
+        def get_dropdown(self) -> Dropdown:
+
+            options_list: list[SelectOption] = [SelectOption(label="How to play",
+                                                             value=UserCommandsCog.HelpCommand.__HOW_TO_PLAY),
+                                                SelectOption(label="Game rules",
+                                                             value=UserCommandsCog.HelpCommand.__GAME_RULES),
+                                                SelectOption(label="Karma system",
+                                                             value=UserCommandsCog.HelpCommand.__KARMA_SYSTEM),
+                                                SelectOption(label="Vote for the bot!!",
+                                                             value=UserCommandsCog.HelpCommand.__VOTE),
+                                                SelectOption(label="List of commands",
+                                                             value=UserCommandsCog.HelpCommand.__LIST_OF_COMMANDS),
+                                                SelectOption(label="Set up the bot in your server",
+                                                             value=UserCommandsCog.HelpCommand.__SETUP_IN_SERVER),
+                                                SelectOption(label="Privacy Policy",
+                                                             value=UserCommandsCog.HelpCommand.__PRIVACY_POLICY),
+                                                SelectOption(label="Support server",
+                                                             value=UserCommandsCog.HelpCommand.__SUPPORT_SERVER),
+                                                SelectOption(label="Credits and other info",
+                                                             value=UserCommandsCog.HelpCommand.__OTHER_INFO)
+                                                ]
+
+            async def dropdown_callback(dropdown: Dropdown, interaction: Interaction) -> None:
+
+                view1: View = View().add_item(dropdown.regenerate_self())
+
+                match dropdown.values[0]:
+
+                    case UserCommandsCog.HelpCommand.__HOW_TO_PLAY:
+                        await interaction.followup.edit_message(self.original_message_id,
+                                                                embed=UserCommandsCog.HelpCommand.__get_how_to_play_embed(),
+                                                                view=view1)
+
+                    case UserCommandsCog.HelpCommand.__KARMA_SYSTEM:
+                        await interaction.followup.edit_message(self.original_message_id,
+                                                                embed=UserCommandsCog.HelpCommand.__get_karma_embed(),
+                                                                view=view1)
+
+                    case UserCommandsCog.HelpCommand.__GAME_RULES:
+                        await interaction.followup.edit_message(self.original_message_id,
+                                                                embed=UserCommandsCog.HelpCommand.__get_game_rules_embed(),
+                                                                view=view1)
+
+                    case UserCommandsCog.HelpCommand.__VOTE:
+                        await interaction.followup.edit_message(self.original_message_id,
+                                                                embed=UserCommandsCog.HelpCommand.__get_vote_embed(),
+                                                                view=view1)
+
+                    case UserCommandsCog.HelpCommand.__LIST_OF_COMMANDS:
+                        await interaction.followup.edit_message(self.original_message_id,
+                                                                embed=self.__get_cmd_list_embed(interaction),
+                                                                view=view1)
+
+                    case UserCommandsCog.HelpCommand.__PRIVACY_POLICY:
+                        await interaction.followup.edit_message(self.original_message_id,
+                                                                embed=self.__get_privacy_policy_embed(),
+                                                                view=view1)
+
+                    case UserCommandsCog.HelpCommand.__SUPPORT_SERVER:
+                        await interaction.followup.edit_message(self.original_message_id,
+                                                                embed=self.__get_support_server_embed(),
+                                                                view=view1)
+
+                    case UserCommandsCog.HelpCommand.__OTHER_INFO:
+                        await interaction.followup.edit_message(self.original_message_id,
+                                                                embed=self.__get_credits_embed(),
+                                                                view=view1)
+
+                    case UserCommandsCog.HelpCommand.__SETUP_IN_SERVER:
+                        await interaction.followup.edit_message(self.original_message_id,
+                                                                embed=UserCommandsCog.HelpCommand.__setup_in_server(),
+                                                                view=view1)
+
+            return Dropdown(dropdown_callback, options_list, original_interaction=self.original_interaction,
+                            max_values=1)
+
+        # ------------------------------------------------------------------------------------------------------------
+
+        @staticmethod
+        def __get_how_to_play_embed() -> Embed:
+
+            return Embed(title="How to play", description=f'''
+The game is pretty simple.
+
+- Enter a word that starts with the last letter of the previous correct word.  
+- If your word is correct, the bot will react with a tick mark — :white_check_mark: .  
+- No characters other than the letters of the English alphabet (capital and small) and hyphen (`-`) are accepted. \
+Messages with anything else will be ignored.
+- You can check if a word is correct using the `/check_word` command.
+- Words that have been used once cannot be used again until the chain is broken. The chain, however, will **not**
+ be broken if you enter a word that has been used previously. The bot will simply ask you to enter another word.
+- Entering a wrong/non-existent word will break the chain.
+- Once the chain is broken, all used words will be reset.
+- The chain continues even if someone messes up, in the sense that one still has to enter a word beginning with the 
+last letter of the previous correct word.
+
+That's all. Go and beat the high score in your server and top the global leaderboard!! :fire:
+''', colour=Colour.dark_orange())
+
+        # ------------------------------------------------------------------------------------------------------------
+
+        @staticmethod
+        def __get_game_rules_embed() -> Embed:
+
+            return Embed(title="Global game rules", description=f'''\
+You are **not** allowed to use any automation/botting of *any* kind under any circumstances. If you are reported, \
+you will be banned from the bot for a lifetime.
+
+***Please note:** In addition to these rules, the server where you are playing may \
+have other rules that are not covered here. Please check with the server moderators or administrators.*
+''', colour=Colour.red())
+
+        # ------------------------------------------------------------------------------------------------------------
+
+        @staticmethod
+        def __setup_in_server() -> Embed:
+
+            return Embed(description=f'''\
+## Basic setup
+1. Add the bot to your server. You can click on the bot's profile picture and click "Add App".
+2. Run `/set channel` to set the channel where the game will be played. (You need to have at least `Manage\
+Server` permission to run this command.)
+
+This will be enough to let users play the game in your server. Send any word to start the chain.
+
+## Highly recommended setup
+- Disable the `Add reactions` permissions for `@everyone` in the game channel.
+> **Why do we recommend this?**
+> We have seen people put check mark reactions to words that are wrong when the bot lags in putting a reaction \
+(eg. when the discord API is slow due to any reason or when the bot is going through \
+a restart), and thereby mislead users on what the last correct word is.
+
+## Optional setup
+1. Set the failed role using `/set failed_role`, and the reliable role with `/set reliable_role`.
+2. To make sure that people have read the game rules, create a channel with the game rules, along with a \
+reaction role giving access to the game channel. This will make sure that people will be able to play \
+only after agreeing that they have read the rules.''', colour=Colour.yellow())
+
+        # ------------------------------------------------------------------------------------------------------------
+
+        @staticmethod
+        def __get_karma_embed() -> Embed:
+            return Embed(title='The Karma System', description=f'''\
+The karma system is based upon the frequency of characters as the first letter of english words.
+
+**You *gain* karma if:**
+- your word starts with a letter that is less frequent than average (because it is harder to find)
+- your word ends with a letter that is more frequent than average (because it makes it easier for the next player)
+- you use a variety of words that end in different letters
+
+**You *lose* karma if:**
+- your word ends with a letter  (eg. `y`) that is less frequent than average (because it makes it harder \
+for the next player)
+- you keep using words that end in the same letter.
+
+**You do *not* lose karma if:**
+- your word starts with a letter that is more frequent than average (because you cannot choose the first letter)
+**If you mess up:** You lose 5 karma points.
+
+:point_right:  Karma will never be < 0.
+:point_right:  Check your karma in the `/stats user` command.
+:point_right:  To view the karma leaderboard, use `/leaderboard type:karma`.
+:point_right:  To receive the <@&1305965430351073342> role, you must have karma > 50 and accuracy > 99%.\
+''', colour=Colour.green())
+
+        # ------------------------------------------------------------------------------------------------------------
+
+        @staticmethod
+        def __get_support_server_embed() -> Embed:
+            return Embed(title='Support Server', description=f'''\
+For any questions, suggestions or bug reports, or if you just want to hang out with a cool community of word chain\
+players, feel free to join our support server:
+
+https://discord.gg/yhbzVGBNw3''', colour=Colour.pink())
+
+        # ------------------------------------------------------------------------------------------------------------
+
+        @staticmethod
+        def __get_cmd_list_embed(interaction: Interaction) -> Embed:
+
+            emb = Embed(title='Slash Commands', color=Colour.blue(),
+                        description='''\
+`/stats user` - Shows the stats of a specific user.
+`/stats server` - Shows the stats of the current server.
+`/check_word` - Check if a word exists/check the spelling.
+`/leaderboard` - Shows the leaderboard of the server.
+`/list_commands` - Lists all the slash commands.''')
+
+            if interaction.user.guild_permissions.manage_guild:
+                emb.description += '''\n
+**Restricted commands — Server Managers only**
+`/set channel` - Sets the channel to chain words.
+`/set failed_role` - Sets the role to give when a user fails.
+`/set reliable_role` - Sets the reliable role.
+`/unset failed_role` - Unsets the role to give when a user fails.
+`/unset reliable_role` - Unset the reliable role.
+`/blacklist add` - Add a word to the blacklist for this server.
+`/blacklist remove` - Remove a word from the blacklist of this server.
+`/blacklist show` - Show the blacklisted words for this server.
+`/whitelist add` - Add a word to the whitelist for this server.
+`/whitelist remove` - Remove a word from the whitelist of this server.
+`/whitelist show` - Show the whitelist words for this server.'''
+
+            if interaction.user.guild_permissions.administrator and interaction.guild.id == ADMIN_GUILD_ID:
+                emb.description += '''\n
+**Restricted commands — Bot Admins only**
+`/reload` - Reload a specific Cog (or all Cogs).
+`/purge_data server` - Remove all data associated with a server.
+`/purge_data user` - Remove all data associated with a user.
+`/logging status` - Shows the status of the loggers.
+`/logging enable_all` - Enables the loggers.
+`/logging disable_all` - Disables the loggers.
+`/logging enable_logger` - Enables a specific logger.
+`/logging disable_logger` - Disables a specific logger.
+`/logging set_level` - Sets the log level of a specific logger/all loggers.
+`/logging test` - Tests a specific logger.'''
+
+            return emb
+
+        # ------------------------------------------------------------------------------------------------------------
+
+        @staticmethod
+        def __get_privacy_policy_embed() -> Embed:
+
+            return Embed(title='Privacy Policy', description=f'''\
+The privacy policy is available \
+[here](https://github.com/WrichikBasu/word_chain_bot_indently/blob/main/PRIVACY_POLICY.md).''',
+                         color=Colour.yellow())
+
+        # -------------------------------------------------------------------------------------------------------------
+
+        @staticmethod
+        def __get_credits_embed() -> Embed:
+
+            return Embed(title='Credits', description='''\
+- **Source code**
+The bot is open-source, released under the BSD-3-Clause-License. The source code is \
+[available on GitHub](https://github.com/WrichikBasu/word_chain_bot_indently).
+- **Hosting information**
+The bot is currently hosted on [bot-hosting.net](https://bot-hosting.net/?aff=1024746441798856717) on a premium node. \
+*(Note: Affiliate link; proceeds go towards hosting the bot.)*
+- **Credits**
+  - Base code taken from [Counting Bot Indently](https://github.com/guanciottaman/counting_bot_indently).
+  - Base code modified for the Word Chain Bot by <@1024746441798856717>.
+  - Karma system and multi-server support completely designed by <@329857455423225856>.
+- **What/who is "Indently"?**
+This bot was created for the [Indently Discord server](https://discord.com/invite/indently-1040343818274340935), \
+and is owned by the Indently Bot Dev Team. Federico, the founder of Indently, has kindly allowed us to keep the \
+name of his company in our bot's name. (btw, if you are keen to learn python and interact with fellow programmers, \
+check out the Indently Discord linked above!)''', colour=Colour.teal())
+
+        # ------------------------------------------------------------------------------------------------------------
+
+        @staticmethod
+        def __get_vote_embed() -> Embed:
+
+            return Embed(title='Vote for the bot!', description=f'''\
+We will really appreciate it if you vote for our bot on top.gg!
+
+[Vote for the bot!](https://top.gg/bot/1222301436054999181/vote)''', color=Colour.dark_gold())
 
     # ===================================================================================================================
 
