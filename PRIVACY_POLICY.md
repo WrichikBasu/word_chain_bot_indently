@@ -11,11 +11,17 @@ we collect and store, and what we do with it and which third-party entities we
 share the data with, if any.
 
 ### Applicability of this privacy policy
-This privacy policy is applicable for the bot that is hosted from the `main` 
-branch, by the Indently Bot Dev Team. To be specific, 
-it applies to the bot with the application ID `1222301436054999181`. 
-Any bots hosted by others, whether from the same branch or a fork, is not 
-covered under this privacy policy.
+
+This Privacy Policy applies exclusively to the bot deployed from the `main` 
+branch by the Indently Bot Development Team. Specifically, it pertains to 
+the bot with the following details:  
+- **Application ID**: `1222301436054999181`  
+- **Available on Discord App Discovery**: https://discord.com/discovery/applications/1222301436054999181  
+- **Listed on Top.gg**: https://top.gg/bot/1222301436054999181
+
+> **Note**: This policy does *not* extend to any instances of the bot 
+hosted by third parties, including those deployed from the same repo 
+or from a forked version.
 
 ### Information we collect
 - When you are interacting with the bot, we collect and store your user ID, along 
