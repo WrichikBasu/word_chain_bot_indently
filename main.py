@@ -193,7 +193,6 @@ class WordChainBot(AutoShardedBot):
         if self.server_reliable_roles[guild.id]:
             stmt = select(MemberModel.member_id).where(
                 MemberModel.server_id == guild.id,
-                MemberModel.member_id.in_([member.id for member in guild.members]),
                 MemberModel.karma > RELIABLE_ROLE_KARMA_THRESHOLD,
                 (MemberModel.correct / (MemberModel.correct + MemberModel.wrong)) > RELIABLE_ROLE_ACCURACY_THRESHOLD
             )
