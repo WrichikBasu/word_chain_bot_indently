@@ -187,10 +187,12 @@ class WordChainBot(AutoShardedBot):
         1. Accuracy must be >= `RELIABLE_ROLE_ACCURACY_THRESHOLD`. (Accuracy = correct / (correct + wrong))
         2. Karma must be >= `RELIABLE_ROLE_KARMA_THRESHOLD`
         """
+        if not guild.me.guild_permissions.manage_roles:  # Abort if bot does not have perms to set roles
+            return
+
         if self.server_reliable_roles[guild.id]:
             stmt = select(MemberModel.member_id).where(
                 MemberModel.server_id == guild.id,
-                MemberModel.member_id.in_([member.id for member in guild.members]),
                 MemberModel.karma > RELIABLE_ROLE_KARMA_THRESHOLD,
                 (MemberModel.correct / (MemberModel.correct + MemberModel.wrong)) > RELIABLE_ROLE_ACCURACY_THRESHOLD
             )
@@ -221,6 +223,9 @@ class WordChainBot(AutoShardedBot):
         If `failed_role` is not `None` but `failed_member_id` is `None`, then simply removes
         the failed role from all members who have it currently.
         """
+        if not guild.me.guild_permissions.manage_roles:  # Abort if bot does not have perms to set roles
+            return
+
         if self.server_failed_roles[guild.id]:
             handled_member = False
             for member in self.server_failed_roles[guild.id].members:
