@@ -278,7 +278,7 @@ class WordChainBot(AutoShardedBot):
         # Check word length
         # --------------------
         if len(word) == 1:
-            await message.add_reaction('⚠️')
+            await WordChainBot.add_reaction(message, '⚠️')
             await message.channel.send(f'''Single-letter inputs are no longer accepted.
 The chain has **not** been broken. Please enter another word.''')
             return
@@ -319,7 +319,7 @@ The chain has **not** been broken. Please enter another word.''')
             # (if and onl if not whitelisted)
             # -------------------------------
             if not word_whitelisted and await self.is_word_blacklisted(word, message.guild.id, connection):
-                await message.add_reaction('⚠️')
+                await WordChainBot.add_reaction(message, '⚠️')
                 await message.channel.send(f'''This word has been **blacklisted**. Please do not use it.
 The chain has **not** been broken. Please enter another word.''')
                 return
@@ -350,7 +350,7 @@ The chain has **not** been broken. Please enter another word.''')
             result: CursorResult = await connection.execute(stmt)
             word_already_used = result.scalar()
             if word_already_used:
-                await message.add_reaction('⚠️')
+                await WordChainBot.add_reaction(message, '⚠️')
                 await message.channel.send(f'''The word *{word}* has already been used before. \
 The chain has **not** been broken.
 Please enter another word.''')
@@ -411,7 +411,7 @@ Restart and try to beat the current high score of **{self.server_configs[server_
 
                 elif result == word_chain_bot.API_RESPONSE_ERROR:
 
-                    await message.add_reaction('⚠️')
+                    await WordChainBot.add_reaction(message, '⚠️')
                     await message.channel.send(''':octagonal_sign: There was an issue in the backend.
 The above entered word is **NOT** being taken into account.''')
                     return
@@ -422,8 +422,8 @@ The above entered word is **NOT** being taken into account.''')
             self.server_configs[server_id].update_current(member_id=message.author.id, current_word=word)
 
             timestamps.append(time.monotonic())  # t2
-            await message.add_reaction(
-                SPECIAL_REACTION_EMOJIS.get(word, self.server_configs[server_id].reaction_emoji()))
+            await WordChainBot.add_reaction(message,
+                                            SPECIAL_REACTION_EMOJIS.get(word, self.server_configs[server_id].reaction_emoji()))
 
             last_words: deque[str] = self._server_histories[server_id][message.author.id]
             karma: float = calculate_total_karma(word, last_words)
@@ -502,7 +502,7 @@ The above entered word is **NOT** being taken into account.''')
         self.server_configs[server_id].fail_chain(member_id)
 
         await message.channel.send(response)
-        await message.add_reaction('❌')
+        await WordChainBot.add_reaction(message, '❌')
 
         stmt = update(MemberModel).where(
             MemberModel.server_id == server_id,
@@ -520,6 +520,15 @@ The above entered word is **NOT** being taken into account.''')
         await connection.execute(stmt)
 
         await self.server_configs[server_id].sync_to_db_with_connection(connection)
+
+    # ---------------------------------------------------------------------------------------------------------------
+
+    @staticmethod
+    async def add_reaction(message: discord.Message, emoji: str | discord.Emoji | discord.PartialEmoji) -> None:
+
+        if message.guild.me.guild_permissions.add_reactions \
+                and message.channel.permissions_for(message.guild.me).add_reactions:
+            await message.add_reaction(emoji)
 
     # ---------------------------------------------------------------------------------------------------------------
 
