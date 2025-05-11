@@ -11,9 +11,9 @@ from discord.ext.commands import Cog
 from dotenv import load_dotenv
 from sqlalchemy import delete
 
-from consts import COG_NAME_ADMIN_CMDS, LOGGER_NAME_MAIN, LOGGER_NAME_ADMIN_COG, LOGGER_NAME_MANAGER_COG, \
-    LOGGER_NAME_USER_COG, LOGGERS_LIST
-from model import UsedWordsModel, MemberModel, BlacklistModel, WhitelistModel, ServerConfigModel
+from consts import (COG_NAME_ADMIN_CMDS, LOGGER_NAME_ADMIN_COG, LOGGER_NAME_MAIN, LOGGER_NAME_MANAGER_COG,
+                    LOGGER_NAME_USER_COG, LOGGERS_LIST)
+from model import BlacklistModel, MemberModel, ServerConfigModel, UsedWordsModel, WhitelistModel
 
 if TYPE_CHECKING:
     from main import WordChainBot

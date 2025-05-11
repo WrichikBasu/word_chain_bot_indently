@@ -10,7 +10,7 @@ from discord.app_commands import Group
 from discord.ext.commands import Cog
 from sqlalchemy import CursorResult, delete, insert, select
 
-from consts import COG_NAME_MANAGER_CMDS, POSSIBLE_CHARACTERS, LOGGER_NAME_MANAGER_COG
+from consts import COG_NAME_MANAGER_CMDS, FIRST_CHAR_SCORE, LOGGER_NAME_MANAGER_COG, POSSIBLE_CHARACTERS
 from model import BlacklistModel, WhitelistModel
 
 if TYPE_CHECKING:
@@ -228,7 +228,8 @@ class ManagerCommandsCog(Cog, name=COG_NAME_MANAGER_CMDS):
 
             emb: Embed = Embed(colour=Colour.blurple())
 
-            if not all(c in POSSIBLE_CHARACTERS for c in word.lower()):
+            if (not all(c in POSSIBLE_CHARACTERS for c in word.lower()) or
+                    word[0] not in FIRST_CHAR_SCORE or word[-1] not in FIRST_CHAR_SCORE):
                 emb.description = f'⚠️ The word *{word.lower()}* is not a legal word.'
                 await interaction.followup.send(embed=emb)
                 return
@@ -263,10 +264,13 @@ class ManagerCommandsCog(Cog, name=COG_NAME_MANAGER_CMDS):
                     BlacklistModel.server_id == interaction.guild.id,
                     BlacklistModel.word == word.lower()
                 )
-                await connection.execute(stmt)
+                result = await connection.execute(stmt)
                 await connection.commit()
 
-            emb.description = f'✅ The word *{word.lower()}* was successfully removed from the blacklist.'
+            if result.rowcount == 0:
+                emb.description = f'❌ The word *{word.lower()}* is not part of the blacklist.'
+            else:
+                emb.description = f'✅ The word *{word.lower()}* has been removed from the blacklist.'
             await interaction.followup.send(embed=emb)
 
         # ---------------------------------------------------------------------------------------------------------------
@@ -319,7 +323,8 @@ class ManagerCommandsCog(Cog, name=COG_NAME_MANAGER_CMDS):
 
             emb: Embed = Embed(colour=Colour.blurple())
 
-            if not all(c in POSSIBLE_CHARACTERS for c in word.lower()):
+            if (not all(c in POSSIBLE_CHARACTERS for c in word.lower()) or
+                    word[0] not in FIRST_CHAR_SCORE or word[-1] not in FIRST_CHAR_SCORE):
                 emb.description = f'⚠️ The word *{word.lower()}* is not a legal word.'
                 await interaction.followup.send(embed=emb)
                 return
@@ -354,10 +359,13 @@ class ManagerCommandsCog(Cog, name=COG_NAME_MANAGER_CMDS):
                     WhitelistModel.server_id == interaction.guild.id,
                     WhitelistModel.word == word.lower()
                 )
-                await connection.execute(stmt)
+                result = await connection.execute(stmt)
                 await connection.commit()
 
-            emb.description = f'✅ The word *{word.lower()}* has been removed from the whitelist.'
+            if result.rowcount == 0:
+                emb.description = f'❌ The word *{word.lower()}* is not part of the whitelist.'
+            else:
+                emb.description = f'✅ The word *{word.lower()}* has been removed from the whitelist.'
             await interaction.followup.send(embed=emb)
 
         # ---------------------------------------------------------------------------------------------------------------
