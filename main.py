@@ -279,7 +279,7 @@ class WordChainBot(AutoShardedBot):
         # --------------------
         if len(word) == 1:
             await WordChainBot.add_reaction(message, '⚠️')
-            await message.channel.send(f'''Single-letter inputs are no longer accepted.
+            await WordChainBot.send_message_to_channel(message.channel, f'''Single-letter inputs are no longer accepted.
 The chain has **not** been broken. Please enter another word.''')
             return
 
@@ -320,7 +320,7 @@ The chain has **not** been broken. Please enter another word.''')
             # -------------------------------
             if not word_whitelisted and await self.is_word_blacklisted(word, message.guild.id, connection):
                 await WordChainBot.add_reaction(message, '⚠️')
-                await message.channel.send(f'''This word has been **blacklisted**. Please do not use it.
+                await WordChainBot.send_message_to_channel(message.channel, f'''This word has been **blacklisted**. Please do not use it.
 The chain has **not** been broken. Please enter another word.''')
                 return
 
@@ -351,7 +351,7 @@ The chain has **not** been broken. Please enter another word.''')
             word_already_used = result.scalar()
             if word_already_used:
                 await WordChainBot.add_reaction(message, '⚠️')
-                await message.channel.send(f'''The word *{word}* has already been used before. \
+                await WordChainBot.send_message_to_channel(message.channel, f'''The word *{word}* has already been used before. \
 The chain has **not** been broken.
 Please enter another word.''')
                 return
@@ -412,7 +412,7 @@ Restart and try to beat the current high score of **{self.server_configs[server_
                 elif result == word_chain_bot.API_RESPONSE_ERROR:
 
                     await WordChainBot.add_reaction(message, '⚠️')
-                    await message.channel.send(''':octagonal_sign: There was an issue in the backend.
+                    await WordChainBot.send_message_to_channel(message.channel, ''':octagonal_sign: There was an issue in the backend.
 The above entered word is **NOT** being taken into account.''')
                     return
 
@@ -450,7 +450,7 @@ The above entered word is **NOT** being taken into account.''')
 
             timestamps.append(time.monotonic())  # t4
             if current_count > 0 and current_count % 100 == 0:
-                await message.channel.send(f'{current_count} words! Nice work, keep it up!')
+                await WordChainBot.send_message_to_channel(message.channel, f'{current_count} words! Nice work, keep it up!')
 
             # Check and reset the server config.failed_member_id to None.
             if self.server_failed_roles[server_id] and self.server_configs[server_id].failed_member_id == message.author.id:
@@ -501,7 +501,7 @@ The above entered word is **NOT** being taken into account.''')
 
         self.server_configs[server_id].fail_chain(member_id)
 
-        await message.channel.send(response)
+        await WordChainBot.send_message_to_channel(message.channel, response)
         await WordChainBot.add_reaction(message, '❌')
 
         stmt = update(MemberModel).where(
@@ -525,10 +525,39 @@ The above entered word is **NOT** being taken into account.''')
 
     @staticmethod
     async def add_reaction(message: discord.Message, emoji: str | discord.Emoji | discord.PartialEmoji) -> None:
+        """
+        Adds the reaction to the given message, with error handling for missing permissions.
 
-        if message.guild.me.guild_permissions.add_reactions \
-                and message.channel.permissions_for(message.guild.me).add_reactions:
+        Parameters
+        ----------
+        message : discord.Message
+            The message to add the reaction to.
+        emoji : str | discord.Emoji | discord.PartialEmoji
+            The emoji to add.
+        """
+        try:
             await message.add_reaction(emoji)
+        except discord.errors.Forbidden:
+            pass
+
+    # ---------------------------------------------------------------------------------------------------------------
+
+    @staticmethod
+    async def send_message_to_channel(channel: discord.TextChannel, content: str) -> None:
+        """
+        Sends a message to the given channel, with error handling for missing permissions.
+
+        Parameters
+        ----------
+        channel : discord.TextChannel
+            The channel to send the message to.
+        content : str
+            The content of the message.
+        """
+        try:
+            await channel.send(content)
+        except discord.errors.Forbidden:
+            pass
 
     # ---------------------------------------------------------------------------------------------------------------
 
@@ -629,11 +658,11 @@ The above entered word is **NOT** being taken into account.''')
             return
 
         if self.server_configs[message.guild.id].current_word:
-            await message.channel.send(
-                f'{message.author.mention} deleted their word! '
+            await WordChainBot.send_message_to_channel(message.channel, f'{message.author.mention} deleted their word! '
                 f'The **last** word was **{self.server_configs[message.guild.id].current_word}**.')
+
         else:
-            await message.channel.send(f'{message.author.mention} deleted their word!')
+            await WordChainBot.send_message_to_channel(message.channel, f'{message.author.mention} deleted their word!')
 
     # ---------------------------------------------------------------------------------------------------------------
 
@@ -657,11 +686,10 @@ The above entered word is **NOT** being taken into account.''')
             return
 
         if self.server_configs[before.guild.id].current_word:
-            await after.channel.send(
-                f'{after.author.mention} edited their word! '
+            await WordChainBot.send_message_to_channel(after.channel, f'{after.author.mention} edited their word! '
                 f'The **last** word was **{self.server_configs[before.guild.id].current_word}**.')
         else:
-            await after.channel.send(f'{after.author.mention} edited their word!')
+            await WordChainBot.send_message_to_channel(after.channel, f'{after.author.mention} edited their word!')
 
     # ---------------------------------------------------------------------------------------------------------------
 
