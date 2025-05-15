@@ -187,31 +187,32 @@ class WordChainBot(AutoShardedBot):
         1. Accuracy must be >= `RELIABLE_ROLE_ACCURACY_THRESHOLD`. (Accuracy = correct / (correct + wrong))
         2. Karma must be >= `RELIABLE_ROLE_KARMA_THRESHOLD`
         """
-        if not guild.me.guild_permissions.manage_roles:  # Abort if bot does not have perms to set roles
-            return
+        try:
+            if self.server_reliable_roles[guild.id]:
+                stmt = select(MemberModel.member_id).where(
+                    MemberModel.server_id == guild.id,
+                    MemberModel.karma > RELIABLE_ROLE_KARMA_THRESHOLD,
+                    (MemberModel.correct / (MemberModel.correct + MemberModel.wrong)) > RELIABLE_ROLE_ACCURACY_THRESHOLD
+                )
+                result: CursorResult = await connection.execute(stmt)
+                db_members: set[int] = {row[0] for row in result}
+                role_members: set[int] = {member.id for member in self.server_reliable_roles[guild.id].members}
 
-        if self.server_reliable_roles[guild.id]:
-            stmt = select(MemberModel.member_id).where(
-                MemberModel.server_id == guild.id,
-                MemberModel.karma > RELIABLE_ROLE_KARMA_THRESHOLD,
-                (MemberModel.correct / (MemberModel.correct + MemberModel.wrong)) > RELIABLE_ROLE_ACCURACY_THRESHOLD
-            )
-            result: CursorResult = await connection.execute(stmt)
-            db_members: set[int] = {row[0] for row in result}
-            role_members: set[int] = {member.id for member in self.server_reliable_roles[guild.id].members}
+                only_db_members = db_members - role_members  # those that should have the role but do not
+                only_role_members = role_members - db_members  # those that have the role but should not
 
-            only_db_members = db_members - role_members  # those that should have the role but do not
-            only_role_members = role_members - db_members  # those that have the role but should not
+                for member_id in only_db_members:
+                    member: Optional[discord.Member] = guild.get_member(member_id)
+                    if member:
+                        await member.add_roles(self.server_reliable_roles[guild.id])
 
-            for member_id in only_db_members:
-                member: Optional[discord.Member] = guild.get_member(member_id)
-                if member:
-                    await member.add_roles(self.server_reliable_roles[guild.id])
+                for member_id in only_role_members:
+                    member: Optional[discord.Member] = guild.get_member(member_id)
+                    if member:
+                        await member.remove_roles(self.server_reliable_roles[guild.id])
 
-            for member_id in only_role_members:
-                member: Optional[discord.Member] = guild.get_member(member_id)
-                if member:
-                    await member.remove_roles(self.server_reliable_roles[guild.id])
+        except discord.Forbidden:
+            pass
 
     # ---------------------------------------------------------------------------------------------------------------
 
@@ -223,32 +224,33 @@ class WordChainBot(AutoShardedBot):
         If `failed_role` is not `None` but `failed_member_id` is `None`, then simply removes
         the failed role from all members who have it currently.
         """
-        if not guild.me.guild_permissions.manage_roles:  # Abort if bot does not have perms to set roles
-            return
+        try:
+            if self.server_failed_roles[guild.id]:
+                handled_member = False
+                for member in self.server_failed_roles[guild.id].members:
+                    if self.server_configs[guild.id].failed_member_id == member.id:
+                        # Current failed member already has the failed role, so just continue
+                        handled_member = True
+                        continue
+                    else:
+                        # Either failed_member_id is None, or this member is not the current failed member.
+                        # In either case, we have to remove the role.
+                        await member.remove_roles(self.server_failed_roles[guild.id])
 
-        if self.server_failed_roles[guild.id]:
-            handled_member = False
-            for member in self.server_failed_roles[guild.id].members:
-                if self.server_configs[guild.id].failed_member_id == member.id:
-                    # Current failed member already has the failed role, so just continue
-                    handled_member = True
-                    continue
-                else:
-                    # Either failed_member_id is None, or this member is not the current failed member.
-                    # In either case, we have to remove the role.
-                    await member.remove_roles(self.server_failed_roles[guild.id])
+                if not handled_member and self.server_configs[guild.id].failed_member_id:
+                    # Current failed member does not yet have the failed role
+                    try:
+                        failed_member: discord.Member = await guild.fetch_member(
+                            self.server_configs[guild.id].failed_member_id)
+                        await failed_member.add_roles(self.server_failed_roles[guild.id])
+                    except discord.NotFound:
+                        # Member is no longer in the server
+                        self.server_configs[guild.id].failed_member_id = None
+                        self.server_configs[guild.id].correct_inputs_by_failed_member = 0
+                        await self.server_configs[guild.id].sync_to_db_with_connection(connection)
 
-            if not handled_member and self.server_configs[guild.id].failed_member_id:
-                # Current failed member does not yet have the failed role
-                try:
-                    failed_member: discord.Member = await guild.fetch_member(
-                        self.server_configs[guild.id].failed_member_id)
-                    await failed_member.add_roles(self.server_failed_roles[guild.id])
-                except discord.NotFound:
-                    # Member is no longer in the server
-                    self.server_configs[guild.id].failed_member_id = None
-                    self.server_configs[guild.id].correct_inputs_by_failed_member = 0
-                    await self.server_configs[guild.id].sync_to_db_with_connection(connection)
+        except discord.Forbidden:
+            pass
 
     # ---------------------------------------------------------------------------------------------------------------
 
