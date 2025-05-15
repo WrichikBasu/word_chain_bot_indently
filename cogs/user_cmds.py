@@ -7,7 +7,7 @@ from collections import defaultdict
 from typing import TYPE_CHECKING, Optional, Sequence
 
 import discord
-from discord import Colour, Embed, Interaction, app_commands, SelectOption
+from discord import Colour, Embed, Interaction, SelectOption, app_commands
 from discord.ext.commands import Cog
 from discord.ui import View
 from dotenv import load_dotenv
