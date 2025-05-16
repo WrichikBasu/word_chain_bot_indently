@@ -9,11 +9,11 @@ from typing import TYPE_CHECKING, Optional
 from discord import Colour, Embed, Forbidden, Interaction, Object, Permissions, TextChannel, app_commands
 from discord.ext.commands import Cog
 from dotenv import load_dotenv
-from sqlalchemy import delete
+from sqlalchemy import delete, insert, update
 
 from consts import (COG_NAME_ADMIN_CMDS, LOGGER_NAME_ADMIN_COG, LOGGER_NAME_MAIN, LOGGER_NAME_MANAGER_COG,
                     LOGGER_NAME_USER_COG, LOGGERS_LIST)
-from model import BlacklistModel, MemberModel, ServerConfigModel, UsedWordsModel, WhitelistModel
+from model import BannedMemberModel, BlacklistModel, MemberModel, ServerConfigModel, UsedWordsModel, WhitelistModel
 
 if TYPE_CHECKING:
     from main import WordChainBot
@@ -31,6 +31,7 @@ class AdminCommandsCog(Cog, name=COG_NAME_ADMIN_CMDS):
         self.bot: WordChainBot = bot
         self.bot.tree.add_command(AdminCommandsCog.PurgeCmdGroup(self))
         self.bot.tree.add_command(AdminCommandsCog.LoggingControlCmdGroup(self))
+        self.bot.tree.add_command(AdminCommandsCog.BanCmdGroup(self))
 
     # -----------------------------------------------------------------------------------------------------------------
 
@@ -463,6 +464,82 @@ class AdminCommandsCog(Cog, name=COG_NAME_ADMIN_CMDS):
                     await interaction.followup.send(f'Removed data for user {user_id_as_number} in {rows_deleted} servers')
                 else:
                     await interaction.followup.send(f'No data to remove for user {user_id_as_number}')
+
+    # ============================================================================================================
+
+    class BanCmdGroup(app_commands.Group):
+
+        def __init__(self, cog: AdminCommandsCog):
+            super().__init__(name='ban', description='Admin commands for banning servers and members',
+                             guild_ids=[ADMIN_GUILD_ID], guild_only=True,
+                             default_permissions=Permissions(administrator=True))
+            self.cog: AdminCommandsCog = cog
+
+        # -----------------------------------------------------------------------------------------------------------
+
+        @app_commands.command(name='server', description='Bans guild with given guild id from leaderboards.')
+        @app_commands.describe(guild_id='ID of the guild to be banned from leaderboards')
+        @app_commands.describe(ban='true to ban the guild, false to unban the guild')
+        async def ban_server(self, interaction: Interaction, guild_id: str, ban: bool = True):
+
+            await interaction.response.defer()
+
+            # cannot use int directly in type annotation, because it would allow just 32-bit integers,
+            # but most IDs are 64-bit
+            try:
+                guild_id_as_number = int(guild_id)
+            except ValueError:
+                await interaction.followup.send('This is not a valid ID!')
+                return
+
+            async with self.cog.bot.db_connection() as connection:
+                stmt = update(ServerConfigModel).values(
+                    is_banned=ban
+                ).where(ServerConfigModel.server_id == guild_id_as_number)
+                result = await connection.execute(stmt)
+                await connection.commit()
+
+                rows_updated: int = result.rowcount
+                if rows_updated > 0:
+                    await interaction.followup.send(f'{'Banned' if ban else 'Unbanned'} server with ID {guild_id_as_number}')
+                else:
+                    await interaction.followup.send(f'No server found with ID {guild_id_as_number}')
+
+        # -----------------------------------------------------------------------------------------------------------
+
+        @app_commands.command(name='member', description='Bans member with given member id from playing.')
+        @app_commands.describe(member_id='ID of the member to be banned from playing')
+        @app_commands.describe(ban='true to ban the member, false to unban the member')
+        async def ban_member(self, interaction: Interaction, member_id: str, ban: bool = True):
+
+            await interaction.response.defer()
+
+            # cannot use int directly in type annotation, because it would allow just 32-bit integers,
+            # but most IDs are 64-bit
+            try:
+                member_id_as_number = int(member_id)
+            except ValueError:
+                await interaction.followup.send('This is not a valid ID!')
+                return
+
+            async with self.cog.bot.db_connection() as connection:
+                if ban:
+                    stmt = insert(BannedMemberModel).values(
+                        member_id=member_id_as_number
+                    )
+                else:
+                    stmt = delete(BannedMemberModel).where(
+                        BannedMemberModel.member_id == member_id_as_number
+                    )
+
+                result = await connection.execute(stmt)
+                await connection.commit()
+
+                rows_updated: int = result.rowcount
+                if rows_updated > 0:
+                    await interaction.followup.send(f'{'Banned' if ban else 'Unbanned'} member with ID {member_id_as_number}')
+                else:
+                    await interaction.followup.send(f'No member found with ID {member_id_as_number}')
 
 # ====================================================================================================================
 

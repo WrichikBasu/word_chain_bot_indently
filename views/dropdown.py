@@ -1,6 +1,6 @@
 from __future__ import annotations  # https://stackoverflow.com/a/50768146/8387076
 
-from typing import Callable, Optional, Coroutine, Any, Self, NoReturn
+from typing import Any, Callable, Coroutine, NoReturn, Optional, Self
 
 import discord.ui
 import uuid6

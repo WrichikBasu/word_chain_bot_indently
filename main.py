@@ -23,8 +23,8 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, create_async_en
 from consts import *
 from decorator import log_execution_time
 from karma_calcs import calculate_total_karma
-from model import (BlacklistModel, MemberModel, ServerConfig, ServerConfigModel, UsedWordsModel, WhitelistModel,
-                   WordCacheModel)
+from model import (BannedMemberModel, BlacklistModel, MemberModel, ServerConfig, ServerConfigModel, UsedWordsModel,
+                   WhitelistModel, WordCacheModel)
 
 load_dotenv('.env')
 # running in single player mode changes some game rules - you can chain words alone now
@@ -275,6 +275,18 @@ class WordChainBot(AutoShardedBot):
             return
         if len(word) == 0:
             return
+
+        # -------------------------------
+        # Check if member is banned
+        # -------------------------------
+        async with self.db_connection(call_id=call_id) as connection:
+            stmt = select(exists(BannedMemberModel).where(
+                BannedMemberModel.member_id == message.author.id
+            ))
+            result: CursorResult = await connection.execute(stmt)
+            member_banned = result.scalar()
+            if member_banned:
+                return
 
         # --------------------
         # Check word length

@@ -7,16 +7,16 @@ from collections import defaultdict
 from typing import TYPE_CHECKING, Optional, Sequence
 
 import discord
-from discord import Colour, Embed, Interaction, app_commands, SelectOption
+from discord import Colour, Embed, Interaction, SelectOption, app_commands
 from discord.ext.commands import Cog
 from discord.ui import View
 from dotenv import load_dotenv
-from sqlalchemy import CursorResult, func, select
+from sqlalchemy import CursorResult, func, or_, select
 from sqlalchemy.engine.row import Row
 from sqlalchemy.sql.functions import count
 
 from consts import *
-from model import Member, MemberModel, ServerConfig, ServerConfigModel
+from model import BannedMemberModel, Member, MemberModel, ServerConfig, ServerConfigModel
 from views.dropdown import Dropdown
 
 if TYPE_CHECKING:
@@ -474,11 +474,13 @@ We will really appreciate it if you vote for our bot on top.gg!
                     case 'server':
                         stmt = (select(MemberModel.member_id, field)
                                 .where(MemberModel.server_id == interaction.guild.id)
+                                .where(~MemberModel.member_id.in_(select(BannedMemberModel.member_id)))
                                 .order_by(field.desc())
                                 .limit(limit))
                     case 'global':
                         stmt = (select(MemberModel.member_id, func.sum(field))
                                 .group_by(MemberModel.member_id)
+                                .where(~MemberModel.member_id.in_(select(BannedMemberModel.member_id)))
                                 .order_by(func.sum(field).desc())
                                 .limit(limit))
                     case _:
@@ -521,6 +523,7 @@ We will really appreciate it if you vote for our bot on top.gg!
                 limit = 10
 
                 stmt = (select(ServerConfigModel.server_id, ServerConfigModel.high_score)
+                        .where(or_(ServerConfigModel.is_banned == 0, ServerConfigModel.server_id == interaction.guild.id))
                         .order_by(ServerConfigModel.high_score.desc())
                         .limit(limit))
 
