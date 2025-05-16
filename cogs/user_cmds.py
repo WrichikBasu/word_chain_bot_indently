@@ -11,12 +11,12 @@ from discord import Colour, Embed, Interaction, SelectOption, app_commands
 from discord.ext.commands import Cog
 from discord.ui import View
 from dotenv import load_dotenv
-from sqlalchemy import CursorResult, func, select, or_
+from sqlalchemy import CursorResult, func, or_, select
 from sqlalchemy.engine.row import Row
 from sqlalchemy.sql.functions import count
 
 from consts import *
-from model import Member, MemberModel, ServerConfig, ServerConfigModel, BannedMemberModel
+from model import BannedMemberModel, Member, MemberModel, ServerConfig, ServerConfigModel
 from views.dropdown import Dropdown
 
 if TYPE_CHECKING:
