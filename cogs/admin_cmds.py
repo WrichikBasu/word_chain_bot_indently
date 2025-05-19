@@ -1,12 +1,13 @@
 """Commands for bot admins only."""
 from __future__ import annotations
 
+import io
 import logging
 import os
 from logging import Logger
 from typing import TYPE_CHECKING, Optional
 
-from discord import Colour, Embed, Forbidden, Interaction, Object, Permissions, TextChannel, app_commands
+from discord import Colour, Embed, File, Forbidden, Interaction, Object, Permissions, TextChannel, app_commands
 from discord.ext.commands import Cog
 from dotenv import load_dotenv
 from sqlalchemy import delete, insert, select, update
@@ -82,6 +83,21 @@ class AdminCommandsCog(Cog, name=COG_NAME_ADMIN_CMDS):
         emb2.add_field(name='Success', value=f'{count_sent} servers', inline=True)
         emb2.add_field(name='Failed', value=f'{count_failed} servers', inline=True)
         await interaction.followup.send(embed=emb2)
+
+    # -----------------------------------------------------------------------------------------------------------------
+
+    @app_commands.command(name='list_servers', description='Lists all servers with ID and name for administration')
+    @app_commands.default_permissions(administrator=True)
+    @app_commands.guilds(ADMIN_GUILD_ID)
+    async def list_servers(self, interaction: Interaction):
+
+        await interaction.response.defer()
+
+        server_entries = [f'{guild.id}: {guild.name}' for guild in self.bot.guilds]
+        file_content = '\n'.join(server_entries).encode('utf-8')
+        file_buffer = io.BytesIO(file_content)
+
+        await interaction.followup.send(file=File(file_buffer, 'servers.txt'))
 
     # ============================================================================================================
 
