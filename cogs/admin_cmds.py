@@ -478,7 +478,7 @@ class AdminCommandsCog(Cog, name=COG_NAME_ADMIN_CMDS):
 
         # -----------------------------------------------------------------------------------------------------------
 
-        @app_commands.command(name='ban', description='Bans guild with given guild id from leaderboards.')
+        @app_commands.command(name='ban', description='Bans guild with given guild id from leaderboards')
         @app_commands.describe(guild_id='ID of the guild to be banned from leaderboards')
         @app_commands.describe(ban='true to ban the guild, false to unban the guild')
         async def ban(self, interaction: Interaction, guild_id: str, ban: bool = True):
@@ -508,7 +508,7 @@ class AdminCommandsCog(Cog, name=COG_NAME_ADMIN_CMDS):
 
         # -----------------------------------------------------------------------------------------------------------
 
-        @app_commands.command(name='list', description='Lists all servers that are currently banned.')
+        @app_commands.command(name='list', description='Lists all servers that are currently banned')
         async def list(self, interaction: Interaction):
 
             await interaction.response.defer()
@@ -538,7 +538,7 @@ class AdminCommandsCog(Cog, name=COG_NAME_ADMIN_CMDS):
 
         # -----------------------------------------------------------------------------------------------------------
 
-        @app_commands.command(name='ban', description='Bans member with given member id from playing.')
+        @app_commands.command(name='ban', description='Bans member with given member id from playing')
         @app_commands.describe(member_id='ID of the member to be banned from playing')
         @app_commands.describe(ban='true to ban the member, false to unban the member')
         async def ban(self, interaction: Interaction, member_id: str, ban: bool = True):
@@ -574,7 +574,7 @@ class AdminCommandsCog(Cog, name=COG_NAME_ADMIN_CMDS):
 
         # -----------------------------------------------------------------------------------------------------------
 
-        @app_commands.command(name='list', description='Lists all members that are currently banned.')
+        @app_commands.command(name='list', description='Lists all members that are currently banned')
         async def list(self, interaction: Interaction):
 
             await interaction.response.defer()
