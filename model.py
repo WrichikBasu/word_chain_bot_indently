@@ -28,6 +28,7 @@ class ServerConfigModel(Base):
     last_member_id: Mapped[Optional[int]] = mapped_column(Integer)
     failed_member_id: Mapped[Optional[int]] = mapped_column(Integer)
     correct_inputs_by_failed_member: Mapped[int] = mapped_column(Integer)
+    is_banned: Mapped[bool] = mapped_column(Boolean, default=False)
 
 
 class WordCacheModel(Base):
@@ -63,6 +64,11 @@ class WhitelistModel(Base):
     word: Mapped[str] = mapped_column(String, primary_key=True)
 
 
+class BannedMemberModel(Base):
+    __tablename__ = 'banned_member'
+    member_id: Mapped[int] = mapped_column(Integer, primary_key=True)
+
+
 class ServerConfig(BaseModel):
     server_id: int
     channel_id: Optional[int] = None
@@ -75,6 +81,7 @@ class ServerConfig(BaseModel):
     last_member_id: Optional[int] = None
     failed_member_id: Optional[int] = None
     correct_inputs_by_failed_member: int = 0
+    is_banned: bool = False
 
     def fail_chain(self, member_id: int) -> None:
         """
@@ -129,7 +136,8 @@ class ServerConfig(BaseModel):
             failed_role_id=self.failed_role_id,
             last_member_id=self.last_member_id,
             failed_member_id=self.failed_member_id,
-            correct_inputs_by_failed_member=self.correct_inputs_by_failed_member
+            correct_inputs_by_failed_member=self.correct_inputs_by_failed_member,
+            is_banned=self.is_banned
         ).where(ServerConfigModel.server_id == self.server_id)
         return stmt
 
