@@ -518,6 +518,7 @@ class AdminCommandsCog(Cog, name=COG_NAME_ADMIN_CMDS):
 
                 rows_updated: int = result.rowcount
                 if rows_updated > 0:
+                    self.cog.bot.server_configs[guild_id_as_number].is_banned = ban
                     await interaction.followup.send(f'{'Banned' if ban else 'Unbanned'} server with ID {guild_id_as_number}')
                 else:
                     await interaction.followup.send(f'No server found with ID {guild_id_as_number}')
