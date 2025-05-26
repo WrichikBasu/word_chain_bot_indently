@@ -1,19 +1,20 @@
 """Commands for bot admins only."""
 from __future__ import annotations
 
+import io
 import logging
 import os
 from logging import Logger
 from typing import TYPE_CHECKING, Optional
 
-from discord import Colour, Embed, Forbidden, Interaction, Object, Permissions, TextChannel, app_commands
+from discord import Colour, Embed, File, Forbidden, Interaction, Object, Permissions, TextChannel, app_commands
 from discord.ext.commands import Cog
 from dotenv import load_dotenv
-from sqlalchemy import delete
+from sqlalchemy import delete, insert, select, update
 
 from consts import (COG_NAME_ADMIN_CMDS, LOGGER_NAME_ADMIN_COG, LOGGER_NAME_MAIN, LOGGER_NAME_MANAGER_COG,
                     LOGGER_NAME_USER_COG, LOGGERS_LIST)
-from model import BlacklistModel, MemberModel, ServerConfigModel, UsedWordsModel, WhitelistModel
+from model import BannedMemberModel, BlacklistModel, MemberModel, ServerConfigModel, UsedWordsModel, WhitelistModel
 
 if TYPE_CHECKING:
     from main import WordChainBot
@@ -31,6 +32,8 @@ class AdminCommandsCog(Cog, name=COG_NAME_ADMIN_CMDS):
         self.bot: WordChainBot = bot
         self.bot.tree.add_command(AdminCommandsCog.PurgeCmdGroup(self))
         self.bot.tree.add_command(AdminCommandsCog.LoggingControlCmdGroup(self))
+        self.bot.tree.add_command(AdminCommandsCog.BanServerCmdGroup(self))
+        self.bot.tree.add_command(AdminCommandsCog.BanMemberCmdGroup(self))
 
     # -----------------------------------------------------------------------------------------------------------------
 
@@ -80,6 +83,21 @@ class AdminCommandsCog(Cog, name=COG_NAME_ADMIN_CMDS):
         emb2.add_field(name='Success', value=f'{count_sent} servers', inline=True)
         emb2.add_field(name='Failed', value=f'{count_failed} servers', inline=True)
         await interaction.followup.send(embed=emb2)
+
+    # -----------------------------------------------------------------------------------------------------------------
+
+    @app_commands.command(name='list_servers', description='Lists all servers with ID and name for administration')
+    @app_commands.default_permissions(administrator=True)
+    @app_commands.guilds(ADMIN_GUILD_ID)
+    async def list_servers(self, interaction: Interaction):
+
+        await interaction.response.defer()
+
+        server_entries = [f'{guild.id}: {guild.name}' for guild in self.bot.guilds]
+        file_content = '\n'.join(server_entries).encode('utf-8')
+        file_buffer = io.BytesIO(file_content)
+
+        await interaction.followup.send(file=File(file_buffer, 'servers.txt'))
 
     # ============================================================================================================
 
@@ -463,6 +481,132 @@ class AdminCommandsCog(Cog, name=COG_NAME_ADMIN_CMDS):
                     await interaction.followup.send(f'Removed data for user {user_id_as_number} in {rows_deleted} servers')
                 else:
                     await interaction.followup.send(f'No data to remove for user {user_id_as_number}')
+
+    # ============================================================================================================
+
+    class BanServerCmdGroup(app_commands.Group):
+
+        def __init__(self, cog: AdminCommandsCog):
+            super().__init__(name='ban_server', description='Admin commands for banning servers',
+                             guild_ids=[ADMIN_GUILD_ID], guild_only=True,
+                             default_permissions=Permissions(administrator=True))
+            self.cog: AdminCommandsCog = cog
+
+        # -----------------------------------------------------------------------------------------------------------
+
+        @app_commands.command(name='ban', description='Bans guild with given guild id from leaderboards')
+        @app_commands.describe(guild_id='ID of the guild to be banned from leaderboards')
+        @app_commands.describe(ban='true to ban the guild, false to unban the guild')
+        async def ban(self, interaction: Interaction, guild_id: str, ban: bool = True):
+
+            await interaction.response.defer()
+
+            # cannot use int directly in type annotation, because it would allow just 32-bit integers,
+            # but most IDs are 64-bit
+            try:
+                guild_id_as_number = int(guild_id)
+            except ValueError:
+                await interaction.followup.send('This is not a valid ID!')
+                return
+
+            async with self.cog.bot.db_connection() as connection:
+                stmt = update(ServerConfigModel).values(
+                    is_banned=ban
+                ).where(ServerConfigModel.server_id == guild_id_as_number)
+                result = await connection.execute(stmt)
+                await connection.commit()
+
+                rows_updated: int = result.rowcount
+                if rows_updated > 0:
+                    self.cog.bot.server_configs[guild_id_as_number].is_banned = ban
+                    await interaction.followup.send(f'{'Banned' if ban else 'Unbanned'} server with ID {guild_id_as_number}')
+                else:
+                    await interaction.followup.send(f'No server found with ID {guild_id_as_number}')
+
+        # -----------------------------------------------------------------------------------------------------------
+
+        @app_commands.command(name='list', description='Lists all servers that are currently banned')
+        async def list(self, interaction: Interaction):
+
+            await interaction.response.defer()
+
+            async with self.cog.bot.db_connection() as connection:
+                stmt = select(ServerConfigModel.server_id).where(ServerConfigModel.is_banned)
+                result = await connection.execute(stmt)
+                server_ids = [row[0] for row in result]
+
+                if not server_ids:
+                    await interaction.followup.send('No servers are banned currently')
+                else:
+                    server_entries = [f'{server_id}: {self.cog.bot.get_guild(server_id).name if self.cog.bot.get_guild(server_id) is not None else '###'}' for server_id in server_ids]
+                    await interaction.followup.send(f'''These servers are currently banned:
+* {'\n* '.join(server_entries)}''')
+
+
+    # ============================================================================================================
+
+    class BanMemberCmdGroup(app_commands.Group):
+
+        def __init__(self, cog: AdminCommandsCog):
+            super().__init__(name='ban_member', description='Admin commands for banning servers',
+                             guild_ids=[ADMIN_GUILD_ID], guild_only=True,
+                             default_permissions=Permissions(administrator=True))
+            self.cog: AdminCommandsCog = cog
+
+        # -----------------------------------------------------------------------------------------------------------
+
+        @app_commands.command(name='ban', description='Bans member with given member id from playing')
+        @app_commands.describe(member_id='ID of the member to be banned from playing')
+        @app_commands.describe(ban='true to ban the member, false to unban the member')
+        async def ban(self, interaction: Interaction, member_id: str, ban: bool = True):
+
+            await interaction.response.defer()
+
+            # cannot use int directly in type annotation, because it would allow just 32-bit integers,
+            # but most IDs are 64-bit
+            try:
+                member_id_as_number = int(member_id)
+            except ValueError:
+                await interaction.followup.send('This is not a valid ID!')
+                return
+
+            async with self.cog.bot.db_connection() as connection:
+                if ban:
+                    stmt = insert(BannedMemberModel).values(
+                        member_id=member_id_as_number
+                    )
+                else:
+                    stmt = delete(BannedMemberModel).where(
+                        BannedMemberModel.member_id == member_id_as_number
+                    )
+
+                result = await connection.execute(stmt)
+                await connection.commit()
+
+                rows_updated: int = result.rowcount
+                if rows_updated > 0:
+                    await interaction.followup.send(f'{'Banned' if ban else 'Unbanned'} member with ID {member_id_as_number}')
+                else:
+                    await interaction.followup.send(f'No member found with ID {member_id_as_number}')
+
+        # -----------------------------------------------------------------------------------------------------------
+
+        @app_commands.command(name='list', description='Lists all members that are currently banned')
+        async def list(self, interaction: Interaction):
+
+            await interaction.response.defer()
+
+            async with self.cog.bot.db_connection() as connection:
+                stmt = select(BannedMemberModel.member_id)
+                result = await connection.execute(stmt)
+                member_ids = [row[0] for row in result]
+
+                if not member_ids:
+                    await interaction.followup.send('No members are banned currently')
+                else:
+                    member_entries = [f'{member_id}: {self.cog.bot.get_user(member_id).name if self.cog.bot.get_user(member_id) is not None else '###'}' for member_id in member_ids]
+                    await interaction.followup.send(f'''These members are currently banned:
+* {'\n* '.join(member_entries)}''')
 
 # ====================================================================================================================
 
