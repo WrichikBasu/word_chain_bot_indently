@@ -14,13 +14,13 @@ A premium node can also be purchased at a very cheap rate, which is what we use.
 For questions, support, suggestions or to just play the game and hang out with some cool people, you are welcome to join our support server: https://discord.gg/yhbzVGBNw3
 
 ### What is the word chain game?
-It's a simple game where you have to enter a word that starts with the last letter of the previous word. You cannot enter two words in a row, so this is a multi-player game. The aim is to make the chain as long as possible. Entering a wrong word or a word with a typo breaks the chain and you start from square one again.
+It's a simple game where you have to enter a word that starts with the last letter of the previous word. You cannot enter two words in a row, so this is a multi-player game. The aim is to make the chain as long as possible. Entering a wrong word or a word with a typo breaks the chain, and you start from square one again.
 
 ### Required environment variables
 To host the bot yourself, you will need to set the following environment variables in `.env`:
 - `TOKEN="xyz"` : You will get this from the [Discord Developers](https://discord.com/developers/) website under the `Bot` section after creating a new application.
 - `ADMIN_GUILD_ID="1234"` : The ID of the server that you want to designate as the admin guild, where admin commands like `/prune` can be run.
-- `DEV_MODE="True"` or `"False"` : Optional flag to prevent the bot from automatically syncing the slash ccommands every time it restarts. Set it to `True` if you are testing the bot, and sync manually via the `/sync` command. Can be removed in the production version.
+- `DEV_MODE="True"` or `"False"` : Optional flag to prevent the bot from automatically syncing the slash commands every time it restarts. Set it to `True` if you are testing the bot, and sync manually via the `/sync` command. Can be removed in the production version.
 
 Or maybe just use the public version to keep things simple, unless you are developing with the intention of contributing to the codebase.
 

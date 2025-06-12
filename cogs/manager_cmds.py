@@ -10,7 +10,7 @@ from discord.app_commands import Group
 from discord.ext.commands import Cog
 from sqlalchemy import CursorResult, delete, insert, select
 
-from consts import COG_NAME_MANAGER_CMDS, FIRST_CHAR_SCORE, LOGGER_NAME_MANAGER_COG, POSSIBLE_CHARACTERS
+from consts import COG_NAME_MANAGER_CMDS, FIRST_TOKEN_SCORES, LOGGER_NAME_MANAGER_COG, POSSIBLE_CHARACTERS, GameMode
 from model import BlacklistModel, WhitelistModel
 
 if TYPE_CHECKING:
@@ -28,6 +28,16 @@ class ManagerCommandsCog(Cog, name=COG_NAME_MANAGER_CMDS):
         self.bot.tree.add_command(ManagerCommandsCog.UnsetCommandsGroup(self))
         self.bot.tree.add_command(ManagerCommandsCog.BlacklistCmdGroup(self))
         self.bot.tree.add_command(ManagerCommandsCog.WhitelistCmdGroup(self))
+
+    # ----------------------------------------------------------------------------------------------------------------
+
+    @staticmethod
+    def is_generally_illegal_word(word: str):
+        return (not all(c in POSSIBLE_CHARACTERS for c in word.lower()) or
+                any(word[:game_mode.value] not in FIRST_TOKEN_SCORES[game_mode] or
+                    word[-game_mode.value:] not in FIRST_TOKEN_SCORES[game_mode]
+                    for game_mode in GameMode)
+                )
 
     # ----------------------------------------------------------------------------------------------------------------
 
@@ -99,16 +109,25 @@ class ManagerCommandsCog(Cog, name=COG_NAME_MANAGER_CMDS):
 
         @app_commands.command(name='channel', description='Sets the game channel')
         @app_commands.describe(channel='The channel where the game will be played')
-        async def set_channel(self, interaction: Interaction, channel: TextChannel):
+        @app_commands.describe(game_mode='Configure either for normal mode or for hard mode')
+        async def set_channel(self, interaction: Interaction, channel: TextChannel, game_mode: GameMode):
             """Command to set the play channel"""
 
             await interaction.response.defer()
 
-            self.cog.bot.server_configs[interaction.guild.id].channel_id = channel.id
-            await self.cog.bot.server_configs[interaction.guild.id].sync_to_db(self.cog.bot)
+            other_game_mode = GameMode.HARD if game_mode == GameMode.NORMAL else GameMode.NORMAL
 
-            emb: Embed = Embed(title='Success', colour=Colour.green(),
-                               description=f'''Word chain channel was set to {channel.mention}.''')
+            if self.cog.bot.server_configs[interaction.guild.id].game_state[other_game_mode].channel_id == channel.id:
+                emb: Embed = Embed(title='Error', colour=Colour.red(),
+                                   description=f'''You cannot use a channel for this game mode, that is assigned
+to the other game mode!''')
+            else:
+                self.cog.bot.server_configs[interaction.guild.id].game_state[game_mode].channel_id = channel.id
+                await self.cog.bot.server_configs[interaction.guild.id].sync_to_db(self.cog.bot)
+                game_mode_name = 'normal game mode' if game_mode == GameMode.NORMAL else 'hard game mode'
+                emb: Embed = Embed(title='Success', colour=Colour.green(),
+                               description=f'''Word chain channel for {game_mode_name} was set to {channel.mention}.''')
+
             await interaction.followup.send(embed=emb)
 
         # ---------------------------------------------------------------------------------------------------------
@@ -228,8 +247,7 @@ class ManagerCommandsCog(Cog, name=COG_NAME_MANAGER_CMDS):
 
             emb: Embed = Embed(colour=Colour.blurple())
 
-            if (not all(c in POSSIBLE_CHARACTERS for c in word.lower()) or
-                    word[0] not in FIRST_CHAR_SCORE or word[-1] not in FIRST_CHAR_SCORE):
+            if self.cog.is_generally_illegal_word(word):
                 emb.description = f'⚠️ The word *{word.lower()}* is not a legal word.'
                 await interaction.followup.send(embed=emb)
                 return
@@ -254,7 +272,7 @@ class ManagerCommandsCog(Cog, name=COG_NAME_MANAGER_CMDS):
 
             emb: Embed = Embed(colour=Colour.blurple())
 
-            if not all(c in POSSIBLE_CHARACTERS for c in word.lower()):
+            if self.cog.is_generally_illegal_word(word):
                 emb.description = f'⚠️ The word *{word.lower()}* is not a legal word.'
                 await interaction.followup.send(embed=emb)
                 return
@@ -323,8 +341,7 @@ class ManagerCommandsCog(Cog, name=COG_NAME_MANAGER_CMDS):
 
             emb: Embed = Embed(colour=Colour.blurple())
 
-            if (not all(c in POSSIBLE_CHARACTERS for c in word.lower()) or
-                    word[0] not in FIRST_CHAR_SCORE or word[-1] not in FIRST_CHAR_SCORE):
+            if self.cog.is_generally_illegal_word(word):
                 emb.description = f'⚠️ The word *{word.lower()}* is not a legal word.'
                 await interaction.followup.send(embed=emb)
                 return
@@ -349,7 +366,7 @@ class ManagerCommandsCog(Cog, name=COG_NAME_MANAGER_CMDS):
 
             emb: Embed = Embed(colour=Colour.blurple())
 
-            if not all(c in POSSIBLE_CHARACTERS for c in word.lower()):
+            if self.cog.is_generally_illegal_word(word):
                 emb.description = f'⚠️ The word *{word.lower()}* is not a legal word.'
                 await interaction.followup.send(embed=emb)
                 return
