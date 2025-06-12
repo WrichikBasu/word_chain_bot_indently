@@ -1,11 +1,14 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Any, Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import Boolean, Float, Integer, String, update
+from sqlalchemy.engine.row import Row
 from sqlalchemy.ext.asyncio import AsyncConnection
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+
+from consts import GameMode
 
 if TYPE_CHECKING:
     from main import WordChainBot  # Thanks to https://stackoverflow.com/a/39757388/8387076
@@ -23,9 +26,15 @@ class ServerConfigModel(Base):
     current_word: Mapped[Optional[str]] = mapped_column(String)
     high_score: Mapped[int] = mapped_column(Integer)
     used_high_score_emoji: Mapped[bool] = mapped_column(Boolean)
+    last_member_id: Mapped[Optional[int]] = mapped_column(Integer)
+    hard_mode_channel_id: Mapped[Optional[int]] = mapped_column(Integer)
+    hard_mode_current_count: Mapped[int] = mapped_column(Integer)
+    hard_mode_current_word: Mapped[Optional[str]] = mapped_column(String)
+    hard_mode_high_score: Mapped[int] = mapped_column(Integer)
+    hard_mode_used_high_score_emoji: Mapped[bool] = mapped_column(Boolean)
+    hard_mode_last_member_id: Mapped[Optional[int]] = mapped_column(Integer)
     reliable_role_id: Mapped[Optional[int]] = mapped_column(Integer)
     failed_role_id: Mapped[Optional[int]] = mapped_column(Integer)
-    last_member_id: Mapped[Optional[int]] = mapped_column(Integer)
     failed_member_id: Mapped[Optional[int]] = mapped_column(Integer)
     correct_inputs_by_failed_member: Mapped[int] = mapped_column(Integer)
     is_banned: Mapped[bool] = mapped_column(Boolean, default=False)
@@ -69,44 +78,51 @@ class BannedMemberModel(Base):
     member_id: Mapped[int] = mapped_column(Integer, primary_key=True)
 
 
-class ServerConfig(BaseModel):
-    server_id: int
+class GameModeState(BaseModel):
     channel_id: Optional[int] = None
     current_count: int = 0
     current_word: Optional[str] = None
     high_score: int = 0
     used_high_score_emoji: bool = False
+    last_member_id: Optional[int] = None
+
+
+class ServerConfig(BaseModel):
+    server_id: int
+    game_state: dict[GameMode, GameModeState] = Field(default_factory=lambda: {
+        GameMode.NORMAL: GameModeState(),
+        GameMode.HARD: GameModeState()
+    })
     reliable_role_id: Optional[int] = None
     failed_role_id: Optional[int] = None
-    last_member_id: Optional[int] = None
     failed_member_id: Optional[int] = None
     correct_inputs_by_failed_member: int = 0
     is_banned: bool = False
 
-    def fail_chain(self, member_id: int) -> None:
+    def fail_chain(self, game_mode: GameMode, member_id: int) -> None:
         """
         Resets the stats because a mistake was made.
         """
-        self.current_count = 0
+        self.game_state[game_mode].current_count = 0
         self.failed_member_id = member_id
         self.correct_inputs_by_failed_member = 0
-        self.used_high_score_emoji = False
+        self.game_state[game_mode].used_high_score_emoji = False
 
-    def update_current(self, member_id: int, current_word: str) -> None:
+    def update_current(self, game_mode: GameMode, member_id: int, current_word: str) -> None:
         """
         Increment the current count.
         """
         # increment current count
-        self.current_count += 1
-        self.current_word = current_word
+        self.game_state[game_mode].current_count += 1
+        self.game_state[game_mode].current_word = current_word
 
         # update current member id
-        self.last_member_id = member_id
+        self.game_state[game_mode].last_member_id = member_id
 
         # check the high score
-        self.high_score = max(self.high_score, self.current_count)
+        self.game_state[game_mode].high_score = max(self.game_state[game_mode].high_score, self.game_state[game_mode].current_count)
 
-    def reaction_emoji(self) -> str:
+    def reaction_emoji(self, game_mode: GameMode) -> str:
         """
         Get the reaction emoji based on the current count.
         """
@@ -115,31 +131,102 @@ class ServerConfig(BaseModel):
             69: "😏",
             666: "👹",
         }
-        if self.current_count == self.high_score:
-            if not self.used_high_score_emoji:
+        if self.game_state[game_mode].current_count == self.game_state[game_mode].high_score:
+            if not self.game_state[game_mode].used_high_score_emoji:
                 emoji = "🎉"
-                self.used_high_score_emoji = True
+                self.game_state[game_mode].used_high_score_emoji = True
             else:
-                emoji = special_emojis.get(self.current_count, '☑️')
+                emoji = special_emojis.get(self.game_state[game_mode].current_count, '☑️')
         else:
-            emoji = special_emojis.get(self.current_count, '✅')
+            emoji = special_emojis.get(self.game_state[game_mode].current_count, '✅')
         return emoji
 
     def __update_statement(self):
         stmt = update(ServerConfigModel).values(
-            channel_id=self.channel_id,
-            current_count=self.current_count,
-            current_word=self.current_word,
-            high_score=self.high_score,
-            used_high_score_emoji=self.used_high_score_emoji,
+            channel_id=self.game_state[GameMode.NORMAL].channel_id,
+            current_count=self.game_state[GameMode.NORMAL].current_count,
+            current_word=self.game_state[GameMode.NORMAL].current_word,
+            high_score=self.game_state[GameMode.NORMAL].high_score,
+            used_high_score_emoji=self.game_state[GameMode.NORMAL].used_high_score_emoji,
+            last_member_id=self.game_state[GameMode.NORMAL].last_member_id,
+            hard_mode_channel_id=self.game_state[GameMode.HARD].channel_id,
+            hard_mode_current_count=self.game_state[GameMode.HARD].current_count,
+            hard_mode_current_word=self.game_state[GameMode.HARD].current_word,
+            hard_mode_high_score=self.game_state[GameMode.HARD].high_score,
+            hard_mode_used_high_score_emoji=self.game_state[GameMode.HARD].used_high_score_emoji,
+            hard_mode_last_member_id=self.game_state[GameMode.HARD].last_member_id,
             reliable_role_id=self.reliable_role_id,
             failed_role_id=self.failed_role_id,
-            last_member_id=self.last_member_id,
             failed_member_id=self.failed_member_id,
             correct_inputs_by_failed_member=self.correct_inputs_by_failed_member,
             is_banned=self.is_banned
         ).where(ServerConfigModel.server_id == self.server_id)
         return stmt
+
+    @staticmethod
+    def from_sqlalchemy_row(row: Row) -> ServerConfig:
+        """
+        Converts a row from SQLAlchemy into an instance of ServerConfig. Replaces `model_validate` from Pydantic, which
+        does not work anymore with the differences in structure in the Pydantic and SQLAlchemy models.
+        :param row: row from SQLAlchemy
+        :return: ServerConfig object
+        """
+        game_state = {
+            GameMode.NORMAL: GameModeState(
+                channel_id=row.channel_id,
+                current_count=row.current_count,
+                current_word=row.current_word,
+                high_score=row.high_score,
+                used_high_score_emoji=row.used_high_score_emoji,
+                last_member_id=row.last_member_id
+            ),
+            GameMode.HARD: GameModeState(
+                channel_id=row.hard_mode_channel_id,
+                current_count=row.hard_mode_current_count,
+                current_word=row.hard_mode_current_word,
+                high_score=row.hard_mode_high_score,
+                used_high_score_emoji=row.hard_mode_used_high_score_emoji,
+                last_member_id=row.hard_mode_last_member_id
+            )
+        }
+
+        return ServerConfig(
+            server_id=row.server_id,
+            game_state=game_state,
+            reliable_role_id=row.reliable_role_id,
+            failed_role_id=row.failed_role_id,
+            failed_member_id=row.failed_member_id,
+            correct_inputs_by_failed_member=row.correct_inputs_by_failed_member,
+            is_banned=row.is_banned
+        )
+
+    def to_sqlalchemy_dict(self) -> dict[str, Any]:
+        """
+        Converts an instance of ServerConfig into a dict compatible with the SQLAlchemy representation. Replaces
+        `model_dump` from Pydantic, which does not work anymore with the differences in structure in the Pydantic and
+        SQLAlchemy models.
+        :return:
+        """
+        return {
+            "server_id": self.server_id,
+            "channel_id": self.game_state[GameMode.NORMAL].channel_id,
+            "current_count": self.game_state[GameMode.NORMAL].current_count,
+            "current_word": self.game_state[GameMode.NORMAL].current_word,
+            "high_score": self.game_state[GameMode.NORMAL].high_score,
+            "used_high_score_emoji": self.game_state[GameMode.NORMAL].used_high_score_emoji,
+            "last_member_id": self.game_state[GameMode.NORMAL].last_member_id,
+            "hard_mode_channel_id": self.game_state[GameMode.HARD].channel_id,
+            "hard_mode_current_count": self.game_state[GameMode.HARD].current_count,
+            "hard_mode_current_word": self.game_state[GameMode.HARD].current_word,
+            "hard_mode_high_score": self.game_state[GameMode.HARD].high_score,
+            "hard_mode_used_high_score_emoji": self.game_state[GameMode.HARD].used_high_score_emoji,
+            "hard_mode_last_member_id": self.game_state[GameMode.HARD].last_member_id,
+            "reliable_role_id": self.reliable_role_id,
+            "failed_role_id": self.failed_role_id,
+            "failed_member_id": self.failed_member_id,
+            "correct_inputs_by_failed_member": self.correct_inputs_by_failed_member,
+            "is_banned": self.is_banned
+        }
 
     async def sync_to_db(self, bot: WordChainBot):
         """
