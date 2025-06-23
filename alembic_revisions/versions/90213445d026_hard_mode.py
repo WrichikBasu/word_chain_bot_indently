@@ -28,9 +28,9 @@ def upgrade() -> None:
             batch_op.add_column(sa.Column('hard_mode_high_score', sa.Integer(), nullable=True))
             batch_op.add_column(sa.Column('hard_mode_used_high_score_emoji', sa.Boolean(), nullable=True))
 
-        op.execute("UPDATE server_config SET hard_mode_current_count = 0")
-        op.execute("UPDATE server_config SET hard_mode_high_score = 0")
-        op.execute("UPDATE server_config SET hard_mode_used_high_score_emoji = 0")
+        op.execute('UPDATE server_config SET hard_mode_current_count = 0')
+        op.execute('UPDATE server_config SET hard_mode_high_score = 0')
+        op.execute('UPDATE server_config SET hard_mode_used_high_score_emoji = 0')
 
         with op.batch_alter_table('server_config', schema=None) as batch_op:
             batch_op.alter_column('hard_mode_current_count', nullable=False)

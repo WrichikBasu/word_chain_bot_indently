@@ -48,6 +48,7 @@ class WordCacheModel(Base):
 class UsedWordsModel(Base):
     __tablename__ = 'used_words'
     server_id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    game_mode: Mapped[int] = mapped_column(Integer, primary_key=True)
     word: Mapped[str] = mapped_column(String, primary_key=True)
 
 

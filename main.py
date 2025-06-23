@@ -367,6 +367,7 @@ The chain has **not** been broken. Please enter another word.''')
             # -----------------------------------
             stmt = select(exists(UsedWordsModel).where(
                 UsedWordsModel.server_id == message.guild.id,
+                UsedWordsModel.game_mode == game_mode.value,
                 UsedWordsModel.word == word
             ))
             result: CursorResult = await connection.execute(stmt)
@@ -468,6 +469,7 @@ The above entered word is **NOT** being taken into account.''')
 
             stmt = insert(UsedWordsModel).values(
                 server_id=message.guild.id,
+                game_mode=game_mode.value,
                 word=word
             )
             await connection.execute(stmt)
@@ -540,7 +542,8 @@ The above entered word is **NOT** being taken into account.''')
         await connection.execute(stmt)
 
         stmt = delete(UsedWordsModel).where(
-            UsedWordsModel.server_id == server_id
+            UsedWordsModel.server_id == server_id,
+            UsedWordsModel.game_mode == game_mode.value
         )
         await connection.execute(stmt)
 
