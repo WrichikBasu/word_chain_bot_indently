@@ -509,23 +509,34 @@ We will really appreciate it if you vote for our bot on top.gg!
         # ---------------------------------------------------------------------------------------------------------------
 
         @app_commands.command(description='Shows the first 10 servers with the highest highscore')
-        async def server(self, interaction: Interaction):
+        async def server(self, interaction: Interaction, game_mode: GameMode = GameMode.NORMAL):
             """Command to show the top 10 servers with the highest highscore"""
             await interaction.response.defer()
-
-            emb = Embed(
-                title=f'Top 10 servers by highscore',
-                color=Colour.blue(),
-                description=''
-            ).set_author(name='Global')
 
             async with self.cog.bot.db_connection(locked=False) as connection:
                 limit = 10
 
-                stmt = (select(ServerConfigModel.server_id, ServerConfigModel.high_score)
-                        .where(or_(ServerConfigModel.is_banned == 0, ServerConfigModel.server_id == interaction.guild.id))
-                        .order_by(ServerConfigModel.high_score.desc())
-                        .limit(limit))
+                match game_mode:
+                    case GameMode.NORMAL:
+                        stmt = (select(ServerConfigModel.server_id, ServerConfigModel.high_score)
+                                .where(
+                            or_(ServerConfigModel.is_banned == 0, ServerConfigModel.server_id == interaction.guild.id))
+                                .order_by(ServerConfigModel.high_score.desc())
+                                .limit(limit))
+                        game_mode_name = 'Normal Mode'
+                    case GameMode.HARD:
+                        stmt = (select(ServerConfigModel.server_id, ServerConfigModel.hard_mode_high_score)
+                                .where(
+                            or_(ServerConfigModel.is_banned == 0, ServerConfigModel.server_id == interaction.guild.id))
+                                .order_by(ServerConfigModel.hard_mode_high_score.desc())
+                                .limit(limit))
+                        game_mode_name = 'Hard Mode'
+
+                emb = Embed(
+                    title=f'Top 10 servers by highscore',
+                    color=Colour.blue(),
+                    description=''
+                ).set_author(name=f'Global ({game_mode_name})')
 
                 result: CursorResult = await connection.execute(stmt)
                 data: Sequence[Row[tuple[int, int]]] = result.fetchall()
@@ -548,21 +559,22 @@ We will really appreciate it if you vote for our bot on top.gg!
         # ---------------------------------------------------------------------------------------------------------------
 
         @app_commands.command(description='Show the server stats for the word chain game')
-        async def server(self, interaction: Interaction) -> None:
+        async def server(self, interaction: Interaction, game_mode: GameMode = GameMode.NORMAL) -> None:
             """Command to show the stats of the server"""
             await interaction.response.defer()
 
             config: ServerConfig = self.cog.bot.server_configs[interaction.guild.id]
 
-            if config.channel_id is None:  # channel not set yet
-                await interaction.followup.send("Counting channel not set yet!")
+            if config.game_state[game_mode].channel_id is None:  # channel not set yet
+                await interaction.followup.send("Word Chain channel not set yet!")
                 return
 
             server_stats_embed = Embed(
-                description=f'''Current Chain Length: {config.current_count}
-Longest chain length: {config.high_score}
-{f"**Last word:** {config.current_word}" if config.current_word else ""}
-{f"Last word by: <@{config.last_member_id}>" if config.last_member_id else ""}''',
+                description=f'''Game Mode: {'Normal' if game_mode == GameMode.NORMAL else 'Hard'}
+Current Chain Length: {config.game_state[game_mode].current_count}
+Longest chain length: {config.game_state[game_mode].high_score}
+{f"**Last word:** {config.game_state[game_mode].current_word}" if config.game_state[game_mode].current_word else ""}
+{f"Last word by: <@{config.game_state[game_mode].last_member_id}>" if config.game_state[game_mode].last_member_id else ""}''',
                 colour=Colour.blurple()
             )
             server_stats_embed.set_author(name=interaction.guild,

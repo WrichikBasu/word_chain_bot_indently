@@ -18,6 +18,7 @@ from discord.ext.commands import AutoShardedBot, ExtensionNotLoaded
 from dotenv import load_dotenv
 from requests_futures.sessions import FuturesSession
 from sqlalchemy import CursorResult, delete, exists, func, insert, select, update
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, create_async_engine
 
 from consts import *
@@ -57,8 +58,9 @@ class WordChainBot(AutoShardedBot):
         self.server_failed_roles: dict[int, Optional[discord.Role]] = defaultdict(lambda: None)
         self.server_reliable_roles: dict[int, Optional[discord.Role]] = defaultdict(lambda: None)
 
-        self._server_histories: dict[int, dict[int, deque[str]]] = defaultdict(
-            lambda: defaultdict(lambda: deque(maxlen=HISTORY_LENGTH)))
+        # maps from server_id -> member_id -> game_mode -> deque
+        self._server_histories: dict[int, dict[int, dict[GameMode, deque[str]]]] = defaultdict(
+            lambda: defaultdict(lambda: defaultdict(lambda: deque(maxlen=HISTORY_LENGTH))))
 
         super().__init__(command_prefix='!', intents=intents)
 
@@ -100,7 +102,7 @@ class WordChainBot(AutoShardedBot):
         async with self.db_connection() as connection:
             stmt = select(ServerConfigModel)
             result: CursorResult = await connection.execute(stmt)
-            configs = [ServerConfig.model_validate(row) for row in result]
+            configs = [ServerConfig.from_sqlalchemy_row(row) for row in result]
             self.server_configs = {config.server_id: config for config in configs}
 
             db_servers = {config.server_id for config in configs}
@@ -110,7 +112,7 @@ class WordChainBot(AutoShardedBot):
 
             for server_id in servers_without_config:
                 new_config = ServerConfig(server_id=server_id)
-                stmt = insert(ServerConfigModel).values(**new_config.model_dump())
+                stmt = insert(ServerConfigModel).values(**new_config.to_sqlalchemy_dict())
                 await connection.execute(stmt)
                 logger.debug(f'created config for {server_id} in db')
                 self.server_configs[server_id] = new_config
@@ -120,30 +122,32 @@ class WordChainBot(AutoShardedBot):
         for guild in self.guilds:
             config = self.server_configs[guild.id]
 
-            channel: Optional[discord.TextChannel] = self.get_channel(config.channel_id)
-            if channel:
+            self.load_discord_roles(guild)
 
-                emb: discord.Embed = discord.Embed(description='**I\'m now online!**',
-                                                   colour=discord.Color.brand_green())
+            for game_mode in GameMode:
+                channel: Optional[discord.TextChannel] = self.get_channel(config.game_state[game_mode].channel_id)
+                if channel:
 
-                if config.high_score > 0:
-                    emb.description += f'\n\n:fire: Let\'s beat the high score of {config.high_score}! :fire:\n'
+                    emb: discord.Embed = discord.Embed(description='**I\'m now online!**',
+                                                       colour=discord.Color.brand_green())
 
-                if config.current_word:
-                    emb.add_field(name='Last valid word', value=f'{config.current_word}', inline=True)
+                    if config.game_state[game_mode].high_score > 0:
+                        emb.description += f'\n\n:fire: Let\'s beat the high score of {config.game_state[game_mode].high_score}! :fire:\n'
 
-                    if config.last_member_id:
+                    if config.game_state[game_mode].current_word:
+                        emb.add_field(name='Last valid word', value=f'{config.game_state[game_mode].current_word}', inline=True)
 
-                        member: Optional[discord.Member] = channel.guild.get_member(config.last_member_id)
-                        if member:
-                            emb.add_field(name='Last input by', value=f'{member.mention}', inline=True)
+                        if config.game_state[game_mode].last_member_id:
 
-                try:
-                    await channel.send(embed=emb)
-                except discord.errors.Forbidden:
-                    logger.info(f'Could not send ready message to {guild.name} ({guild.id}) due to missing permissions.')
+                            member: Optional[discord.Member] = channel.guild.get_member(config.game_state[game_mode].last_member_id)
+                            if member:
+                                emb.add_field(name='Last input by', value=f'{member.mention}', inline=True)
 
-                self.load_discord_roles(guild)
+                    try:
+                        await channel.send(embed=emb)
+                    except discord.errors.Forbidden:
+                        logger.info(f'Could not send ready message to {guild.name} ({guild.id}) due to missing permissions.')
+
                 
         logger.info(f'Loaded {len(self.server_configs)} server configs, running on {len(self.guilds)} servers')
 
@@ -154,11 +158,15 @@ class WordChainBot(AutoShardedBot):
         logger.info(f'Joined guild {guild.name} ({guild.id})')
 
         async with self.db_connection() as connection:
-            new_config = ServerConfig(server_id=guild.id)
-            stmt = insert(ServerConfigModel).values(**new_config.model_dump()).prefix_with('OR IGNORE')
-            await connection.execute(stmt)
-            await connection.commit()
-            self.server_configs[new_config.server_id] = new_config
+            try:
+                new_config = ServerConfig(server_id=guild.id)
+                stmt = insert(ServerConfigModel).values(**new_config.to_sqlalchemy_dict())
+                await connection.execute(stmt)
+                await connection.commit()
+                self.server_configs[new_config.server_id] = new_config
+            except SQLAlchemyError:
+                pass
+                # we cannot insert on duplicate key, but we just want to make sure here that a config exists
 
     # ---------------------------------------------------------------------------------------------------------------
 
@@ -255,7 +263,7 @@ class WordChainBot(AutoShardedBot):
     # ---------------------------------------------------------------------------------------------------------------
 
     @log_execution_time(logger)
-    async def on_message_for_word_chain(self, message: discord.Message) -> None:
+    async def on_message_for_word_chain(self, message: discord.Message, game_mode: GameMode) -> None:
         """
         Hierarchy of checking:
         1. Word length must be > 1.
@@ -359,6 +367,7 @@ The chain has **not** been broken. Please enter another word.''')
             # -----------------------------------
             stmt = select(exists(UsedWordsModel).where(
                 UsedWordsModel.server_id == message.guild.id,
+                UsedWordsModel.game_mode == game_mode.value,
                 UsedWordsModel.word == word
             ))
             result: CursorResult = await connection.execute(stmt)
@@ -373,29 +382,29 @@ Please enter another word.''')
             # -------------
             # Wrong member
             # -------------
-            if not SINGLE_PLAYER and self.server_configs[server_id].last_member_id == message.author.id:
+            if not SINGLE_PLAYER and self.server_configs[server_id].game_state[game_mode].last_member_id == message.author.id:
                 response: str = f'''{message.author.mention} messed up the count! \
 *You cannot send two words in a row!*
-{f'The chain length was {self.server_configs[server_id].current_count} when it was broken. :sob:\n' if self.server_configs[server_id].current_count > 0 else ''}\
-Restart with a word starting with **{self.server_configs[server_id].current_word[-1]}** and \
-try to beat the current high score of **{self.server_configs[server_id].high_score}**!'''
+{f'The chain length was {self.server_configs[server_id].game_state[game_mode].current_count} when it was broken. :sob:\n' if self.server_configs[server_id].game_state[game_mode].current_count > 0 else ''}\
+Restart with a word starting with **{self.server_configs[server_id].game_state[game_mode].current_word[-game_mode.value:]}** and \
+try to beat the current high score of **{self.server_configs[server_id].game_state[game_mode].high_score}**!'''
 
-                await self.handle_mistake(message, response, connection)
+                await self.handle_mistake(message, response, connection, game_mode)
                 await connection.commit()
                 return
 
             # -------------------------
             # Wrong starting letter
             # -------------------------
-            if self.server_configs[server_id].current_word and word[0] != self.server_configs[server_id].current_word[
-                -1]:
+            if (self.server_configs[server_id].game_state[game_mode].current_word and word[:game_mode.value] !=
+                    self.server_configs[server_id].game_state[game_mode].current_word[-game_mode.value:]):
                 response: str = f'''{message.author.mention} messed up the chain! \
-*The word you entered did not begin with the last letter of the previous word* (**{self.server_configs[server_id].current_word[-1]}**).
-{f'The chain length was {self.server_configs[server_id].current_count} when it was broken. :sob:\n' if self.server_configs[server_id].current_count > 0 else ''}\
-Restart with a word starting with **{self.server_configs[server_id].current_word[-1]}** and try to beat the \
-current high score of **{self.server_configs[server_id].high_score}**!'''
+*The word you entered did not begin with the last letter of the previous word* (**{self.server_configs[server_id].game_state[game_mode].current_word[-game_mode.value:]}**).
+{f'The chain length was {self.server_configs[server_id].game_state[game_mode].current_count} when it was broken. :sob:\n' if self.server_configs[server_id].game_state[game_mode].current_count > 0 else ''}\
+Restart with a word starting with **{self.server_configs[server_id].game_state[game_mode].current_word[-game_mode.value:]}** and try to beat the \
+current high score of **{self.server_configs[server_id].game_state[game_mode].high_score}**!'''
 
-                await self.handle_mistake(message, response, connection)
+                await self.handle_mistake(message, response, connection, game_mode)
                 await connection.commit()
                 return
 
@@ -407,19 +416,19 @@ current high score of **{self.server_configs[server_id].high_score}**!'''
 
                 if result == word_chain_bot.API_RESPONSE_WORD_DOESNT_EXIST:
 
-                    if self.server_configs[server_id].current_word:
+                    if self.server_configs[server_id].game_state[game_mode].current_word:
                         response: str = f'''{message.author.mention} messed up the chain! \
 *The word you entered does not exist.*
-{f'The chain length was {self.server_configs[server_id].current_count} when it was broken. :sob:\n' if self.server_configs[server_id].current_count > 0 else ''}\
-Restart with a word starting with **{self.server_configs[server_id].current_word[-1]}** and try to beat the \
-current high score of **{self.server_configs[server_id].high_score}**!'''
+{f'The chain length was {self.server_configs[server_id].game_state[game_mode].current_count} when it was broken. :sob:\n' if self.server_configs[server_id].game_state[game_mode].current_count > 0 else ''}\
+Restart with a word starting with **{self.server_configs[server_id].game_state[game_mode].current_word[-game_mode.value:]}** and try to beat the \
+current high score of **{self.server_configs[server_id].game_state[game_mode].high_score}**!'''
 
                     else:
                         response: str = f'''{message.author.mention} messed up the chain! \
 *The word you entered does not exist.*
-Restart and try to beat the current high score of **{self.server_configs[server_id].high_score}**!'''
+Restart and try to beat the current high score of **{self.server_configs[server_id].game_state[game_mode].high_score}**!'''
 
-                    await self.handle_mistake(message, response, connection)
+                    await self.handle_mistake(message, response, connection, game_mode)
                     await connection.commit()
                     return
 
@@ -433,15 +442,19 @@ The above entered word is **NOT** being taken into account.''')
             # --------------------
             # Everything is fine
             # ---------------------
-            self.server_configs[server_id].update_current(member_id=message.author.id, current_word=word)
+            self.server_configs[server_id].update_current(game_mode=game_mode,
+                                                          member_id=message.author.id,
+                                                          current_word=word)
 
             timestamps.append(time.monotonic())  # t2
             await WordChainBot.add_reaction(message,
-                                            SPECIAL_REACTION_EMOJIS.get(word, self.server_configs[server_id].reaction_emoji()))
+                                            SPECIAL_REACTION_EMOJIS.get(
+                                                word, self.server_configs[server_id].reaction_emoji(game_mode)
+                                            ))
 
-            last_words: deque[str] = self._server_histories[server_id][message.author.id]
+            last_words: deque[str] = self._server_histories[server_id][message.author.id][game_mode]
             karma: float = calculate_total_karma(word, last_words)
-            self._server_histories[server_id][message.author.id].append(word)
+            self._server_histories[server_id][message.author.id][game_mode].append(word)
 
             timestamps.append(time.monotonic())  # t3
             stmt = update(MemberModel).where(
@@ -456,11 +469,12 @@ The above entered word is **NOT** being taken into account.''')
 
             stmt = insert(UsedWordsModel).values(
                 server_id=message.guild.id,
+                game_mode=game_mode.value,
                 word=word
             )
             await connection.execute(stmt)
 
-            current_count = self.server_configs[server_id].current_count
+            current_count = self.server_configs[server_id].game_state[game_mode].current_count
 
             timestamps.append(time.monotonic())  # t4
             if current_count > 0 and current_count % 100 == 0:
@@ -495,16 +509,15 @@ The above entered word is **NOT** being taken into account.''')
         if server_id not in self.server_configs:
             return
 
-        # Check if the message is in the channel
-        if message.channel.id != self.server_configs[server_id].channel_id:
-            return
-
-        await self.on_message_for_word_chain(message)
+        if message.channel.id == self.server_configs[server_id].game_state[GameMode.NORMAL].channel_id:
+            await self.on_message_for_word_chain(message, GameMode.NORMAL)
+        elif message.channel.id == self.server_configs[server_id].game_state[GameMode.HARD].channel_id:
+            await self.on_message_for_word_chain(message, GameMode.HARD)
 
     # ---------------------------------------------------------------------------------------------------------------
 
-    async def handle_mistake(self, message: discord.Message,
-                             response: str, connection: AsyncConnection) -> None:
+    async def handle_mistake(self, message: discord.Message, response: str, connection: AsyncConnection,
+                             game_mode: GameMode) -> None:
         """Handles when someone messes up the count with a wrong number"""
 
         server_id = message.guild.id
@@ -513,7 +526,7 @@ The above entered word is **NOT** being taken into account.''')
             self.server_configs[server_id].failed_member_id = member_id  # Designate current user as failed member
             await self.add_remove_failed_role(message.guild, connection)
 
-        self.server_configs[server_id].fail_chain(member_id)
+        self.server_configs[server_id].fail_chain(game_mode, member_id)
 
         await WordChainBot.send_message_to_channel(message.channel, response)
         await WordChainBot.add_reaction(message, '❌')
@@ -529,7 +542,8 @@ The above entered word is **NOT** being taken into account.''')
         await connection.execute(stmt)
 
         stmt = delete(UsedWordsModel).where(
-            UsedWordsModel.server_id == server_id
+            UsedWordsModel.server_id == server_id,
+            UsedWordsModel.game_mode == game_mode.value
         )
         await connection.execute(stmt)
 
