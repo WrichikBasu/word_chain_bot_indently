@@ -704,7 +704,8 @@ The above entered word is **NOT** being taken into account.''')
             return
 
         # Check if the message is in the channel
-        if before.channel.id != self.server_configs[before.guild.id].channel_id:
+        if before.channel.id not in (self.server_configs[before.guild.id].game_state[GameMode.NORMAL].channel_id,
+                                     self.server_configs[before.guild.id].game_state[GameMode.HARD].channel_id):
             return
         if not before.reactions:
             return
@@ -713,11 +714,19 @@ The above entered word is **NOT** being taken into account.''')
         if before.content.lower() == after.content.lower():
             return
 
-        if self.server_configs[before.guild.id].current_word:
-            await WordChainBot.send_message_to_channel(after.channel, f'{after.author.mention} edited their word! '
-                f'The **last** word was **{self.server_configs[before.guild.id].current_word}**.')
-        else:
-            await WordChainBot.send_message_to_channel(after.channel, f'{after.author.mention} edited their word!')
+        if before.channel.id == self.server_configs[before.guild.id].game_state[GameMode.NORMAL].channel_id:
+            if self.server_configs[before.guild.id].game_state[GameMode.NORMAL].current_word:
+                await WordChainBot.send_message_to_channel(after.channel, f'{after.author.mention} edited their word! '
+                                                                          f'The **last** word was **{self.server_configs[before.guild.id].game_state[GameMode.NORMAL].current_word}**.')
+            else:
+                await WordChainBot.send_message_to_channel(after.channel, f'{after.author.mention} edited their word!')
+        elif before.channel.id == self.server_configs[before.guild.id].game_state[GameMode.HARD].channel_id:
+            if self.server_configs[before.guild.id].game_state[GameMode.HARD].current_word:
+                await WordChainBot.send_message_to_channel(after.channel, f'{after.author.mention} edited their word! '
+                                                                          f'The **last** word was **{self.server_configs[before.guild.id].game_state[GameMode.HARD].current_word}**.')
+            else:
+                await WordChainBot.send_message_to_channel(after.channel, f'{after.author.mention} edited their word!')
+
 
     # ---------------------------------------------------------------------------------------------------------------
 
