@@ -475,12 +475,14 @@ We will really appreciate it if you vote for our bot on top.gg!
                         stmt = (select(MemberModel.member_id, field)
                                 .where(MemberModel.server_id == interaction.guild.id)
                                 .where(~MemberModel.member_id.in_(select(BannedMemberModel.member_id)))
+                                .where(field > 0)
                                 .order_by(field.desc())
                                 .limit(limit))
                     case 'global':
                         stmt = (select(MemberModel.member_id, func.sum(field))
                                 .group_by(MemberModel.member_id)
                                 .where(~MemberModel.member_id.in_(select(BannedMemberModel.member_id)))
+                                .where(field > 0)
                                 .order_by(func.sum(field).desc())
                                 .limit(limit))
                     case _:
@@ -521,6 +523,7 @@ We will really appreciate it if you vote for our bot on top.gg!
                         stmt = (select(ServerConfigModel.server_id, ServerConfigModel.high_score)
                                 .where(
                             or_(ServerConfigModel.is_banned == 0, ServerConfigModel.server_id == interaction.guild.id))
+                                .where(ServerConfigModel.high_score > 0)
                                 .order_by(ServerConfigModel.high_score.desc())
                                 .limit(limit))
                         game_mode_name = 'Normal Mode'
@@ -528,6 +531,7 @@ We will really appreciate it if you vote for our bot on top.gg!
                         stmt = (select(ServerConfigModel.server_id, ServerConfigModel.hard_mode_high_score)
                                 .where(
                             or_(ServerConfigModel.is_banned == 0, ServerConfigModel.server_id == interaction.guild.id))
+                                .where(ServerConfigModel.high_score > 0)
                                 .order_by(ServerConfigModel.hard_mode_high_score.desc())
                                 .limit(limit))
                         game_mode_name = 'Hard Mode'
