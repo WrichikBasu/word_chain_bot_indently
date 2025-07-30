@@ -134,6 +134,13 @@ class WordChainBot(AutoShardedBot):
                 channel: Optional[discord.TextChannel] = self.get_channel(config.game_state[game_mode].channel_id)
                 if channel:
 
+                    last_message = await channel.fetch_message(channel.last_message_id)
+                    if (last_message and
+                        last_message.author.id == self.server_configs[guild.id].game_state[game_mode].last_member_id and
+                        last_message.content.lower() == self.server_configs[guild.id].game_state[game_mode].current_word):
+                        logger.debug(f'Skipped restart message for {guild.name} ({guild.id}) in game mode {game_mode}')
+                        continue
+
                     emb: discord.Embed = discord.Embed(description='**I\'m now online!**',
                                                        colour=discord.Color.brand_green())
 
