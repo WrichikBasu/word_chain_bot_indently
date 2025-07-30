@@ -103,7 +103,6 @@ class ManagerCommandsCog(Cog, name=COG_NAME_MANAGER_CMDS):
                               description='Sets the role that a user gets upon reaching'
                                           ' a karma of 50 and accuracy > 99%')
         @app_commands.describe(role='The role to be used')
-        @app_commands.default_permissions(manage_guild=True)
         async def set_reliable_role(self, interaction: Interaction, role: Role):
             """Command to set the role to be used when a user attains 50 karma and accuracy > 99%"""
 
@@ -212,7 +211,6 @@ to the other game mode!''')
             self.cog: ManagerCommandsCog = parent_cog
 
         @app_commands.command(name='failed_role', description='Removes the failed role feature')
-        @app_commands.default_permissions(manage_guild=True)
         async def remove_failed_role(self, interaction: Interaction):
 
             await interaction.response.defer()
@@ -239,7 +237,6 @@ to the other game mode!''')
         # ---------------------------------------------------------------------------------------------------------------
 
         @app_commands.command(name='reliable_role', description='Removes the reliable role feature')
-        @app_commands.default_permissions(manage_guild=True)
         async def remove_reliable_role(self, interaction: Interaction):
 
             await interaction.response.defer()
