@@ -95,7 +95,7 @@ class AdminCommandsCog(Cog, name=COG_NAME_ADMIN_CMDS):
 
         await interaction.response.defer()
 
-        server_entries = [f'{guild.id}: {guild.name}' for guild in self.bot.guilds]
+        server_entries = [f'{guild.id} ({guild.owner_id}): {guild.name}' for guild in self.bot.guilds]
         file_content = '\n'.join(server_entries).encode('utf-8')
         file_buffer = io.BytesIO(file_content)
 
