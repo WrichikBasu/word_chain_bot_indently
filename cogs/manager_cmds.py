@@ -59,7 +59,7 @@ class ManagerCommandsCog(Cog, name=COG_NAME_MANAGER_CMDS):
     # =============================================================================================================
 
     @app_commands.command(name='reset_stats', description='Resets all stats for this server, but keeps the configuration')
-    @app_commands.default_permissions(administrator=True)
+    @app_commands.default_permissions(manage_guild=True)
     async def reset_stats(self, interaction: Interaction):
 
         await interaction.response.defer()
