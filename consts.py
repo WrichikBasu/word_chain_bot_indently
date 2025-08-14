@@ -9,11 +9,10 @@ class GameMode(Enum):
     NORMAL = 1
     HARD = 2
 
-
-POSSIBLE_CHARACTERS: str = string.ascii_lowercase + "-"
+ALLOWED_WORDS_PATTERN: str = r'^[a-z]+([-][a-z]+)*$'
 """
-The allowed characters in the input.
-If the input has any character(s) other than these, it will be ignored by the bot.
+Regex pattern for allowed words. A valid word has only lowercase ASCII letters and may have hyphens anywhere in the
+middle of the word, but not in the start or end of the word.
 """
 
 # Names of individual cogs

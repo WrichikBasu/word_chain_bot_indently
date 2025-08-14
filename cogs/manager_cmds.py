@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from typing import TYPE_CHECKING
 
 import discord
@@ -10,7 +11,7 @@ from discord.app_commands import Group
 from discord.ext.commands import Cog
 from sqlalchemy import CursorResult, delete, insert, select
 
-from consts import COG_NAME_MANAGER_CMDS, FIRST_TOKEN_SCORES, LOGGER_NAME_MANAGER_COG, POSSIBLE_CHARACTERS, GameMode
+from consts import ALLOWED_WORDS_PATTERN, COG_NAME_MANAGER_CMDS, FIRST_TOKEN_SCORES, LOGGER_NAME_MANAGER_COG, GameMode
 from model import BlacklistModel, WhitelistModel
 
 if TYPE_CHECKING:
@@ -33,7 +34,7 @@ class ManagerCommandsCog(Cog, name=COG_NAME_MANAGER_CMDS):
 
     @staticmethod
     def is_generally_illegal_word(word: str):
-        return (not all(c in POSSIBLE_CHARACTERS for c in word.lower()) or
+        return (not re.search(ALLOWED_WORDS_PATTERN, word.lower()) or
                 any(word[:game_mode.value] not in FIRST_TOKEN_SCORES[game_mode] or
                     word[-game_mode.value:] not in FIRST_TOKEN_SCORES[game_mode]
                     for game_mode in GameMode)
