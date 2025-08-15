@@ -8,10 +8,11 @@ import discord
 from discord import Colour, Embed, Interaction, Permissions, Role, TextChannel, app_commands
 from discord.app_commands import Group
 from discord.ext.commands import Cog
-from sqlalchemy import CursorResult, delete, insert, select
+from sqlalchemy import CursorResult, delete, insert, select, update
+from sqlalchemy.exc import SQLAlchemyError
 
 from consts import COG_NAME_MANAGER_CMDS, FIRST_TOKEN_SCORES, LOGGER_NAME_MANAGER_COG, POSSIBLE_CHARACTERS, GameMode
-from model import BlacklistModel, WhitelistModel
+from model import BlacklistModel, GameModeState, MemberModel, ServerConfig, ServerConfigModel, WhitelistModel
 
 if TYPE_CHECKING:
     from main import WordChainBot
@@ -57,6 +58,38 @@ class ManagerCommandsCog(Cog, name=COG_NAME_MANAGER_CMDS):
 
     # =============================================================================================================
 
+    @app_commands.command(name='reset_stats', description='Resets all stats for this server, but keeps the configuration')
+    @app_commands.default_permissions(manage_guild=True)
+    async def reset_stats(self, interaction: Interaction):
+
+        await interaction.response.defer()
+
+        config = self.bot.server_configs[interaction.guild_id]
+        config.game_state[GameMode.NORMAL] = GameModeState()
+        config.game_state[GameMode.HARD] = GameModeState()
+        config.failed_member_id = None
+
+        async with self.bot.db_connection() as connection:
+            try:
+                await config.sync_to_db_with_connection(connection)
+
+                stmt = delete(MemberModel).where(
+                    MemberModel.server_id == interaction.guild_id
+                )
+
+                await connection.execute(stmt)
+                await connection.commit()
+                emb: Embed = Embed(title='Success', colour=Colour.green(),
+                                   description=f'''Stats have been reset.''')
+            except SQLAlchemyError as e:
+                logger.error(e)
+                emb: Embed = Embed(title='Error', colour=Colour.red(),
+                                   description=f'''There was an error. Changes might not have been saved.''')
+
+        await interaction.followup.send(embed=emb)
+
+    # =============================================================================================================
+
     class SetupCommandsGroup(Group):
 
         def __init__(self, parent_cog: ManagerCommandsCog):
@@ -70,7 +103,6 @@ class ManagerCommandsCog(Cog, name=COG_NAME_MANAGER_CMDS):
                               description='Sets the role that a user gets upon reaching'
                                           ' a karma of 50 and accuracy > 99%')
         @app_commands.describe(role='The role to be used')
-        @app_commands.default_permissions(manage_guild=True)
         async def set_reliable_role(self, interaction: Interaction, role: Role):
             """Command to set the role to be used when a user attains 50 karma and accuracy > 99%"""
 
@@ -179,7 +211,6 @@ to the other game mode!''')
             self.cog: ManagerCommandsCog = parent_cog
 
         @app_commands.command(name='failed_role', description='Removes the failed role feature')
-        @app_commands.default_permissions(manage_guild=True)
         async def remove_failed_role(self, interaction: Interaction):
 
             await interaction.response.defer()
@@ -206,7 +237,6 @@ to the other game mode!''')
         # ---------------------------------------------------------------------------------------------------------------
 
         @app_commands.command(name='reliable_role', description='Removes the reliable role feature')
-        @app_commands.default_permissions(manage_guild=True)
         async def remove_reliable_role(self, interaction: Interaction):
 
             await interaction.response.defer()
