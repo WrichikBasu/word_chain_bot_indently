@@ -1,4 +1,3 @@
-import string
 from enum import Enum
 
 
@@ -8,6 +7,7 @@ class GameMode(Enum):
     """
     NORMAL = 1
     HARD = 2
+
 
 ALLOWED_WORDS_PATTERN: str = r'^[a-z]+([-][a-z]+)*$'
 """

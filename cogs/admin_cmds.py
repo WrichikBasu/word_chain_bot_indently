@@ -14,7 +14,8 @@ from sqlalchemy import delete, insert, select, update
 
 from consts import (COG_NAME_ADMIN_CMDS, LOGGER_NAME_ADMIN_COG, LOGGER_NAME_MAIN, LOGGER_NAME_MANAGER_COG,
                     LOGGER_NAME_USER_COG, LOGGERS_LIST)
-from model import BannedMemberModel, BlacklistModel, MemberModel, ServerConfigModel, UsedWordsModel, WhitelistModel
+from model import BannedMemberModel, BlacklistModel, MemberModel, ServerConfigModel, UsedWordsModel, WhitelistModel, \
+    ServerConfig
 
 if TYPE_CHECKING:
     from main import WordChainBot
@@ -68,9 +69,10 @@ class AdminCommandsCog(Cog, name=COG_NAME_ADMIN_CMDS):
         count_sent: int = 0
         count_failed: int = 0
         for guild in self.bot.guilds:
-            config = self.bot.server_configs[guild.id]
 
-            channel: Optional[TextChannel] = self.bot.get_channel(config.channel_id)
+            config: ServerConfig = self.bot.server_configs[guild.id]
+
+            channel: Optional[TextChannel] = self.bot.get_channel(config.channel_id) if config.channel_id else None
             if channel:
                 try:
                     await channel.send(embed=emb)
@@ -541,7 +543,6 @@ class AdminCommandsCog(Cog, name=COG_NAME_ADMIN_CMDS):
                     server_entries = [f'{server_id}: {self.cog.bot.get_guild(server_id).name if self.cog.bot.get_guild(server_id) is not None else '###'}' for server_id in server_ids]
                     await interaction.followup.send(f'''These servers are currently banned:
 * {'\n* '.join(server_entries)}''')
-
 
     # ============================================================================================================
 
