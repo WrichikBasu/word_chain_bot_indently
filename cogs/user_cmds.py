@@ -3,6 +3,7 @@ from __future__ import annotations
 import concurrent.futures
 import logging
 import os
+import re
 from collections import defaultdict
 from typing import TYPE_CHECKING, Optional, Sequence
 
@@ -73,7 +74,7 @@ class UserCommandsCog(Cog, name=COG_NAME_USER_CMDS):
 
         emb = Embed(color=Colour.blurple())
 
-        if not all(c in POSSIBLE_CHARACTERS for c in word.lower()):
+        if not re.search(ALLOWED_WORDS_PATTERN, word.lower()):
             emb.description = f'❌ **{word}** is **not** a legal word.'
             await interaction.followup.send(embed=emb)
             return

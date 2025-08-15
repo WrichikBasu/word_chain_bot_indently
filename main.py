@@ -5,6 +5,7 @@ import inspect
 import logging
 import os
 import random
+import re
 import time
 from collections import defaultdict, deque
 from logging.config import fileConfig
@@ -279,7 +280,7 @@ class WordChainBot(AutoShardedBot):
         server_id = message.guild.id
         word: str = message.content.lower()
 
-        if not all(c in POSSIBLE_CHARACTERS for c in word):
+        if not re.search(ALLOWED_WORDS_PATTERN, word):
             return
         if len(word) == 0:
             return
@@ -683,7 +684,7 @@ The above entered word is **NOT** being taken into account.''')
             return
         if not message.reactions:
             return
-        if not all(c in POSSIBLE_CHARACTERS for c in message.content.lower()):
+        if not re.search(ALLOWED_WORDS_PATTERN, message.content.lower()):
             return
 
         if message.channel.id == self.server_configs[message.guild.id].game_state[GameMode.NORMAL].channel_id:
@@ -716,7 +717,7 @@ The above entered word is **NOT** being taken into account.''')
             return
         if not before.reactions:
             return
-        if not all(c in POSSIBLE_CHARACTERS for c in before.content.lower()):
+        if not re.search(ALLOWED_WORDS_PATTERN, before.content.lower()):
             return
         if before.content.lower() == after.content.lower():
             return
