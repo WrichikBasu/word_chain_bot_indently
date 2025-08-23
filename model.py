@@ -99,7 +99,6 @@ class GameModeState(BaseModel):
 class ServerConfig(BaseModel):
 
     server_id: int
-    channel_id: Optional[int] = None
     game_state: dict[GameMode, GameModeState] = Field(default_factory=lambda: {
         GameMode.NORMAL: GameModeState(),
         GameMode.HARD: GameModeState()

@@ -13,7 +13,7 @@ from dotenv import load_dotenv
 from sqlalchemy import delete, insert, select, update
 
 from consts import (COG_NAME_ADMIN_CMDS, LOGGER_NAME_ADMIN_COG, LOGGER_NAME_MAIN, LOGGER_NAME_MANAGER_COG,
-                    LOGGER_NAME_USER_COG, LOGGERS_LIST)
+                    LOGGER_NAME_USER_COG, LOGGERS_LIST, GameMode)
 from model import BannedMemberModel, BlacklistModel, MemberModel, ServerConfigModel, UsedWordsModel, WhitelistModel, \
     ServerConfig
 
@@ -72,14 +72,14 @@ class AdminCommandsCog(Cog, name=COG_NAME_ADMIN_CMDS):
 
             config: ServerConfig = self.bot.server_configs[guild.id]
 
-            channel: Optional[TextChannel] = self.bot.get_channel(config.channel_id) if config.channel_id else None
-            if channel:
-                try:
-                    await channel.send(embed=emb)
-                    count_sent += 1
-                except Forbidden as _:
-                    logger.error(f'Failed to send announcement to {guild.name} (ID: {guild.id}) due to missing perms.')
-                    count_failed += 1
+            for game_mode in GameMode:
+                if channel := self.bot.get_channel(config.game_state[game_mode].channel_id):
+                    try:
+                        await channel.send(embed=emb)
+                        count_sent += 1
+                    except Forbidden as _:
+                        logger.error(f'Failed to send announcement to {guild.name} (ID: {guild.id}) due to missing perms.')
+                        count_failed += 1
 
         emb2: Embed = Embed(title='Announcement status', colour=Colour.yellow(), description='Command completed.')
         emb2.add_field(name='Success', value=f'{count_sent} servers', inline=True)
