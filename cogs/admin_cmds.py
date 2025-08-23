@@ -7,7 +7,7 @@ import os
 from logging import Logger
 from typing import TYPE_CHECKING, Optional
 
-from discord import Colour, Embed, File, Forbidden, Interaction, Object, Permissions, TextChannel, app_commands
+from discord import Colour, Embed, File, Forbidden, Interaction, Object, Permissions, app_commands
 from discord.ext.commands import Cog
 from dotenv import load_dotenv
 from sqlalchemy import delete, insert, select, update

@@ -202,7 +202,6 @@ class ServerConfig(BaseModel):
 
         return ServerConfig(
             server_id=row.server_id,
-            channel_id=row.channel_id,
             game_state=game_state,
             reliable_role_id=row.reliable_role_id,
             failed_role_id=row.failed_role_id,

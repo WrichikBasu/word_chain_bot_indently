@@ -9,11 +9,11 @@ import discord
 from discord import Colour, Embed, Interaction, Permissions, Role, TextChannel, app_commands
 from discord.app_commands import Group
 from discord.ext.commands import Cog
-from sqlalchemy import CursorResult, delete, insert, select, update
+from sqlalchemy import CursorResult, delete, insert, select
 from sqlalchemy.exc import SQLAlchemyError
 
 from consts import ALLOWED_WORDS_PATTERN, COG_NAME_MANAGER_CMDS, FIRST_TOKEN_SCORES, LOGGER_NAME_MANAGER_COG, GameMode
-from model import BlacklistModel, WhitelistModel
+from model import BlacklistModel, WhitelistModel, GameModeState, MemberModel
 
 if TYPE_CHECKING:
     from main import WordChainBot
@@ -59,7 +59,8 @@ class ManagerCommandsCog(Cog, name=COG_NAME_MANAGER_CMDS):
 
     # =============================================================================================================
 
-    @app_commands.command(name='reset_stats', description='Resets all stats for this server, but keeps the configuration')
+    @app_commands.command(name='reset_stats', description='Resets all stats for this server, but keeps the '
+                                                          'configuration')
     @app_commands.default_permissions(manage_guild=True)
     async def reset_stats(self, interaction: Interaction):
 
