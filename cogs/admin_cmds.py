@@ -7,14 +7,15 @@ import os
 from logging import Logger
 from typing import TYPE_CHECKING, Optional
 
-from discord import Colour, Embed, File, Forbidden, Interaction, Object, Permissions, TextChannel, app_commands
+from discord import Colour, Embed, File, Forbidden, Interaction, Object, Permissions, app_commands
 from discord.ext.commands import Cog
 from dotenv import load_dotenv
 from sqlalchemy import delete, insert, select, update
 
 from consts import (COG_NAME_ADMIN_CMDS, LOGGER_NAME_ADMIN_COG, LOGGER_NAME_MAIN, LOGGER_NAME_MANAGER_COG,
-                    LOGGER_NAME_USER_COG, LOGGERS_LIST)
-from model import BannedMemberModel, BlacklistModel, MemberModel, ServerConfigModel, UsedWordsModel, WhitelistModel
+                    LOGGER_NAME_USER_COG, LOGGERS_LIST, GameMode)
+from model import BannedMemberModel, BlacklistModel, MemberModel, ServerConfigModel, UsedWordsModel, WhitelistModel, \
+    ServerConfig
 
 if TYPE_CHECKING:
     from main import WordChainBot
@@ -68,16 +69,17 @@ class AdminCommandsCog(Cog, name=COG_NAME_ADMIN_CMDS):
         count_sent: int = 0
         count_failed: int = 0
         for guild in self.bot.guilds:
-            config = self.bot.server_configs[guild.id]
 
-            channel: Optional[TextChannel] = self.bot.get_channel(config.channel_id)
-            if channel:
-                try:
-                    await channel.send(embed=emb)
-                    count_sent += 1
-                except Forbidden as _:
-                    logger.error(f'Failed to send announcement to {guild.name} (ID: {guild.id}) due to missing perms.')
-                    count_failed += 1
+            config: ServerConfig = self.bot.server_configs[guild.id]
+
+            for game_mode in GameMode:
+                if channel := self.bot.get_channel(config.game_state[game_mode].channel_id):
+                    try:
+                        await channel.send(embed=emb)
+                        count_sent += 1
+                    except Forbidden as _:
+                        logger.error(f'Failed to send announcement to {guild.name} (ID: {guild.id}) due to missing perms.')
+                        count_failed += 1
 
         emb2: Embed = Embed(title='Announcement status', colour=Colour.yellow(), description='Command completed.')
         emb2.add_field(name='Success', value=f'{count_sent} servers', inline=True)
@@ -541,7 +543,6 @@ class AdminCommandsCog(Cog, name=COG_NAME_ADMIN_CMDS):
                     server_entries = [f'{server_id}: {self.cog.bot.get_guild(server_id).name if self.cog.bot.get_guild(server_id) is not None else '###'}' for server_id in server_ids]
                     await interaction.followup.send(f'''These servers are currently banned:
 * {'\n* '.join(server_entries)}''')
-
 
     # ============================================================================================================
 

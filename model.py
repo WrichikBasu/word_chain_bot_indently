@@ -14,6 +14,10 @@ if TYPE_CHECKING:
     from main import WordChainBot  # Thanks to https://stackoverflow.com/a/39757388/8387076
 
 
+# ******************************************************************************************************************
+# SQLAlchemy Models
+# ******************************************************************************************************************
+
 class Base(DeclarativeBase):
     pass
 
@@ -78,6 +82,10 @@ class BannedMemberModel(Base):
     __tablename__ = 'banned_member'
     member_id: Mapped[int] = mapped_column(Integer, primary_key=True)
 
+# ********************************************************************************************************************
+# PYDANTIC MODELS
+# ********************************************************************************************************************
+
 
 class GameModeState(BaseModel):
     channel_id: Optional[int] = None
@@ -89,6 +97,7 @@ class GameModeState(BaseModel):
 
 
 class ServerConfig(BaseModel):
+
     server_id: int
     game_state: dict[GameMode, GameModeState] = Field(default_factory=lambda: {
         GameMode.NORMAL: GameModeState(),

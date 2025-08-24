@@ -1,8 +1,8 @@
 discord.py~=2.5.0
-python-dotenv~=1.1.0
+python-dotenv~=1.1.1
 requests-futures~=1.0.2
-pydantic~=2.11.4
+pydantic~=2.11.7
 SQLAlchemy~=2.0.36
 aiosqlite~=0.21.0
-alembic~=1.15.2
-uuid6~=2024.7.10
+alembic~=1.16.4
+uuid6~=2025.0.1

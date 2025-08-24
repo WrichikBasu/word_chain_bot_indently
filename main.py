@@ -6,6 +6,7 @@ import logging
 import os
 import random
 import re
+import string
 import time
 from collections import defaultdict, deque
 from logging.config import fileConfig
@@ -22,7 +23,11 @@ from sqlalchemy import CursorResult, delete, exists, func, insert, select, updat
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, create_async_engine
 
-from consts import *
+from consts import (COG_NAME_ADMIN_CMDS, COG_NAME_MANAGER_CMDS, COG_NAME_USER_CMDS,
+                    LOGGER_NAME_MAIN, GameMode, HISTORY_LENGTH, RELIABLE_ROLE_KARMA_THRESHOLD,
+                    RELIABLE_ROLE_ACCURACY_THRESHOLD, ALLOWED_WORDS_PATTERN, SPECIAL_REACTION_EMOJIS, MISTAKE_PENALTY,
+                    GLOBAL_BLACKLIST_2_LETTER_WORDS, GLOBAL_BLACKLIST_N_LETTER_WORDS, GLOBAL_WHITELIST_3_LETTER_WORDS,
+                    COGS_LIST, )
 from decorator import log_execution_time
 from karma_calcs import calculate_total_karma
 from model import (BannedMemberModel, BlacklistModel, MemberModel, ServerConfig, ServerConfigModel, UsedWordsModel,
@@ -149,7 +154,6 @@ class WordChainBot(AutoShardedBot):
                     except discord.errors.Forbidden:
                         logger.info(f'Could not send ready message to {guild.name} ({guild.id}) due to missing permissions.')
 
-                
         logger.info(f'Loaded {len(self.server_configs)} server configs, running on {len(self.guilds)} servers')
 
     # ---------------------------------------------------------------------------------------------------------------

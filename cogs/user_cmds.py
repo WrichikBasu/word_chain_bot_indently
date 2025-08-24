@@ -16,7 +16,7 @@ from sqlalchemy import CursorResult, func, or_, select
 from sqlalchemy.engine.row import Row
 from sqlalchemy.sql.functions import count
 
-from consts import *
+from consts import COG_NAME_USER_CMDS, ALLOWED_WORDS_PATTERN, GameMode, LOGGER_NAME_USER_COG
 from model import BannedMemberModel, Member, MemberModel, ServerConfig, ServerConfigModel
 from views.dropdown import Dropdown
 
