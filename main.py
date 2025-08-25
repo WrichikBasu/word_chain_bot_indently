@@ -621,8 +621,11 @@ The above entered word is **NOT** being taken into account.''')
             "format": "json",
             "profile": "strict"
         }
+        headers: dict = {
+            "User-Agent": "word-chain-bot"
+        }
 
-        return session.get(url=url, params=params)
+        return session.get(url=url, params=params, headers=headers)
 
     # ---------------------------------------------------------------------------------------------------------------
 
