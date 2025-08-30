@@ -1,12 +1,12 @@
 ## Multi-Language Feature Roadmap
-- [ ] Add field to SQLAlchemy models (comma-separated string of languages).
-  - [ ] `WordCacheModel.language`
-  - [ ] `ServerConfigModel.languages`
-- [ ] Alembic upgrade/downgrade.
-- [ ] Add field to Pydantic models (read/write from/to comma-separated string from list).
-  - [ ] `WordCache.language`
-  - [ ] `ServerConfig.languages`
-  - [ ] Accordingly manage reading and updating the database.
+- [x] Add field to SQLAlchemy models (comma-separated string of languages).
+  - [x] `WordCacheModel.language`
+  - [x] `ServerConfigModel.languages`
+- [x] Alembic upgrade/downgrade.
+- [x] Add field to Pydantic models (read/write from/to comma-separated string from list).
+  - [x] `WordCache.language`
+  - [x] `ServerConfig.languages`
+  - [x] Accordingly manage reading and updating the database.
 - [ ] `pyproject.toml` and `requirements.txt` update for `unidecode` library.
 - [ ] Filter input via `unidecode`, then match with the existing regex.
 - [ ] Search `WordCache` for all languages in `ServerConfig.languages`.
