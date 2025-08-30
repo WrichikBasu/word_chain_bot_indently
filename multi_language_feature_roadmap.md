@@ -7,7 +7,7 @@
   - [x] `WordCache.language`
   - [x] `ServerConfig.languages`
   - [x] Accordingly manage reading and updating the database.
-- [ ] `pyproject.toml` and `requirements.txt` update for `unidecode` library.
+- [x] `pyproject.toml` and `requirements.txt` update for `unidecode` library.
 - [ ] Filter input via `unidecode`, then match with the existing regex.
 - [ ] Search `WordCache` for all languages in `ServerConfig.languages`.
 - [ ] **Keep accents** when comparing equality of last and first letters.
