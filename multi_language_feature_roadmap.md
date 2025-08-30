@@ -1,0 +1,23 @@
+## Multi-Language Feature Roadmap
+- [ ] Add field to SQLAlchemy models (comma-separated string of languages).
+  - [ ] `WordCacheModel.language`
+  - [ ] `ServerConfigModel.languages`
+- [ ] Alembic upgrade/downgrade.
+- [ ] Add field to Pydantic models (read/write from/to comma-separated string from list).
+  - [ ] `WordCache.language`
+  - [ ] `ServerConfig.languages`
+  - [ ] Accordingly manage reading and updating the database.
+- [ ] `pyproject.toml` and `requirements.txt` update for `unidecode` library.
+- [ ] Filter input via `unidecode`, then match with the existing regex.
+- [ ] Search `WordCache` for all languages in `ServerConfig.languages`.
+- [ ] **Keep accents** when comparing equality of last and first letters.
+- [ ] Separate API query for each language, started concurrently.
+  - [ ] Proceed if just one language returns True, but
+  - [ ] Still check the remaining languages to add to whitelist.
+- [ ] For **default blacklists**, if unidecode(word) ≠ input word, **skip** default blacklists.
+- [ ] Commands
+  - [ ] Server Manager Commands
+    - [ ] Add/remove languages
+  - [ ] User Commands
+    - [ ] Add language option to `/check_word` (defaults to English)
+
