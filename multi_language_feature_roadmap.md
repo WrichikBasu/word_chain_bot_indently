@@ -8,16 +8,27 @@
   - [x] `ServerConfig.languages`
   - [x] Accordingly manage reading and updating the database.
 - [x] `pyproject.toml` and `requirements.txt` update for `unidecode` library.
-- [ ] Filter input via `unidecode`, then match with the existing regex.
-- [ ] Search `WordCache` for all languages in `ServerConfig.languages`.
-- [ ] **Keep accents** when comparing equality of last and first letters.
-- [ ] Separate API query for each language, started concurrently.
-  - [ ] Proceed if just one language returns True, but
-  - [ ] Still check the remaining languages to add to whitelist.
-- [ ] For **default blacklists**, if unidecode(word) ≠ input word, **skip** default blacklists.
+- [x] Filter input via `unidecode`, then match with the existing regex.
+- [x] Search `WordCache` for all languages in `ServerConfig.languages`.
+- [x] **Keep accents** when comparing equality of last and first letters.
+- [x] Separate API query for each language, started concurrently.
+  - [x] Proceed if just one language returns True, BUT ...
+  - [x] ... check the remaining languages to add to whitelist.
+- [x] **Special check:** Add a word to the English word cache IF and ONLY IF the word is composed of letters of the
+English alphabet. This is because many words in other languages have `en.wiktionary` entries.
+- [x] Use `unidecode` in karma calculations.
+- [x] **Skip** **default blacklists** if unidecode(word) ≠ input word.
+- [ ] Modify message sent on messing up to include the server languages.
 - [ ] Commands
   - [ ] Server Manager Commands
     - [ ] Add/remove languages
   - [ ] User Commands
-    - [ ] Add language option to `/check_word` (defaults to English)
+    - [x] ~~Add language option to `/check_word` (defaults to English)~~ (see notes below)
+    - [x] Modify `/check_word` to correctly match the pattern, default blacklists,
+word cache, and then start a query if required.
+    - [ ] Let users view the languages allowed in the server.
 
+## Notes
+- `/check_word` will default to the languages enabled in the guild it is being run in.
+- No language field for server-specific blacklist, whitelist and used_words schema, 
+as it doesn't matter the language as long as the word is found in the list/schema.

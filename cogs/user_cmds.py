@@ -5,6 +5,7 @@ import logging
 import os
 import re
 from collections import defaultdict
+from concurrent.futures import Future
 from typing import TYPE_CHECKING, Optional, Sequence
 
 import discord
@@ -74,7 +75,7 @@ class UserCommandsCog(Cog, name=COG_NAME_USER_CMDS):
 
         emb = Embed(color=Colour.blurple())
 
-        if not re.search(ALLOWED_WORDS_PATTERN, word.lower()):
+        if not WordChainBot.word_matches_pattern(word):
             emb.description = f'❌ **{word}** is **not** a legal word.'
             await interaction.followup.send(embed=emb)
             return
@@ -88,7 +89,9 @@ class UserCommandsCog(Cog, name=COG_NAME_USER_CMDS):
 
         async with self.bot.db_connection() as connection:
             if await self.bot.is_word_whitelisted(word, interaction.guild.id, connection):
-                emb.description = f'✅ The word **{word}** is valid.'
+                emb.description = f'''✅ The word **{word}** is valid.\n
+-# Please note that the validity of words is checked only for the languages that are enabled in the server.
+Therefore, a word that is valid in this server may not be valid in another server.'''
                 await interaction.followup.send(embed=emb)
                 return
 
@@ -97,24 +100,42 @@ class UserCommandsCog(Cog, name=COG_NAME_USER_CMDS):
                 await interaction.followup.send(embed=emb)
                 return
 
-            if await self.bot.is_word_in_cache(word, connection):
-                emb.description = f'✅ The word **{word}** is valid.'
+            if await self.bot.is_word_in_cache(word, connection, self.bot.server_configs[interaction.guild.id].languages):
+                emb.description = f'''✅ The word **{word}** is valid.\n
+-# Please note that the validity of words is checked only for the languages that are enabled in the server.
+Therefore, a word that is valid in this server may not be valid in another server.'''
                 await interaction.followup.send(embed=emb)
                 return
 
-            future: concurrent.futures.Future = self.bot.start_api_query(word)
+            futures: list[Future] = self.bot.start_api_queries(word,
+                                                              self.bot.server_configs[interaction.guild.id].languages)
 
-            match self.bot.get_query_response(future):
-                case self.bot.API_RESPONSE_WORD_EXISTS:
+            query_response_code: int
 
-                    emb.description = f'✅ The word **{word}** is valid.'
+            for future in futures:
+                match self.bot.get_query_response(future):
 
-                    await self.bot.add_to_cache(word, connection)
+                    case self.bot.API_RESPONSE_WORD_EXISTS:
+                        query_response_code = WordChainBot.API_RESPONSE_WORD_EXISTS
+                        emb.description = f'''✅ The word **{word}** is valid.\n
+-# Please note that the validity of words is checked only for the languages that are enabled in the server.
+Therefore, a word that is valid in this server may not be valid in another server.'''
 
-                case self.bot.API_RESPONSE_WORD_DOESNT_EXIST:
-                    emb.description = f'❌ **{word}** is **not** a valid word.'
-                case _:
-                    emb.description = f'⚠️ There was an issue in fetching the result.'
+                        await self.bot.add_words_to_cache(futures)  # Check and add to cache for all selected languages
+                        break
+
+                    case self.bot.API_RESPONSE_WORD_DOESNT_EXIST:
+                        query_response_code = WordChainBot.API_RESPONSE_WORD_DOESNT_EXIST
+                    case _:
+                        query_response_code = WordChainBot.API_RESPONSE_ERROR
+
+            if query_response_code == WordChainBot.API_RESPONSE_WORD_DOESNT_EXIST:
+                emb.description = emb.description = f'''❌ **{word}** is **NOT** a valid word.\n
+-# Please note that the validity of words is checked only for the languages that are enabled in the server.
+Therefore, a word that is valid in this server may not be valid in another server.'''
+
+            elif query_response_code == WordChainBot.API_RESPONSE_ERROR:
+                emb.description = f'⚠️ There was an issue in fetching the result.'
 
             await interaction.followup.send(embed=emb)
 

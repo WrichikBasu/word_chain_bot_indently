@@ -979,7 +979,7 @@ SPECIAL_REACTION_EMOJIS: dict[str, str] = {
 A dictionary mapping the words to the corresponding special emojis.
 """
 
-GLOBAL_BLACKLIST_2_LETTER_WORDS: set[str] = {
+GLOBAL_BLACKLIST_2_LETTER_WORDS_EN: set[str] = {
     'aa',
     'ab',
     'ac',
@@ -1633,7 +1633,7 @@ GLOBAL_BLACKLIST_2_LETTER_WORDS: set[str] = {
 A list of 2-letter words that are not legal words.
 """
 
-GLOBAL_WHITELIST_3_LETTER_WORDS: set[str] = {
+GLOBAL_WHITELIST_3_LETTER_WORDS_EN: set[str] = {
     'eve',
     'ewe',
     'sap',
@@ -1994,7 +1994,7 @@ A global whitelist containing all LEGAL three letter words.
 NOTE: This is a WHITElist, i.e. an inverted blacklist.
 """
 
-GLOBAL_BLACKLIST_N_LETTER_WORDS: set[str] = {
+GLOBAL_BLACKLIST_N_LETTER_WORDS_EN: set[str] = {
     'aaaa',
     'bbbb',
     'cccc',
