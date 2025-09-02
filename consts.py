@@ -20,7 +20,7 @@ COG_NAME_ADMIN_CMDS: str = "admin_cmds"
 COG_NAME_MANAGER_CMDS: str = "manager_cmds"
 COG_NAME_USER_CMDS: str = "user_cmds"
 
-COGS_LIST: list[str] = [COG_NAME_ADMIN_CMDS, COG_NAME_MANAGER_CMDS,  COG_NAME_USER_CMDS]
+COGS_LIST: list[str] = [COG_NAME_ADMIN_CMDS, COG_NAME_MANAGER_CMDS, COG_NAME_USER_CMDS]
 """List of all cogs."""
 
 # Names of individual loggers
@@ -2019,4 +2019,53 @@ GLOBAL_BLACKLIST_N_LETTER_WORDS_EN: set[str] = {
 """
 A list of N-letter words that are not legal words (N > 3).
 """
+
+
+class Languages(Enum):
+    """
+    An enumeration of the languages supported by the bot.
+    """
+    # Latin script
+    ENGLISH = "en"
+    FRENCH = "fr"
+    GERMAN = "de"
+    DUTCH = "nl"
+    LUXEMBOURGISH = "lb"
+    SPANISH = "es"
+    PORTUGUESE = "pt"
+    ITALIAN = "it"
+    CATALAN = "ca"
+    GALICIAN = "gl"
+    DANISH = "da"
+    NORWEGIAN = "no"
+    SWEDISH = "sv"
+    ICELANDIC = "is"
+    FAROESE = "fo"
+    POLISH = "pl"
+    CZECH = "cs"
+    SLOVAK = "sk"
+    SLOVENE = "sl"
+    CROATIAN = "hr"
+    BOSNIAN = "bs"
+    SERBIAN = "sr"
+    HUNGARIAN = "hu"
+    ROMANIAN = "ro"
+    ALBANIAN = "sq"
+    IRISH = "ga"
+    SCOTTISH_GAELIC = "gd"
+    WELSH = "cy"
+    BRETON = "br"
+    BASQUE = "eu"
+    MALTESE = "mt"
+    TURKISH = "tr"
+
+    # Greek script
+    GREEK = "el"
+
+    # Cyrillic script
+    RUSSIAN = "ru"
+    UKRAINIAN = "uk"
+    BELARUSIAN = "be"
+    BULGARIAN = "bg"
+    MACEDONIAN = "mk"
 
