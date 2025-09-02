@@ -10,6 +10,7 @@ import string
 import time
 from collections import defaultdict, deque
 from concurrent.futures import Future
+from copy import deepcopy
 from logging.config import fileConfig
 from typing import AsyncIterator, Optional, List
 
@@ -375,7 +376,10 @@ The chain has **not** been broken. Please enter another word.''')
             else:
                 # Word neither whitelisted, nor found in cache.
                 # Start the API request, but deal with it later
-                futures = self.start_api_queries(word, self.server_configs[server_id].languages)
+                langs = deepcopy(self.server_configs[server_id].languages)
+                if unidecode(word) != word:
+                    langs.remove('en')
+                futures = self.start_api_queries(word, langs)
 
             # -----------------------------------
             # Check repetitions
@@ -441,7 +445,7 @@ current high score of **{self.server_configs[server_id].game_state[game_mode].hi
                         break
 
                 # Add the words to the cache for all languages
-                await WordChainBot.add_words_to_cache(futures)
+                await WordChainBot.add_words_to_cache(futures, connection)
 
                 if query_result_code == WordChainBot.API_RESPONSE_WORD_DOESNT_EXIST:
 
@@ -462,7 +466,6 @@ Restart and try to beat the current high score of **{self.server_configs[server_
                     return
 
                 elif query_result_code == WordChainBot.API_RESPONSE_ERROR:
-
                     await WordChainBot.add_reaction(message, '⚠️')
                     await WordChainBot.send_message_to_channel(message.channel, ''':octagonal_sign: There was an issue in the backend.
 The above entered word is **NOT** being taken into account.''')
@@ -471,6 +474,7 @@ The above entered word is **NOT** being taken into account.''')
             # --------------------
             # Everything is fine
             # ---------------------
+            print("here")
             self.server_configs[server_id].update_current(game_mode=game_mode,
                                                           member_id=message.author.id,
                                                           current_word=word)
@@ -648,14 +652,14 @@ The above entered word is **NOT** being taken into account.''')
     # ---------------------------------------------------------------------------------------------------------------
 
     @staticmethod
-    def start_api_queries(word: str, languages: List[str] = None) -> List[Future]:
+    def start_api_queries(word: str, languages: List[str]) -> List[Future]:
         """
         Starts Wiktionary API queries in the background to find the given word, in each of the
         given languages.
 
         Parameters
         ----------
-        languages : list[str] | None = None
+        languages : list[str]
              A list of languages to search in. Defaults to only English.
         word : str
              The word to be searched for.
@@ -665,11 +669,6 @@ The above entered word is **NOT** being taken into account.''')
         list[concurrent.futures.Future]
               A list of Future objects for the API query, one for each language.
         """
-        if not languages:
-            languages = ['en']
-
-        print(str(languages))
-
         futures: List[Future] = []
 
         for language in languages:
@@ -720,9 +719,6 @@ The above entered word is **NOT** being taken into account.''')
                 return word_chain_bot.API_RESPONSE_ERROR
 
             data = response.json()
-
-            print(data)
-
             word: str = data[0]
             best_match: str = data[1][0]  # Should raise an IndexError if no match is returned
 
@@ -746,38 +742,37 @@ The above entered word is **NOT** being taken into account.''')
     # ---------------------------------------------------------------------------------------------------------------
 
     @staticmethod
-    async def add_words_to_cache(futures: List[Future]) -> None:
+    async def add_words_to_cache(futures: List[Future], connection: AsyncConnection) -> None:
         """
-        From the given list of Future objects, get the results of the queries and add the words that were found to the cache.
+        From the given list of Future objects, get the results of the queries and
+        add the words that were found to the cache.
 
         Parameters
         ----------
         futures : List[Future]
             A list of Future objects for the API queries.
+        connection : AsyncConnection
+            The AsyncConnection object to access the db.
         """
-        async with word_chain_bot.db_connection() as connection:
+        future: Future
+        for future in futures:
+            try:
+                response = future.result(timeout=5)
 
-            future: Future
-            for future in futures:
-                try:
-                    response = future.result(timeout=5)
-
-                    if response.status_code >= 400:
-                        continue
-
-                    data = response.json()
-
-                    print(data)
-
-                    word: str = data[0]  # The word that was searched
-                    best_match: str = data[1][0]  # Should raise an IndexError if no match is returned
-                    language: str = (data[3][0]).split('//')[1].split('.')[0]
-
-                    if best_match.lower() == word.lower():
-                        await word_chain_bot.add_to_cache(word, connection, language)
-
-                except Exception:
+                if response.status_code >= 400:
                     continue
+
+                data = response.json()
+
+                word: str = data[0]  # The word that was searched
+                best_match: str = data[1][0]  # Should raise an IndexError if no match is returned
+                language: str = (data[3][0]).split('//')[1].split('.')[0]
+
+                if best_match.lower() == word.lower():
+                    await word_chain_bot.add_to_cache(word, connection, language)
+
+            except Exception:
+                continue
 
     # ---------------------------------------------------------------------------------------------------------------
 
