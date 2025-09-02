@@ -20,8 +20,8 @@ English alphabet. This is because many words in other languages have `en.wiktion
 - [x] **Skip** **default blacklists** if unidecode(word) ≠ input word.
 - [ ] Modify message sent on messing up to include the server languages.
 - [ ] Commands
-  - [ ] Server Manager Commands
-    - [ ] Add/remove languages
+  - [x] Server Manager Commands
+    - [x] Add/remove languages
   - [ ] User Commands
     - [x] ~~Add language option to `/check_word` (defaults to English)~~ (see notes below)
     - [x] Modify `/check_word` to correctly match the pattern, default blacklists,
