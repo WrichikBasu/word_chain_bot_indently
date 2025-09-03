@@ -15,6 +15,7 @@ from sqlalchemy import CursorResult, func, or_, select
 from sqlalchemy.engine.row import Row
 from sqlalchemy.sql.functions import count
 
+from cogs.manager_cmds import ManagerCommandsCog
 from consts import COG_NAME_USER_CMDS, GameMode, LOGGER_NAME_USER_COG
 from model import BannedMemberModel, Member, MemberModel, ServerConfig, ServerConfigModel
 from views.dropdown import Dropdown
@@ -52,6 +53,17 @@ class UserCommandsCog(Cog, name=COG_NAME_USER_CMDS):
                 self.bot.tree.remove_command(command.name)
 
         logger.info(f'Cog {self.qualified_name} unloaded.')
+
+    # ---------------------------------------------------------------------------------------------------------------
+
+    @app_commands.command(name='show_languages', description='Lists the languages enabled in this server')
+    async def show_languages(self, interaction: Interaction) -> None:
+        await interaction.response.defer(ephemeral=True)
+
+        emb: Embed = Embed(colour=Colour.gold(), title='Languages enabled in this server', description='')
+        emb.description = ManagerCommandsCog.LanguageCmdGroup.get_current_languages(self.bot, interaction.guild.id)
+
+        await interaction.followup.send(embed=emb)
 
     # ---------------------------------------------------------------------------------------------------------------
 

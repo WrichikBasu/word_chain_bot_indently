@@ -18,15 +18,15 @@
 English alphabet. This is because many words in other languages have `en.wiktionary` entries.
 - [x] Use `unidecode` in karma calculations.
 - [x] **Skip** **default blacklists** if unidecode(word) ≠ input word.
-- [ ] Modify message sent on messing up to include the server languages.
-- [ ] Commands
+- [ ] ~~Modify message sent on messing up to include the server languages.~~
+- [x] Commands
   - [x] Server Manager Commands
     - [x] Add/remove languages
-  - [ ] User Commands
+  - [x] User Commands
     - [x] ~~Add language option to `/check_word` (defaults to English)~~ (see notes below)
     - [x] Modify `/check_word` to correctly match the pattern, default blacklists,
 word cache, and then start a query if required.
-    - [ ] Let users view the languages allowed in the server.
+    - [x] Let users view the languages allowed in the server.
 
 ## Notes
 - `/check_word` will default to the languages enabled in the guild it is being run in.
