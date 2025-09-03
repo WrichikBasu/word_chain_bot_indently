@@ -28,8 +28,9 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, create_async_en
 from consts import (COG_NAME_ADMIN_CMDS, COG_NAME_MANAGER_CMDS, COG_NAME_USER_CMDS,
                     LOGGER_NAME_MAIN, GameMode, HISTORY_LENGTH, RELIABLE_ROLE_KARMA_THRESHOLD,
                     RELIABLE_ROLE_ACCURACY_THRESHOLD, ALLOWED_WORDS_PATTERN, SPECIAL_REACTION_EMOJIS, MISTAKE_PENALTY,
-                    GLOBAL_BLACKLIST_2_LETTER_WORDS_EN, GLOBAL_BLACKLIST_N_LETTER_WORDS_EN, GLOBAL_WHITELIST_3_LETTER_WORDS_EN,
-                    COGS_LIST, )
+                    GLOBAL_BLACKLIST_2_LETTER_WORDS_EN, GLOBAL_BLACKLIST_N_LETTER_WORDS_EN,
+                    GLOBAL_WHITELIST_3_LETTER_WORDS_EN,
+                    COGS_LIST, Languages, )
 from decorator import log_execution_time
 from karma_calcs import calculate_total_karma
 from model import (BannedMemberModel, BlacklistModel, MemberModel, ServerConfig, ServerConfigModel, UsedWordsModel,
@@ -376,9 +377,9 @@ The chain has **not** been broken. Please enter another word.''')
             else:
                 # Word neither whitelisted, nor found in cache.
                 # Start the API request, but deal with it later
-                langs = deepcopy(self.server_configs[server_id].languages)
+                langs: List[Languages] = deepcopy(self.server_configs[server_id].languages)
                 if unidecode(word) != word:
-                    langs.remove('en')
+                    langs.remove(Languages.ENGLISH)
                 futures = self.start_api_queries(word, langs)
 
             # -----------------------------------
@@ -652,15 +653,15 @@ The above entered word is **NOT** being taken into account.''')
     # ---------------------------------------------------------------------------------------------------------------
 
     @staticmethod
-    def start_api_queries(word: str, languages: List[str]) -> List[Future]:
+    def start_api_queries(word: str, languages: List[Languages]) -> List[Future]:
         """
         Starts Wiktionary API queries in the background to find the given word, in each of the
         given languages.
 
         Parameters
         ----------
-        languages : list[str]
-             A list of languages to search in. Defaults to only English.
+        languages : list[consts.Languages]
+             A list of languages to search in.
         word : str
              The word to be searched for.
 
@@ -673,7 +674,7 @@ The above entered word is **NOT** being taken into account.''')
 
         for language in languages:
 
-            url: str = f"https://{language}.wiktionary.org/w/api.php"
+            url: str = f"https://{language.value}.wiktionary.org/w/api.php"
             params: dict = {
                 "action": "opensearch",
                 "namespace": "0",
@@ -766,7 +767,8 @@ The above entered word is **NOT** being taken into account.''')
 
                 word: str = data[0]  # The word that was searched
                 best_match: str = data[1][0]  # Should raise an IndexError if no match is returned
-                language: str = (data[3][0]).split('//')[1].split('.')[0]
+                lang_code: str = (data[3][0]).split('//')[1].split('.')[0]
+                language: Languages = Languages(lang_code)
 
                 if best_match.lower() == word.lower():
                     await word_chain_bot.add_to_cache(word, connection, language)
@@ -845,7 +847,7 @@ The above entered word is **NOT** being taken into account.''')
     # ---------------------------------------------------------------------------------------------------------------
 
     @staticmethod
-    async def is_word_in_cache(word: str, connection: AsyncConnection, languages: List[str]) -> bool:
+    async def is_word_in_cache(word: str, connection: AsyncConnection, languages: List[Languages]) -> bool:
         """
         Check if a word is in the correct word cache schema.
 
@@ -858,7 +860,7 @@ The above entered word is **NOT** being taken into account.''')
             The word to be searched for in the schema.
         connection : AsyncConnection
             The Cursor object to access the schema.
-        languages : list[str]
+        languages : list[Languages]
             A list of languages to search in.
 
         Returns
@@ -869,7 +871,7 @@ The above entered word is **NOT** being taken into account.''')
         stmt = select(exists(WordCacheModel)
                       .where(and_(
                                   WordCacheModel.word == word,
-                                  WordCacheModel.language.in_(languages)
+                                  WordCacheModel.language.in_([language.value for language in languages])
                                   )
                              )
                       )
@@ -879,7 +881,7 @@ The above entered word is **NOT** being taken into account.''')
     # ---------------------------------------------------------------------------------------------------------------
 
     async def add_to_cache(self, word: str, connection: AsyncConnection,
-                           language: str) -> None:
+                           language: Languages) -> None:
         """
         Adds a word to the word cache schema.
 
@@ -889,20 +891,20 @@ The above entered word is **NOT** being taken into account.''')
             The word to be added.
         connection : AsyncConnection
             The connection to access the schema.
-        language : str
+        language : consts.Languages
             The language the word belongs to.
         """
         if not await self.is_word_blacklisted(word):  # Do NOT insert globally blacklisted words into the cache
 
             # If language is `en`, check if the word is a legal English word
             # This is because many non-English words have `en.wiktionary` entries
-            if language == 'en' and unidecode(word) != word:
+            if language == Languages.ENGLISH and unidecode(word) != word:
                 logger.warning(f'The word "{word}" is not a legal English word, but was tried '
                                f'to be added to the cache for English words.')
                 return
 
             stmt = insert(WordCacheModel) \
-                   .values(word=word, language=language) \
+                   .values(word=word, language=language.value) \
                    .prefix_with('OR IGNORE')
             await connection.execute(stmt)
 
@@ -954,6 +956,8 @@ The above entered word is **NOT** being taken into account.''')
 
             # Check global 3-letter words WHITElist
             if len(word) == 3 and word not in GLOBAL_WHITELIST_3_LETTER_WORDS_EN:
+                # TODO this will create an error if the three-letter word is not an English word, but also
+                #  does not have any accents
                 return True
 
         # +++++++++++++ Global Blacklist and whitelist checking complete ++++++++++++++++++++
