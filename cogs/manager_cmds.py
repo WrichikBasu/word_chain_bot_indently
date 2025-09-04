@@ -560,7 +560,7 @@ to the other game mode!''')
             if len(self.cog.bot.server_configs[interaction.guild.id].languages) == 1:
 
                 embed.description = f'''❌ The server must have at least one language enabled.\n
-{self.get_current_languages(interaction.guild.id)}'''
+{ManagerCommandsCog.LanguageCmdGroup.get_current_languages(self.cog.bot, interaction.guild.id)}'''
                 embed.colour = Colour.red()
 
                 await interaction.followup.send(embed=embed)
