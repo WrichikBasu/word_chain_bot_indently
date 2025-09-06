@@ -240,16 +240,18 @@ class UserCommandsCog(Cog, name=COG_NAME_USER_CMDS):
             return Embed(title="How to play", description=f'''
 The game is pretty simple.
 
-- Enter a word that starts with the last letter of the previous correct word.  
-- If your word is correct, the bot will react with a tick mark — :white_check_mark: .  
+- Enter a word that starts with the last letter of the previous correct word (or with the last two letters in hard mode).  
+- If your word is correct, the bot will react with a tick mark — :white_check_mark:.  
 - No characters other than the letters of the English alphabet (capital and small) and hyphen (`-`) are accepted. \
 Messages with anything else will be ignored.
-- You can check if a word is correct using the `/check_word` command.
+- You can check if a word is correct using the `/check_word` command - this checks only if the word is generally \
+accepted, it does **not** check if it has the matching starting letter to continue the current chain.
 - Words that have been used once cannot be used again until the chain is broken. The chain, however, will **not**
  be broken if you enter a word that has been used previously. The bot will simply ask you to enter another word.
 - Entering a wrong/non-existent word will break the chain.
+- Entering words twice in a row by the same user will also break the chain.
 - Once the chain is broken, all used words will be reset.
-- The chain continues even if someone messes up, in the sense that one still has to enter a word beginning with the 
+- The chain continues even if someone messes up, in the sense that one still has to enter a word beginning with the \
 last letter of the previous correct word.
 
 That's all. Go and beat the high score in your server and top the global leaderboard!! :fire:
