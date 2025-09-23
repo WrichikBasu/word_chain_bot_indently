@@ -523,7 +523,15 @@ to the other game mode!''')
             if language in self.cog.bot.server_configs[interaction.guild.id].languages:
 
                 embed.description = f'''✅ *{language.name.capitalize()}* is **already enabled** in this server.\n
-{self.get_current_languages(interaction.guild.id)}'''
+{ManagerCommandsCog.LanguageCmdGroup.get_current_languages(self.cog.bot, interaction.guild.id)}'''
+
+                await interaction.followup.send(embed=embed)
+                return
+
+            # Limit to two languages per server
+            if len(self.cog.bot.server_configs[interaction.guild.id].languages) == 2:
+                embed.description = '❌ You cannot enable more than two languages in a server.'
+                embed.colour = Colour.red()
 
                 await interaction.followup.send(embed=embed)
                 return
