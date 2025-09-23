@@ -2059,13 +2059,3 @@ class Languages(Enum):
     MALTESE = "mt"
     TURKISH = "tr"
 
-    # Greek script
-    GREEK = "el"
-
-    # Cyrillic script
-    RUSSIAN = "ru"
-    UKRAINIAN = "uk"
-    BELARUSIAN = "be"
-    BULGARIAN = "bg"
-    MACEDONIAN = "mk"
-
