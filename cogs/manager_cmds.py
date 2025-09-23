@@ -6,6 +6,7 @@ import re
 from typing import TYPE_CHECKING
 
 import discord
+import unidecode
 from discord import Colour, Embed, Interaction, Permissions, Role, TextChannel, app_commands
 from discord.app_commands import Group
 from discord.ext.commands import Cog
@@ -36,10 +37,12 @@ class ManagerCommandsCog(Cog, name=COG_NAME_MANAGER_CMDS):
     # ----------------------------------------------------------------------------------------------------------------
 
     @staticmethod
-    def is_generally_illegal_word(word: str):
-        return (not re.search(ALLOWED_WORDS_PATTERN, word.lower()) or
-                any(word[:game_mode.value] not in FIRST_TOKEN_SCORES[game_mode] or
-                    word[-game_mode.value:] not in FIRST_TOKEN_SCORES[game_mode]
+    def is_generally_illegal_word(bot: WordChainBot, word: str):
+        decoded_word = unidecode.unidecode(word.lower())
+
+        return (not bot.word_matches_pattern(word) or
+                any(decoded_word[:game_mode.value] not in FIRST_TOKEN_SCORES[game_mode] or
+                    decoded_word[-game_mode.value:] not in FIRST_TOKEN_SCORES[game_mode]
                     for game_mode in GameMode)
                 )
 
@@ -281,7 +284,7 @@ to the other game mode!''')
 
             emb: Embed = Embed(colour=Colour.blurple())
 
-            if self.cog.is_generally_illegal_word(word):
+            if self.cog.is_generally_illegal_word(self.cog.bot, word):
                 emb.description = f'⚠️ The word *{word.lower()}* is not a legal word.'
                 await interaction.followup.send(embed=emb)
                 return
@@ -306,7 +309,7 @@ to the other game mode!''')
 
             emb: Embed = Embed(colour=Colour.blurple())
 
-            if self.cog.is_generally_illegal_word(word):
+            if self.cog.is_generally_illegal_word(self.cog.bot, word):
                 emb.description = f'⚠️ The word *{word.lower()}* is not a legal word.'
                 await interaction.followup.send(embed=emb)
                 return
@@ -375,7 +378,7 @@ to the other game mode!''')
 
             emb: Embed = Embed(colour=Colour.blurple())
 
-            if self.cog.is_generally_illegal_word(word):
+            if self.cog.is_generally_illegal_word(self.cog.bot, word):
                 emb.description = f'⚠️ The word *{word.lower()}* is not a legal word.'
                 await interaction.followup.send(embed=emb)
                 return
@@ -400,7 +403,7 @@ to the other game mode!''')
 
             emb: Embed = Embed(colour=Colour.blurple())
 
-            if self.cog.is_generally_illegal_word(word):
+            if self.cog.is_generally_illegal_word(self.cog.bot, word):
                 emb.description = f'⚠️ The word *{word.lower()}* is not a legal word.'
                 await interaction.followup.send(embed=emb)
                 return
