@@ -8,9 +8,11 @@ import random
 import re
 import string
 import time
+from asyncio import CancelledError
 from collections import defaultdict, deque
 from concurrent.futures import Future
 from copy import deepcopy
+from json import JSONDecodeError
 from logging.config import fileConfig
 from typing import AsyncIterator, Optional, List
 
@@ -378,7 +380,7 @@ The chain has **not** been broken. Please enter another word.''')
                 # Word neither whitelisted, nor found in cache.
                 # Start the API request, but deal with it later
                 langs: List[Languages] = deepcopy(self.server_configs[server_id].languages)
-                if unidecode(word) != word:
+                if unidecode(word) != word and Languages.ENGLISH in langs:
                     langs.remove(Languages.ENGLISH)
                 futures = self.start_api_queries(word, langs)
 
@@ -474,8 +476,7 @@ The above entered word is **NOT** being taken into account.''')
 
             # --------------------
             # Everything is fine
-            # ---------------------
-            print("here")
+            # --------------------
             self.server_configs[server_id].update_current(game_mode=game_mode,
                                                           member_id=message.author.id,
                                                           current_word=word)
@@ -773,7 +774,7 @@ The above entered word is **NOT** being taken into account.''')
                 if best_match.lower() == word.lower():
                     await word_chain_bot.add_to_cache(word, connection, language)
 
-            except Exception:
+            except (IndexError, TimeoutError, CancelledError, JSONDecodeError):
                 continue
 
     # ---------------------------------------------------------------------------------------------------------------
