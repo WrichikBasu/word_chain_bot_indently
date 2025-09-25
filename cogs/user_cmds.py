@@ -56,6 +56,37 @@ class UserCommandsCog(Cog, name=COG_NAME_USER_CMDS):
 
     # ---------------------------------------------------------------------------------------------------------------
 
+    @app_commands.command(name='vote', description='Vote for the bot!')
+    async def vote(self, interaction: Interaction) -> None:
+        await interaction.response.defer(ephemeral=True)
+
+        emb: Embed = Embed(title='Support Server', description=f'''\
+For any questions, suggestions or bug reports, or if you just want to hang out with a cool community of word chain\
+players, feel free to join our support server:
+
+https://discord.gg/yhbzVGBNw3''', colour=Colour.pink())
+
+        await interaction.followup.send(embed=emb)
+
+# ---------------------------------------------------------------------------------------------------------------
+
+    @app_commands.command(name='support', description='Join our support server!')
+    async def support(self, interaction: Interaction) -> None:
+        await interaction.response.defer(ephemeral=True)
+
+        emb: Embed = Embed(title='Vote for the bot!', description=f'''\
+**Word Chain Bot Indently** is an open-source bot. We developers do not earn anything from it, but it \
+is your excitement that fuels us to continue working on it. We will really appreciate it if you vote for our bot, \
+as it will allow more people discover it!
+
+[Vote on Top.gg!](https://top.gg/bot/1222301436054999181/vote)
+[Vote on discordbotlist.com!](https://discordbotlist.com/bots/word-chain-bot-indently/upvote)''',
+                           color=Colour.red())
+
+        await interaction.followup.send(embed=emb)
+
+# ---------------------------------------------------------------------------------------------------------------
+
     @app_commands.command(name='show_languages', description='Lists the languages enabled in this server')
     async def show_languages(self, interaction: Interaction) -> None:
         await interaction.response.defer(ephemeral=True)
@@ -400,7 +431,7 @@ https://discord.gg/yhbzVGBNw3''', colour=Colour.pink())
 `/check_word` - Check if a word exists/check the spelling.
 `/leaderboard` - Shows the leaderboard of the server.
 `/list_commands` - Lists all the slash commands.
-`/show_languages - Lists all the supported and currently enabled languages.''')
+`/show_languages` - Lists all the supported and currently enabled languages.''')
 
             if interaction.user.guild_permissions.manage_guild:
                 emb.description += '''\n
@@ -480,9 +511,13 @@ check out the Indently Discord linked above!)''', colour=Colour.teal())
         def __get_vote_embed() -> Embed:
 
             return Embed(title='Vote for the bot!', description=f'''\
-We will really appreciate it if you vote for our bot on top.gg!
+**Word Chain Bot Indently** is an open-source bot. We developers do not earn anything from it, but it \
+is your excitement that fuels us to continue working on it. We will really appreciate it if you vote for our bot, \
+as it will allow more people discover it!
 
-[Vote for the bot!](https://top.gg/bot/1222301436054999181/vote)''', color=Colour.dark_gold())
+[Vote on Top.gg!](https://top.gg/bot/1222301436054999181/vote)
+[Vote on discordbotlist.com!](https://discordbotlist.com/bots/word-chain-bot-indently/upvote)''',
+                           color=Colour.red())
 
     # ===================================================================================================================
 
