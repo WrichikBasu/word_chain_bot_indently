@@ -56,36 +56,19 @@ class UserCommandsCog(Cog, name=COG_NAME_USER_CMDS):
 
     # ---------------------------------------------------------------------------------------------------------------
 
-    @app_commands.command(name='vote', description='Vote for the bot!')
-    async def vote(self, interaction: Interaction) -> None:
-        await interaction.response.defer(ephemeral=True)
-
-        emb: Embed = Embed(title='Support Server', description=f'''\
-For any questions, suggestions or bug reports, or if you just want to hang out with a cool community of word chain\
-players, feel free to join our support server:
-
-https://discord.gg/yhbzVGBNw3''', colour=Colour.pink())
-
-        await interaction.followup.send(embed=emb)
-
-# ---------------------------------------------------------------------------------------------------------------
-
     @app_commands.command(name='support', description='Join our support server!')
     async def support(self, interaction: Interaction) -> None:
         await interaction.response.defer(ephemeral=True)
+        await interaction.followup.send(embed=self.HelpCommand.get_support_server_embed())
 
-        emb: Embed = Embed(title='Vote for the bot!', description=f'''\
-**Word Chain Bot Indently** is an open-source bot. We developers do not earn anything from it, but it \
-is your excitement that fuels us to continue working on it. We will really appreciate it if you vote for our bot, \
-as it will allow more people discover it!
+    # ---------------------------------------------------------------------------------------------------------------
 
-[Vote on Top.gg!](https://top.gg/bot/1222301436054999181/vote)
-[Vote on discordbotlist.com!](https://discordbotlist.com/bots/word-chain-bot-indently/upvote)''',
-                           color=Colour.red())
+    @app_commands.command(name='vote', description='Vote for the bot!')
+    async def vote(self, interaction: Interaction) -> None:
+        await interaction.response.defer(ephemeral=True)
+        await interaction.followup.send(embed=self.HelpCommand.get_vote_embed())
 
-        await interaction.followup.send(embed=emb)
-
-# ---------------------------------------------------------------------------------------------------------------
+    # ---------------------------------------------------------------------------------------------------------------
 
     @app_commands.command(name='show_languages', description='Lists the languages enabled in this server')
     async def show_languages(self, interaction: Interaction) -> None:
@@ -158,12 +141,12 @@ Therefore, a word that is valid in this server may not be valid in another serve
                 match query_response_code := self.bot.get_query_response(future):
 
                     case self.bot.API_RESPONSE_WORD_EXISTS:
-
                         emb.description = f'''✅ The word **{word}** is valid.\n
 -# Please note that the validity of words is checked only for the languages that are enabled in the server. \
 Therefore, a word that is valid in this server may not be valid in another server.'''
 
-                        await self.bot.add_words_to_cache(futures, connection)  # Check and add to cache for all selected languages
+                        await self.bot.add_words_to_cache(futures,
+                                                          connection)  # Check and add to cache for all selected languages
                         break
 
             if query_response_code == self.bot.API_RESPONSE_WORD_DOESNT_EXIST:
@@ -247,53 +230,53 @@ Therefore, a word that is valid in this server may not be valid in another serve
 
                     case UserCommandsCog.HelpCommand.__HOW_TO_PLAY:
                         await interaction.followup.edit_message(self.original_message_id,
-                                                                embed=UserCommandsCog.HelpCommand.__get_how_to_play_embed(),
+                                                                embed=UserCommandsCog.HelpCommand.get_how_to_play_embed(),
                                                                 view=view1)
 
                     case UserCommandsCog.HelpCommand.__KARMA_SYSTEM:
                         await interaction.followup.edit_message(self.original_message_id,
-                                                                embed=UserCommandsCog.HelpCommand.__get_karma_embed(),
+                                                                embed=UserCommandsCog.HelpCommand.get_karma_embed(),
                                                                 view=view1)
 
                     case UserCommandsCog.HelpCommand.__GAME_RULES:
                         await interaction.followup.edit_message(self.original_message_id,
-                                                                embed=UserCommandsCog.HelpCommand.__get_game_rules_embed(),
+                                                                embed=UserCommandsCog.HelpCommand.get_game_rules_embed(),
                                                                 view=view1)
 
                     case UserCommandsCog.HelpCommand.__VOTE:
                         await interaction.followup.edit_message(self.original_message_id,
-                                                                embed=UserCommandsCog.HelpCommand.__get_vote_embed(),
+                                                                embed=UserCommandsCog.HelpCommand.get_vote_embed(),
                                                                 view=view1)
 
                     case UserCommandsCog.HelpCommand.__LIST_OF_COMMANDS:
                         await interaction.followup.edit_message(self.original_message_id,
-                                                                embed=self.__get_cmd_list_embed(interaction),
+                                                                embed=self.get_cmd_list_embed(interaction),
                                                                 view=view1)
 
                     case UserCommandsCog.HelpCommand.__PRIVACY_POLICY:
                         await interaction.followup.edit_message(self.original_message_id,
-                                                                embed=self.__get_privacy_policy_embed(),
+                                                                embed=self.get_privacy_policy_embed(),
                                                                 view=view1)
 
                     case UserCommandsCog.HelpCommand.__SUPPORT_SERVER:
                         await interaction.followup.edit_message(self.original_message_id,
-                                                                embed=self.__get_support_server_embed(),
+                                                                embed=self.get_support_server_embed(),
                                                                 view=view1)
 
                     case UserCommandsCog.HelpCommand.__OTHER_INFO:
                         await interaction.followup.edit_message(self.original_message_id,
-                                                                embed=self.__get_credits_embed(),
+                                                                embed=self.get_credits_embed(),
                                                                 view=view1)
 
                     case UserCommandsCog.HelpCommand.__SETUP_IN_SERVER:
                         await interaction.followup.edit_message(self.original_message_id,
-                                                                embed=UserCommandsCog.HelpCommand.__setup_in_server(),
+                                                                embed=UserCommandsCog.HelpCommand.setup_in_server(),
                                                                 view=view1)
 
                     case UserCommandsCog.HelpCommand.__MULTI_LANGUAGE:
                         await interaction.followup.edit_message(self.original_message_id,
                                                                 embed=UserCommandsCog.HelpCommand.
-                                                                                      __get_multi_language_embed(),
+                                                                get_multi_language_embed(),
                                                                 view=view1)
 
             return Dropdown(dropdown_callback, options_list, original_interaction=self.original_interaction,
@@ -302,9 +285,9 @@ Therefore, a word that is valid in this server may not be valid in another serve
         # ------------------------------------------------------------------------------------------------------------
 
         @staticmethod
-        def __get_how_to_play_embed() -> Embed:
+        def get_how_to_play_embed() -> Embed:
 
-            return Embed(title="How to play", description=f'''
+            return Embed(title="How to play", description=f'''\
 ## Normal Mode
 The game is pretty simple.
 
@@ -330,7 +313,7 @@ same as the last two letters of the previous word.
         # ------------------------------------------------------------------------------------------------------------
 
         @staticmethod
-        def __get_game_rules_embed() -> Embed:
+        def get_game_rules_embed() -> Embed:
 
             return Embed(title="Global game rules", description=f'''\
 You are **not** allowed to use any automation/botting of *any* kind under any circumstances. If you are reported, \
@@ -343,7 +326,7 @@ have other rules that are not covered here. Please check with the server moderat
         # ------------------------------------------------------------------------------------------------------------
 
         @staticmethod
-        def __get_multi_language_embed() -> Embed:
+        def get_multi_language_embed() -> Embed:
 
             return Embed(title="Multi-language support", description=f'''\
 The bot now allows you to enable upto two languages in a server.
@@ -357,7 +340,7 @@ In order to enable/disable languages, server managers can use the commands under
         # ------------------------------------------------------------------------------------------------------------
 
         @staticmethod
-        def __setup_in_server() -> Embed:
+        def setup_in_server() -> Embed:
 
             return Embed(description=f'''\
 ## Basic setup
@@ -385,7 +368,7 @@ For multi-language setup, see the `Multi-language support` section in the `/help
         # ------------------------------------------------------------------------------------------------------------
 
         @staticmethod
-        def __get_karma_embed() -> Embed:
+        def get_karma_embed() -> Embed:
             return Embed(title='The Karma System', description=f'''\
 The karma system is based upon the frequency of characters as the first letter of english words.
 
@@ -412,7 +395,7 @@ for the next player)
         # ------------------------------------------------------------------------------------------------------------
 
         @staticmethod
-        def __get_support_server_embed() -> Embed:
+        def get_support_server_embed() -> Embed:
             return Embed(title='Support Server', description=f'''\
 For any questions, suggestions or bug reports, or if you just want to hang out with a cool community of word chain\
 players, feel free to join our support server:
@@ -422,7 +405,7 @@ https://discord.gg/yhbzVGBNw3''', colour=Colour.pink())
         # ------------------------------------------------------------------------------------------------------------
 
         @staticmethod
-        def __get_cmd_list_embed(interaction: Interaction) -> Embed:
+        def get_cmd_list_embed(interaction: Interaction) -> Embed:
 
             emb = Embed(title='Slash Commands', color=Colour.blue(),
                         description='''\
@@ -475,7 +458,7 @@ https://discord.gg/yhbzVGBNw3''', colour=Colour.pink())
         # ------------------------------------------------------------------------------------------------------------
 
         @staticmethod
-        def __get_privacy_policy_embed() -> Embed:
+        def get_privacy_policy_embed() -> Embed:
 
             return Embed(title='Privacy Policy', description=f'''\
 The privacy policy is available \
@@ -485,7 +468,7 @@ The privacy policy is available \
         # -------------------------------------------------------------------------------------------------------------
 
         @staticmethod
-        def __get_credits_embed() -> Embed:
+        def get_credits_embed() -> Embed:
 
             return Embed(title='Credits', description='''\
 - **Source code**
@@ -507,7 +490,7 @@ check out the Indently Discord linked above!)''', colour=Colour.teal())
         # ------------------------------------------------------------------------------------------------------------
 
         @staticmethod
-        def __get_vote_embed() -> Embed:
+        def get_vote_embed() -> Embed:
 
             return Embed(title='Vote for the bot!', description=f'''\
 **Word Chain Bot Indently** is an open-source bot. We developers do not earn anything from it, but it \
@@ -516,7 +499,7 @@ as it will allow more people discover it!
 
 [Vote on Top.gg!](https://top.gg/bot/1222301436054999181/vote)
 [Vote on discordbotlist.com!](https://discordbotlist.com/bots/word-chain-bot-indently/upvote)''',
-                           color=Colour.red())
+                         color=Colour.red())
 
     # ===================================================================================================================
 
