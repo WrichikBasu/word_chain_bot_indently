@@ -495,18 +495,6 @@ to the other game mode!''')
 
         # -------------------------------------------------------------------------------------------------------------
 
-        @app_commands.command(name='show-enabled', description="Shows the languages currently enabled in the server")
-        async def show_enabled(self, interaction: Interaction) -> None:
-            await interaction.response.defer(thinking=True)
-
-            emb: Embed = Embed(colour=Colour.yellow(), title='Languages enabled in this server', description='')
-            emb.description = ManagerCommandsCog.LanguageCmdGroup.get_current_languages(self.cog.bot,
-                                                                                        interaction.guild.id)
-
-            await interaction.followup.send(embed=emb)
-
-        # -------------------------------------------------------------------------------------------------------------
-
         @app_commands.command(name='add', description="Add a new language")
         @app_commands.describe(language_code="The language code")
         async def add(self, interaction: Interaction, language_code: str) -> None:
