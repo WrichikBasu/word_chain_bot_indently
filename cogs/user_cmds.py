@@ -492,8 +492,7 @@ The privacy policy is available \
 The bot is open-source, released under the BSD-3-Clause-License. The source code is \
 [available on GitHub](https://github.com/WrichikBasu/word_chain_bot_indently).
 - **Hosting information**
-The bot is currently hosted on [bot-hosting.net](https://bot-hosting.net/?aff=1024746441798856717) on a premium node. \
-*(Note: Affiliate link; proceeds go towards hosting the bot.)*
+The bot is currently hosted on Azure, courtesy of <@329857455423225856>.
 - **Credits**
   - Base code taken from [Counting Bot Indently](https://github.com/guanciottaman/counting_bot_indently).
   - Base code modified for the Word Chain Bot by <@1024746441798856717>.
