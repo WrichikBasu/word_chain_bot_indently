@@ -16,7 +16,7 @@ from sqlalchemy.engine.row import Row
 from sqlalchemy.sql.functions import count
 
 from cogs.manager_cmds import ManagerCommandsCog
-from consts import COG_NAME_USER_CMDS, GameMode, LOGGER_NAME_USER_COG
+from consts import COG_NAME_USER_CMDS, GameMode, LOGGER_NAME_USER_COG, Languages
 from model import BannedMemberModel, Member, MemberModel, ServerConfig, ServerConfigModel
 from views.dropdown import Dropdown
 
@@ -100,7 +100,7 @@ class UserCommandsCog(Cog, name=COG_NAME_USER_CMDS):
         async with self.bot.db_connection() as connection:
             if await self.bot.is_word_whitelisted(word, interaction.guild.id, connection):
                 emb.description = f'''✅ The word **{word}** is valid.\n
--# Please note that the validity of words is checked only for the languages that are enabled in the server.
+-# Please note that the validity of words is checked only for the languages that are enabled in the server. \
 Therefore, a word that is valid in this server may not be valid in another server.'''
                 await interaction.followup.send(embed=emb)
                 return
@@ -113,7 +113,7 @@ Therefore, a word that is valid in this server may not be valid in another serve
             if await self.bot.is_word_in_cache(word, connection,
                                                self.bot.server_configs[interaction.guild.id].languages):
                 emb.description = f'''✅ The word **{word}** is valid.\n
--# Please note that the validity of words is checked only for the languages that are enabled in the server.
+-# Please note that the validity of words is checked only for the languages that are enabled in the server. \
 Therefore, a word that is valid in this server may not be valid in another server.'''
                 await interaction.followup.send(embed=emb)
                 return
@@ -129,7 +129,7 @@ Therefore, a word that is valid in this server may not be valid in another serve
                     case self.bot.API_RESPONSE_WORD_EXISTS:
 
                         emb.description = f'''✅ The word **{word}** is valid.\n
--# Please note that the validity of words is checked only for the languages that are enabled in the server.\
+-# Please note that the validity of words is checked only for the languages that are enabled in the server. \
 Therefore, a word that is valid in this server may not be valid in another server.'''
 
                         await self.bot.add_words_to_cache(futures, connection)  # Check and add to cache for all selected languages
@@ -172,6 +172,7 @@ Therefore, a word that is valid in this server may not be valid in another serve
         __SUPPORT_SERVER: str = "support_server"
         __OTHER_INFO: str = "other_info"
         __VOTE: str = "vote"
+        __MULTI_LANGUAGE: str = "multi_language"
 
         # ------------------------------------------------------------------------------------------------------------
 
@@ -191,6 +192,8 @@ Therefore, a word that is valid in this server may not be valid in another serve
                                                              value=UserCommandsCog.HelpCommand.__GAME_RULES),
                                                 SelectOption(label="Karma system",
                                                              value=UserCommandsCog.HelpCommand.__KARMA_SYSTEM),
+                                                SelectOption(label="Multi-language support",
+                                                             value=UserCommandsCog.HelpCommand.__MULTI_LANGUAGE),
                                                 SelectOption(label="Vote for the bot!!",
                                                              value=UserCommandsCog.HelpCommand.__VOTE),
                                                 SelectOption(label="List of commands",
@@ -256,6 +259,12 @@ Therefore, a word that is valid in this server may not be valid in another serve
                                                                 embed=UserCommandsCog.HelpCommand.__setup_in_server(),
                                                                 view=view1)
 
+                    case UserCommandsCog.HelpCommand.__MULTI_LANGUAGE:
+                        await interaction.followup.edit_message(self.original_message_id,
+                                                                embed=UserCommandsCog.HelpCommand.
+                                                                                      __get_multi_language_embed(),
+                                                                view=view1)
+
             return Dropdown(dropdown_callback, options_list, original_interaction=self.original_interaction,
                             max_values=1)
 
@@ -265,6 +274,7 @@ Therefore, a word that is valid in this server may not be valid in another serve
         def __get_how_to_play_embed() -> Embed:
 
             return Embed(title="How to play", description=f'''
+## Normal Mode
 The game is pretty simple.
 
 - Enter a word that starts with the last letter of the previous correct word.  
@@ -280,6 +290,10 @@ Messages with anything else will be ignored.
 last letter of the previous correct word.
 
 That's all. Go and beat the high score in your server and top the global leaderboard!! :fire:
+
+## Hard Mode
+Hard Mode is the same as normal mode, except that the first **two letters** of a word must be the 
+same as the last two letters of the previous word.
 ''', colour=Colour.dark_orange())
 
         # ------------------------------------------------------------------------------------------------------------
@@ -294,6 +308,20 @@ you will be banned from the bot for a lifetime.
 ***Please note:** In addition to these rules, the server where you are playing may \
 have other rules that are not covered here. Please check with the server moderators or administrators.*
 ''', colour=Colour.red())
+
+        # ------------------------------------------------------------------------------------------------------------
+
+        @staticmethod
+        def __get_multi_language_embed() -> Embed:
+
+            return Embed(title="Multi-language support", description=f'''\
+The bot now allows you to enable upto two languages in a server.
+
+The following languages are supported:
+{', '.join(f'{language.name.capitalize()}' for language in Languages)}
+
+In order to enable/disable languages, server managers can use the commands under the `/language` category.
+''', colour=Colour.dark_orange())
 
         # ------------------------------------------------------------------------------------------------------------
 
@@ -319,7 +347,9 @@ a restart), and thereby mislead users on what the last correct word is.
 1. Set the failed role using `/set failed_role`, and the reliable role with `/set reliable_role`.
 2. To make sure that people have read the game rules, create a channel with the game rules, along with a \
 reaction role giving access to the game channel. This will make sure that people will be able to play \
-only after agreeing that they have read the rules.''', colour=Colour.yellow())
+only after agreeing that they have read the rules.
+
+For multi-language setup, see the `Multi-language support` section in the `/help` command.''', colour=Colour.yellow())
 
         # ------------------------------------------------------------------------------------------------------------
 
@@ -369,7 +399,8 @@ https://discord.gg/yhbzVGBNw3''', colour=Colour.pink())
 `/stats server` - Shows the stats of the current server.
 `/check_word` - Check if a word exists/check the spelling.
 `/leaderboard` - Shows the leaderboard of the server.
-`/list_commands` - Lists all the slash commands.''')
+`/list_commands` - Lists all the slash commands.
+`/show_languages - Lists all the supported and currently enabled languages.''')
 
             if interaction.user.guild_permissions.manage_guild:
                 emb.description += '''\n
@@ -377,11 +408,19 @@ https://discord.gg/yhbzVGBNw3''', colour=Colour.pink())
 `/set channel` - Sets the channel to chain words.
 `/set failed_role` - Sets the role to give when a user fails.
 `/set reliable_role` - Sets the reliable role.
+
+`/language show_all` - Shows all supported languages and their codes.
+`/language add` - Enable a language for this server. You can add up to two languages at a time.
+`/language remove` - Removes a language from the list of enabled languages.
+
+`/unset channel` - Unsets the channel to chain words.
 `/unset failed_role` - Unsets the role to give when a user fails.
 `/unset reliable_role` - Unset the reliable role.
+
 `/blacklist add` - Add a word to the blacklist for this server.
 `/blacklist remove` - Remove a word from the blacklist of this server.
 `/blacklist show` - Show the blacklisted words for this server.
+
 `/whitelist add` - Add a word to the whitelist for this server.
 `/whitelist remove` - Remove a word from the whitelist of this server.
 `/whitelist show` - Show the whitelist words for this server.'''
@@ -428,6 +467,7 @@ The bot is currently hosted on [bot-hosting.net](https://bot-hosting.net/?aff=10
   - Base code taken from [Counting Bot Indently](https://github.com/guanciottaman/counting_bot_indently).
   - Base code modified for the Word Chain Bot by <@1024746441798856717>.
   - Karma system and multi-server support completely designed by <@329857455423225856>.
+  - Multi-language support by <@1024746441798856717>, with inputs from <@329857455423225856>.
 - **What/who is "Indently"?**
 This bot was created for the [Indently Discord server](https://discord.com/invite/indently-1040343818274340935), \
 and is owned by the Indently Bot Dev Team. Federico, the founder of Indently, has kindly allowed us to keep the \
