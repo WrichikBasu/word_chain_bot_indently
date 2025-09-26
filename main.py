@@ -355,20 +355,43 @@ The chain has **not** been broken. Please enter another word.''')
             # -------------------------------
             word_whitelisted: bool = await self.is_word_whitelisted(word, message.guild.id, connection)
 
-            # -------------------------------
+            # -----------------------------------
             # Check if word is blacklisted
             # (if and only if not whitelisted)
-            # -------------------------------
+            # -----------------------------------
             if not word_whitelisted and await self.is_word_blacklisted(word, message.guild.id, connection):
                 await WordChainBot.add_reaction(message, '⚠️')
                 await WordChainBot.send_message_to_channel(message.channel, f'''This word has been **blacklisted**. Please do not use it.
 The chain has **not** been broken. Please enter another word.''')
                 return
 
-            # ------------------------------
+            # --------------------------------------------------------------------------------------------
+            # Wiktionary English version has lots of words from other languages too. This includes
+            # words that have accents as well. Therefore, we check if all the characters in the word
+            # are from the English alphabet. If not, and the server is set to only English, then
+            # this is an invalid word. We do not go for an API query and end the execution here.
+            # --------------------------------------------------------------------------------------------
+            if (not word_whitelisted
+                and unidecode(word) != word  # => Word is not in English...
+                and Languages.ENGLISH in self.server_configs[server_id].languages  # ... but English is enabled in the server...
+                and len(self.server_configs[server_id].languages) == 1):  # ...AND English is the ONLY language in the server
+
+                response: str = f'''{message.author.mention} messed up the chain! \
+*The word you entered does not exist.^*
+{f'The chain length was {self.server_configs[server_id].game_state[game_mode].current_count} when it was broken. :sob:\n' if self.server_configs[server_id].game_state[game_mode].current_count > 0 else ''}\
+Restart with a word starting with **{self.server_configs[server_id].game_state[game_mode].current_word[-game_mode.value:]}** and try to beat the \
+current high score of **{self.server_configs[server_id].game_state[game_mode].high_score}**!
+
+-# ^ The bot now supports multiple languages. When a word is invalid, it pertains to the language(s) \
+enabled in this server.\n-# To check enabled languages, use `/show_languages`.'''
+
+                await self.handle_mistake(message, response, connection, game_mode)
+                return
+
+            # ----------------------------------------
             # Check if word is valid
             # (if and only if not whitelisted)
-            # ------------------------------
+            # -----------------------------------------
             futures: Optional[list[Future]]
 
             # First check the whitelist or the word cache
@@ -379,10 +402,7 @@ The chain has **not** been broken. Please enter another word.''')
             else:
                 # Word neither whitelisted, nor found in cache.
                 # Start the API request, but deal with it later
-                langs: List[Languages] = deepcopy(self.server_configs[server_id].languages)
-                if unidecode(word) != word and Languages.ENGLISH in langs:
-                    langs.remove(Languages.ENGLISH)
-                futures = self.start_api_queries(word, langs)
+                futures = self.start_api_queries(word, self.server_configs[server_id].languages)
 
             # -----------------------------------
             # Check repetitions
@@ -454,10 +474,13 @@ current high score of **{self.server_configs[server_id].game_state[game_mode].hi
 
                     if self.server_configs[server_id].game_state[game_mode].current_word:
                         response: str = f'''{message.author.mention} messed up the chain! \
-*The word you entered does not exist.*
+*The word you entered does not exist.^*
 {f'The chain length was {self.server_configs[server_id].game_state[game_mode].current_count} when it was broken. :sob:\n' if self.server_configs[server_id].game_state[game_mode].current_count > 0 else ''}\
 Restart with a word starting with **{self.server_configs[server_id].game_state[game_mode].current_word[-game_mode.value:]}** and try to beat the \
-current high score of **{self.server_configs[server_id].game_state[game_mode].high_score}**!'''
+current high score of **{self.server_configs[server_id].game_state[game_mode].high_score}**!
+
+-# ^ The bot now supports multiple languages. When a word is invalid, it pertains to the language(s) \
+enabled in this server.\n-# To check enabled languages, use `/show_languages`.'''
 
                     else:
                         response: str = f'''{message.author.mention} messed up the chain! \
