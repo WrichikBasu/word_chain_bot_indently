@@ -276,14 +276,21 @@ class WordChainBot(AutoShardedBot):
     @log_execution_time(logger)
     async def on_message_for_word_chain(self, message: discord.Message, game_mode: GameMode) -> None:
         """
+        Checks if the message is a valid word.
+
         Hierarchy of checking:
-        1. Word length must be > 1.
-        2. Is word whitelisted? --> If yes, skip to #5.
-        3. Is the word blacklisted?
-        4. Is the word valid? (Check cache/start query if not found in cache)
-        5. Repetition?
-        6. Wrong member?
-        7. Wrong starting letter?
+            1. Match regex pattern.
+            2. Word length must be > 1.
+            3. Is member banned? --> Yes => Simply ignore the input.
+            4. Is word whitelisted? (Global/server-specific) --> If yes, skip to #8.
+            5. Is the word blacklisted? (Global/server-specific)
+            6. If the word has letters out of the English alphabet, and the server has ONLY English
+               enabled, then it is an error. (We do not send the word to Wiktionary as Wiktionary English
+               has lots of words outside English.)
+            7. Is the word valid? (Check cache/start query if not found in cache)
+            8. Repetition?
+            9. Wrong member?
+            10. Wrong starting letter?
         """
         call_id = ''.join(random.choices(string.ascii_letters + string.digits, k=6))
         timestamps = [time.monotonic()]  # t1
