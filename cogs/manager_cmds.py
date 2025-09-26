@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import logging
-import re
 from typing import TYPE_CHECKING
 
 import discord
@@ -13,7 +12,7 @@ from discord.ext.commands import Cog
 from sqlalchemy import CursorResult, delete, insert, select
 from sqlalchemy.exc import SQLAlchemyError
 
-from consts import ALLOWED_WORDS_PATTERN, COG_NAME_MANAGER_CMDS, FIRST_TOKEN_SCORES, LOGGER_NAME_MANAGER_COG, \
+from consts import COG_NAME_MANAGER_CMDS, FIRST_TOKEN_SCORES, LOGGER_NAME_MANAGER_COG, \
     GameMode, Languages
 from model import BlacklistModel, WhitelistModel, GameModeState, MemberModel
 
@@ -578,7 +577,7 @@ to the other game mode!''')
                 await self.cog.bot.server_configs[interaction.guild.id].sync_to_db_with_connection(connection)
                 await connection.commit()
 
-            embed.description = f'''✅ *{language.name}* was successfully disabled.\n
+            embed.description = f'''✅ *{language.name.capitalize()}* was successfully disabled.\n
 {self.get_current_languages(self.cog.bot, interaction.guild.id)}'''
 
             await interaction.followup.send(embed=embed)
