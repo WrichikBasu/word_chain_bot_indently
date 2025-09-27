@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import io
+import json
 import logging
 import os
 from logging import Logger
@@ -31,6 +32,7 @@ class AdminCommandsCog(Cog, name=COG_NAME_ADMIN_CMDS):
 
     def __init__(self, bot: WordChainBot) -> None:
         self.bot: WordChainBot = bot
+        self.bot.tree.add_command(AdminCommandsCog.AnnounceCmdGroup(self))
         self.bot.tree.add_command(AdminCommandsCog.PurgeCmdGroup(self))
         self.bot.tree.add_command(AdminCommandsCog.LoggingControlCmdGroup(self))
         self.bot.tree.add_command(AdminCommandsCog.BanServerCmdGroup(self))
@@ -51,40 +53,6 @@ class AdminCommandsCog(Cog, name=COG_NAME_ADMIN_CMDS):
                 self.bot.tree.remove_command(command.name)
 
         logger.info(f'Cog {self.qualified_name} unloaded.')
-
-    # -----------------------------------------------------------------------------------------------------------------
-
-    @app_commands.command(name='announce', description='Announce something to all servers')
-    @app_commands.default_permissions(administrator=True)
-    @app_commands.guilds(ADMIN_GUILD_ID)
-    @app_commands.describe(msg='The message to announce')
-    async def announce(self, interaction: Interaction, msg: str):
-
-        await interaction.response.defer()
-
-        emb: Embed = Embed(title='Announcement from devs', description=msg, colour=Colour.yellow())
-        emb.description += f'''
-\n*For support and updates, join our Discord server:\nhttps://discord.gg/yhbzVGBNw3*
-'''
-        count_sent: int = 0
-        count_failed: int = 0
-        for guild in self.bot.guilds:
-
-            config: ServerConfig = self.bot.server_configs[guild.id]
-
-            for game_mode in GameMode:
-                if channel := self.bot.get_channel(config.game_state[game_mode].channel_id):
-                    try:
-                        await channel.send(embed=emb)
-                        count_sent += 1
-                    except Forbidden as _:
-                        logger.error(f'Failed to send announcement to {guild.name} (ID: {guild.id}) due to missing perms.')
-                        count_failed += 1
-
-        emb2: Embed = Embed(title='Announcement status', colour=Colour.yellow(), description='Command completed.')
-        emb2.add_field(name='Success', value=f'{count_sent} servers', inline=True)
-        emb2.add_field(name='Failed', value=f'{count_failed} servers', inline=True)
-        await interaction.followup.send(embed=emb2)
 
     # -----------------------------------------------------------------------------------------------------------------
 
@@ -543,6 +511,70 @@ class AdminCommandsCog(Cog, name=COG_NAME_ADMIN_CMDS):
                     server_entries = [f'{server_id}: {self.cog.bot.get_guild(server_id).name if self.cog.bot.get_guild(server_id) is not None else '###'}' for server_id in server_ids]
                     await interaction.followup.send(f'''These servers are currently banned:
 * {'\n* '.join(server_entries)}''')
+
+    # ============================================================================================================
+
+    class AnnounceCmdGroup(app_commands.Group):
+        """A group of commands to allow the devs to send announcements."""
+
+        def __init__(self, cog: AdminCommandsCog):
+            super().__init__(name='announce', description='Admin commands for sending announcements',
+                             guild_ids=[ADMIN_GUILD_ID], guild_only=True,
+                             default_permissions=Permissions(administrator=True))
+            self.cog: AdminCommandsCog = cog
+
+        # -----------------------------------------------------------------------------------------------------------
+
+        async def __send_announcement(self, emb: Embed) -> Embed:
+
+            count_sent: int = 0
+            count_failed: int = 0
+            for guild in self.cog.bot.guilds:
+
+                config: ServerConfig = self.cog.bot.server_configs[guild.id]
+
+                for game_mode in GameMode:
+                    if channel := self.cog.bot.get_channel(config.game_state[game_mode].channel_id):
+                        try:
+                            await channel.send(embed=emb)
+                            count_sent += 1
+                        except Forbidden as _:
+                            logger.error(
+                                f'Failed to send announcement to {guild.name} (ID: {guild.id}) due to missing perms.')
+                            count_failed += 1
+
+            emb2: Embed = Embed(title='Announcement status', colour=Colour.green(), description='Command completed.')
+            emb2.add_field(name='Success', value=f'{count_sent} servers', inline=True)
+            emb2.add_field(name='Failed', value=f'{count_failed} servers', inline=True)
+
+            return emb2
+
+        # -----------------------------------------------------------------------------------------------------------
+
+        @app_commands.command(name='message', description='Announce a message')
+        @app_commands.describe(msg='The message to announce')
+        async def message(self, interaction: Interaction, msg: str):
+            await interaction.response.defer(thinking=True)
+
+            emb: Embed = Embed(title='Announcement from devs', description=msg, colour=Colour.red())
+            emb.description += f'''
+\n*For support and updates, join our Discord server:\nhttps://discord.gg/yhbzVGBNw3*'''
+
+            await interaction.followup.send(embed=await self.__send_announcement(emb))
+
+        # -----------------------------------------------------------------------------------------------------------
+
+        @app_commands.command(name='from_json', description='Announce a message from given JSON')
+        @app_commands.describe(json_str='The JSON string from which the embed will be created')
+        async def from_json(self, interaction: Interaction, json_str: str):
+            await interaction.response.defer(thinking=True)
+
+            try:
+                emb: Embed = Embed.from_dict(json.loads(json_str))
+                await interaction.followup.send(embed=await self.__send_announcement(emb))
+            except json.JSONDecodeError:
+                await interaction.followup.send('Invalid JSON string!')
+                return
 
     # ============================================================================================================
 
