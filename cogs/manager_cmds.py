@@ -2,17 +2,18 @@
 from __future__ import annotations
 
 import logging
-import re
 from typing import TYPE_CHECKING
 
 import discord
+import unidecode
 from discord import Colour, Embed, Interaction, Permissions, Role, TextChannel, app_commands
 from discord.app_commands import Group
 from discord.ext.commands import Cog
 from sqlalchemy import CursorResult, delete, insert, select
 from sqlalchemy.exc import SQLAlchemyError
 
-from consts import ALLOWED_WORDS_PATTERN, COG_NAME_MANAGER_CMDS, FIRST_TOKEN_SCORES, LOGGER_NAME_MANAGER_COG, GameMode
+from consts import COG_NAME_MANAGER_CMDS, FIRST_TOKEN_SCORES, LOGGER_NAME_MANAGER_COG, \
+    GameMode, Languages
 from model import BlacklistModel, WhitelistModel, GameModeState, MemberModel
 
 if TYPE_CHECKING:
@@ -30,14 +31,17 @@ class ManagerCommandsCog(Cog, name=COG_NAME_MANAGER_CMDS):
         self.bot.tree.add_command(ManagerCommandsCog.UnsetCommandsGroup(self))
         self.bot.tree.add_command(ManagerCommandsCog.BlacklistCmdGroup(self))
         self.bot.tree.add_command(ManagerCommandsCog.WhitelistCmdGroup(self))
+        self.bot.tree.add_command(ManagerCommandsCog.LanguageCmdGroup(self))
 
     # ----------------------------------------------------------------------------------------------------------------
 
     @staticmethod
-    def is_generally_illegal_word(word: str):
-        return (not re.search(ALLOWED_WORDS_PATTERN, word.lower()) or
-                any(word[:game_mode.value] not in FIRST_TOKEN_SCORES[game_mode] or
-                    word[-game_mode.value:] not in FIRST_TOKEN_SCORES[game_mode]
+    def is_generally_illegal_word(bot: WordChainBot, word: str):
+        decoded_word = unidecode.unidecode(word.lower())
+
+        return (not bot.word_matches_pattern(word) or
+                any(decoded_word[:game_mode.value] not in FIRST_TOKEN_SCORES[game_mode] or
+                    decoded_word[-game_mode.value:] not in FIRST_TOKEN_SCORES[game_mode]
                     for game_mode in GameMode)
                 )
 
@@ -160,7 +164,7 @@ to the other game mode!''')
                 await self.cog.bot.server_configs[interaction.guild.id].sync_to_db(self.cog.bot)
                 game_mode_name = 'normal game mode' if game_mode == GameMode.NORMAL else 'hard game mode'
                 emb: Embed = Embed(title='Success', colour=Colour.green(),
-                               description=f'''Word chain channel for {game_mode_name} was set to {channel.mention}.''')
+                                   description=f'''Word chain channel for {game_mode_name} was set to {channel.mention}.''')
 
             await interaction.followup.send(embed=emb)
 
@@ -279,7 +283,7 @@ to the other game mode!''')
 
             emb: Embed = Embed(colour=Colour.blurple())
 
-            if self.cog.is_generally_illegal_word(word):
+            if self.cog.is_generally_illegal_word(self.cog.bot, word):
                 emb.description = f'⚠️ The word *{word.lower()}* is not a legal word.'
                 await interaction.followup.send(embed=emb)
                 return
@@ -304,7 +308,7 @@ to the other game mode!''')
 
             emb: Embed = Embed(colour=Colour.blurple())
 
-            if self.cog.is_generally_illegal_word(word):
+            if self.cog.is_generally_illegal_word(self.cog.bot, word):
                 emb.description = f'⚠️ The word *{word.lower()}* is not a legal word.'
                 await interaction.followup.send(embed=emb)
                 return
@@ -373,7 +377,7 @@ to the other game mode!''')
 
             emb: Embed = Embed(colour=Colour.blurple())
 
-            if self.cog.is_generally_illegal_word(word):
+            if self.cog.is_generally_illegal_word(self.cog.bot, word):
                 emb.description = f'⚠️ The word *{word.lower()}* is not a legal word.'
                 await interaction.followup.send(embed=emb)
                 return
@@ -398,7 +402,7 @@ to the other game mode!''')
 
             emb: Embed = Embed(colour=Colour.blurple())
 
-            if self.cog.is_generally_illegal_word(word):
+            if self.cog.is_generally_illegal_word(self.cog.bot, word):
                 emb.description = f'⚠️ The word *{word.lower()}* is not a legal word.'
                 await interaction.followup.send(embed=emb)
                 return
@@ -440,6 +444,146 @@ to the other game mode!''')
                         emb.description += f'{i}. {word}\n'
 
                     await interaction.followup.send(embed=emb)
+
+    # ================================================================================================================
+
+    class LanguageCmdGroup(app_commands.Group):
+
+        def __init__(self, parent_cog: ManagerCommandsCog) -> None:
+            super().__init__(name='language', description="Change the language of the bot",
+                             default_permissions=Permissions(manage_guild=True))
+            self.cog: ManagerCommandsCog = parent_cog
+
+        # -------------------------------------------------------------------------------------------------------------
+
+        @staticmethod
+        def get_current_languages(bot: WordChainBot, server_id: int) -> str:
+            """
+            Returns the currently enabled languages for a server.
+
+            Parameters
+            ----------
+            bot : WordChainBot
+                The bot instance.
+            server_id : int
+                The ID of the server.
+
+            Returns
+            -------
+            str
+                A formatted string containing the currently enabled languages. This can be directly used in
+                Embed descriptions.
+            """
+            return f'''Currently enabled languages:
+{'\n'.join(f'- {lang.name.capitalize()} (`{lang.value}`)' for lang in bot.server_configs[server_id].languages)}'''
+
+        # -------------------------------------------------------------------------------------------------------------
+
+        @app_commands.command(name='show-all', description="Shows all available languages")
+        async def show_all(self, interaction: Interaction) -> None:
+            await interaction.response.defer(thinking=True)
+
+            emb: Embed = Embed(colour=Colour.yellow(), title='Languages supported by the bot', description='')
+            emb.description += f'''The bot supports the following languages:
+{'\n'.join(f'- {language.name.capitalize()} (`{language.value}`) \
+{'✅' if language in self.cog.bot.server_configs[interaction.guild.id].languages else ''}' for language in Languages)}
+
+**Use the code within brackets when enabling or disabling a language.**'''
+
+            await interaction.followup.send(embed=emb)
+
+        # -------------------------------------------------------------------------------------------------------------
+
+        @app_commands.command(name='add', description="Add a new language")
+        @app_commands.describe(language_code="The language code")
+        async def add(self, interaction: Interaction, language_code: str) -> None:
+            await interaction.response.defer()
+
+            embed: Embed = Embed(title='Add new language', colour=Colour.green())
+
+            if language_code.lower() not in Languages:
+                embed.description = f'❌ Invalid language code. Please use the codes as stated in `/language show-all`.'
+                embed.colour = Colour.red()
+
+                await interaction.followup.send(embed=embed)
+                return
+
+            language: Languages = Languages(language_code.lower())
+
+            if language in self.cog.bot.server_configs[interaction.guild.id].languages:
+
+                embed.description = f'''✅ *{language.name.capitalize()}* is **already enabled** in this server.\n
+{ManagerCommandsCog.LanguageCmdGroup.get_current_languages(self.cog.bot, interaction.guild.id)}'''
+                embed.colour = Colour.green()
+
+                await interaction.followup.send(embed=embed)
+                return
+
+            # Limit to two languages per server
+            if len(self.cog.bot.server_configs[interaction.guild.id].languages) == 2:
+                embed.description = '❌ You cannot enable more than two languages in a server.'
+                embed.colour = Colour.red()
+
+                await interaction.followup.send(embed=embed)
+                return
+
+            self.cog.bot.server_configs[interaction.guild.id].languages.append(language)
+            async with self.cog.bot.db_connection() as connection:
+                await self.cog.bot.server_configs[interaction.guild.id].sync_to_db_with_connection(connection)
+                await connection.commit()
+
+            embed.description = f'''✅ *{language.name.capitalize()}* has been enabled for this server.\n
+{ManagerCommandsCog.LanguageCmdGroup.get_current_languages(self.cog.bot, interaction.guild.id)}'''
+            embed.colour = Colour.green()
+
+            await interaction.followup.send(embed=embed)
+
+        # -------------------------------------------------------------------------------------------------------------
+
+        @app_commands.command(name='remove', description="Remove a language")
+        @app_commands.describe(language_code="The language code")
+        async def remove(self, interaction: Interaction, language_code: str) -> None:
+            await interaction.response.defer()
+
+            embed: Embed = Embed(title='Remove language')
+
+            if language_code.lower() not in Languages:
+
+                embed.description = f'❌ Invalid language code.\nPlease use the codes as stated in `/language show-all`.'
+                embed.colour = Colour.red()
+
+                await interaction.followup.send(embed=embed)
+                return
+
+            language = Languages(language_code)
+
+            if len(self.cog.bot.server_configs[interaction.guild.id].languages) == 1:
+
+                embed.description = f'''❌ The server must have at least one language enabled.\n
+{ManagerCommandsCog.LanguageCmdGroup.get_current_languages(self.cog.bot, interaction.guild.id)}'''
+                embed.colour = Colour.red()
+
+                await interaction.followup.send(embed=embed)
+                return
+
+            if language not in self.cog.bot.server_configs[interaction.guild.id].languages:
+                embed.description = f'''✅ *{language.name.capitalize()}* is **not enabled** in this server.
+\n{ManagerCommandsCog.LanguageCmdGroup.get_current_languages(self.cog.bot, interaction.guild.id)}'''
+                embed.colour = Colour.green()
+                await interaction.followup.send(embed=embed)
+                return
+
+            self.cog.bot.server_configs[interaction.guild.id].languages.remove(language)
+
+            async with self.cog.bot.db_connection() as connection:
+                await self.cog.bot.server_configs[interaction.guild.id].sync_to_db_with_connection(connection)
+                await connection.commit()
+
+            embed.description = f'''✅ *{language.name.capitalize()}* was successfully disabled.\n
+{self.get_current_languages(self.cog.bot, interaction.guild.id)}'''
+            embed.colour = Colour.green()
+
+            await interaction.followup.send(embed=embed)
 
 # ================================================================================================================
 

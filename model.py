@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Any, Optional, List
 
 from pydantic import BaseModel, Field
 from sqlalchemy import Boolean, Float, Integer, String, update
@@ -8,7 +8,7 @@ from sqlalchemy.engine.row import Row
 from sqlalchemy.ext.asyncio import AsyncConnection
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
-from consts import GameMode
+from consts import GameMode, Languages
 
 if TYPE_CHECKING:
     from main import WordChainBot  # Thanks to https://stackoverflow.com/a/39757388/8387076
@@ -23,6 +23,7 @@ class Base(DeclarativeBase):
 
 
 class ServerConfigModel(Base):
+
     __tablename__ = 'server_config'
     server_id: Mapped[int] = mapped_column(Integer, primary_key=True)
     channel_id: Mapped[Optional[int]] = mapped_column(Integer)
@@ -42,11 +43,13 @@ class ServerConfigModel(Base):
     failed_member_id: Mapped[Optional[int]] = mapped_column(Integer)
     correct_inputs_by_failed_member: Mapped[int] = mapped_column(Integer)
     is_banned: Mapped[bool] = mapped_column(Boolean, default=False)
+    languages: Mapped[str] = mapped_column(String, default='en')
 
 
 class WordCacheModel(Base):
     __tablename__ = 'word_cache'
     word: Mapped[str] = mapped_column(String, primary_key=True)
+    language: Mapped[str] = mapped_column(String, default='en')
 
 
 class UsedWordsModel(Base):
@@ -108,6 +111,7 @@ class ServerConfig(BaseModel):
     failed_member_id: Optional[int] = None
     correct_inputs_by_failed_member: int = 0
     is_banned: bool = False
+    languages: List[Languages] = Field(default_factory=lambda: [Languages.ENGLISH])
 
     def fail_chain(self, game_mode: GameMode, member_id: int) -> None:
         """
@@ -169,7 +173,8 @@ class ServerConfig(BaseModel):
             failed_role_id=self.failed_role_id,
             failed_member_id=self.failed_member_id,
             correct_inputs_by_failed_member=self.correct_inputs_by_failed_member,
-            is_banned=self.is_banned
+            is_banned=self.is_banned,
+            languages=','.join(language.value for language in self.languages)
         ).where(ServerConfigModel.server_id == self.server_id)
         return stmt
 
@@ -207,7 +212,8 @@ class ServerConfig(BaseModel):
             failed_role_id=row.failed_role_id,
             failed_member_id=row.failed_member_id,
             correct_inputs_by_failed_member=row.correct_inputs_by_failed_member,
-            is_banned=row.is_banned
+            is_banned=row.is_banned,
+            languages=[Languages(lang_code) for lang_code in row.languages.split(',') if lang_code]
         )
 
     def to_sqlalchemy_dict(self) -> dict[str, Any]:
@@ -235,7 +241,8 @@ class ServerConfig(BaseModel):
             "failed_role_id": self.failed_role_id,
             "failed_member_id": self.failed_member_id,
             "correct_inputs_by_failed_member": self.correct_inputs_by_failed_member,
-            "is_banned": self.is_banned
+            "is_banned": self.is_banned,
+            "languages": ','.join([language.value for language in self.languages])
         }
 
     async def sync_to_db(self, bot: WordChainBot):

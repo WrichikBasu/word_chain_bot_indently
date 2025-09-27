@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import math
 from collections import deque
+from unidecode import unidecode
 
 from consts import FIRST_TOKEN_SCORES, GameMode
 
@@ -49,8 +50,11 @@ def calculate_base_karma(word: str, game_mode: GameMode, last_char_bias: float =
     def score_adaption(score: float, exponent: float = .5, rise: float = .025) -> float:
         return score ** exponent + rise
 
-    first_char_score: float = score_adaption(FIRST_TOKEN_SCORES[game_mode][word[:game_mode.value]])  # how difficult is it to find this word
-    last_char_score: float = score_adaption(FIRST_TOKEN_SCORES[game_mode][word[-game_mode.value:]])  # how difficult is it for the next player
+    first_char: str = unidecode(word[:game_mode.value])
+    last_char: str = unidecode(word[-game_mode.value:])
+
+    first_char_score: float = score_adaption(FIRST_TOKEN_SCORES[game_mode][first_char])  # how difficult is it to find this word
+    last_char_score: float = score_adaption(FIRST_TOKEN_SCORES[game_mode][last_char])  # how difficult is it for the next player
 
     first_char_karma: float = (first_char_score - 1) * -1  # distance to average, inverted
     last_char_karma: float = (last_char_score - 1)  # distance to average
