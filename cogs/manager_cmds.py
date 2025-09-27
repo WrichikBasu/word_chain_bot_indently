@@ -514,6 +514,7 @@ to the other game mode!''')
 
                 embed.description = f'''✅ *{language.name.capitalize()}* is **already enabled** in this server.\n
 {ManagerCommandsCog.LanguageCmdGroup.get_current_languages(self.cog.bot, interaction.guild.id)}'''
+                embed.colour = Colour.green()
 
                 await interaction.followup.send(embed=embed)
                 return
@@ -533,6 +534,7 @@ to the other game mode!''')
 
             embed.description = f'''✅ *{language.name.capitalize()}* has been enabled for this server.\n
 {ManagerCommandsCog.LanguageCmdGroup.get_current_languages(self.cog.bot, interaction.guild.id)}'''
+            embed.colour = Colour.green()
 
             await interaction.followup.send(embed=embed)
 
@@ -579,6 +581,7 @@ to the other game mode!''')
 
             embed.description = f'''✅ *{language.name.capitalize()}* was successfully disabled.\n
 {self.get_current_languages(self.cog.bot, interaction.guild.id)}'''
+            embed.colour = Colour.green()
 
             await interaction.followup.send(embed=embed)
 
