@@ -8,9 +8,13 @@ import random
 import re
 import string
 import time
+from asyncio import CancelledError
 from collections import defaultdict, deque
+from concurrent.futures import Future
+from copy import deepcopy
+from json import JSONDecodeError
 from logging.config import fileConfig
-from typing import AsyncIterator, Optional
+from typing import AsyncIterator, Optional, List
 
 import discord
 from alembic import command as alembic_command
@@ -19,19 +23,21 @@ from discord import Colour, Embed, Interaction, Object, app_commands
 from discord.ext.commands import AutoShardedBot, ExtensionNotLoaded
 from dotenv import load_dotenv
 from requests_futures.sessions import FuturesSession
-from sqlalchemy import CursorResult, delete, exists, func, insert, select, update
+from sqlalchemy import CursorResult, delete, exists, func, insert, select, update, and_
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, create_async_engine
 
 from consts import (COG_NAME_ADMIN_CMDS, COG_NAME_MANAGER_CMDS, COG_NAME_USER_CMDS,
                     LOGGER_NAME_MAIN, GameMode, HISTORY_LENGTH, RELIABLE_ROLE_KARMA_THRESHOLD,
                     RELIABLE_ROLE_ACCURACY_THRESHOLD, ALLOWED_WORDS_PATTERN, SPECIAL_REACTION_EMOJIS, MISTAKE_PENALTY,
-                    GLOBAL_BLACKLIST_2_LETTER_WORDS, GLOBAL_BLACKLIST_N_LETTER_WORDS, GLOBAL_WHITELIST_3_LETTER_WORDS,
-                    COGS_LIST, )
+                    GLOBAL_BLACKLIST_2_LETTER_WORDS_EN, GLOBAL_BLACKLIST_N_LETTER_WORDS_EN,
+                    GLOBAL_WHITELIST_3_LETTER_WORDS_EN,
+                    COGS_LIST, Languages, )
 from decorator import log_execution_time
 from karma_calcs import calculate_total_karma
 from model import (BannedMemberModel, BlacklistModel, MemberModel, ServerConfig, ServerConfigModel, UsedWordsModel,
                    WhitelistModel, WordCacheModel)
+from unidecode import unidecode
 
 load_dotenv('.env')
 # running in single player mode changes some game rules - you can chain words alone now
@@ -270,21 +276,28 @@ class WordChainBot(AutoShardedBot):
     @log_execution_time(logger)
     async def on_message_for_word_chain(self, message: discord.Message, game_mode: GameMode) -> None:
         """
+        Checks if the message is a valid word.
+
         Hierarchy of checking:
-        1. Word length must be > 1.
-        2. Is word whitelisted? --> If yes, skip to #5.
-        3. Is the word blacklisted?
-        4. Is the word valid? (Check cache/start query if not found in cache)
-        5. Repetition?
-        6. Wrong member?
-        7. Wrong starting letter?
+            1. Match regex pattern.
+            2. Word length must be > 1.
+            3. Is member banned? --> Yes => Simply ignore the input.
+            4. Is word whitelisted? (Global/server-specific) --> If yes, skip to #8.
+            5. Is the word blacklisted? (Global/server-specific)
+            6. If the word has letters out of the English alphabet, and the server has ONLY English
+               enabled, then it is an error. (We do not send the word to Wiktionary as Wiktionary English
+               has lots of words outside English.)
+            7. Is the word valid? (Check cache/start query if not found in cache)
+            8. Repetition?
+            9. Wrong member?
+            10. Wrong starting letter?
         """
         call_id = ''.join(random.choices(string.ascii_letters + string.digits, k=6))
         timestamps = [time.monotonic()]  # t1
         server_id = message.guild.id
         word: str = message.content.lower()
 
-        if not re.search(ALLOWED_WORDS_PATTERN, word):
+        if not WordChainBot.word_matches_pattern(word):
             return
         if len(word) == 0:
             return
@@ -310,12 +323,14 @@ class WordChainBot(AutoShardedBot):
 The chain has **not** been broken. Please enter another word.''')
             return
 
+        # ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+        # ADD USER TO THE DATABASE
+        # ------------------------------------
+        # We need to check whether the current user already
+        # has an entry in the database. If not, we have to add an entry.
+        # ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
         async with self.db_connection(call_id=call_id) as connection:
-            # ----------------------------------------------------------------------------------------
-            # ADD USER TO THE DATABASE
-            # ----------------------------------------------------------------------------------------
-            # We need to check whether the current user already has an entry in the database.
-            # If not, we have to add an entry.
+
             stmt = select(exists(MemberModel).where(
                 MemberModel.member_id == message.author.id,
                 MemberModel.server_id == message.guild.id
@@ -335,36 +350,66 @@ The chain has **not** been broken. Please enter another word.''')
                 await connection.execute(stmt)
                 await connection.commit()
 
+        # ++++++++++++++++++++++++++ Adding user completed ++++++++++++++++++++++++++++++
+
+        # +++++++++++++++++++++
+        # CHECK THE WORD
+        # +++++++++++++++++++++
         async with self.db_connection(call_id=call_id) as connection:
+
             # -------------------------------
             # Check if word is whitelisted
             # -------------------------------
             word_whitelisted: bool = await self.is_word_whitelisted(word, message.guild.id, connection)
 
-            # -------------------------------
+            # -----------------------------------
             # Check if word is blacklisted
-            # (if and onl if not whitelisted)
-            # -------------------------------
+            # (if and only if not whitelisted)
+            # -----------------------------------
             if not word_whitelisted and await self.is_word_blacklisted(word, message.guild.id, connection):
                 await WordChainBot.add_reaction(message, '⚠️')
                 await WordChainBot.send_message_to_channel(message.channel, f'''This word has been **blacklisted**. Please do not use it.
 The chain has **not** been broken. Please enter another word.''')
                 return
 
-            # ------------------------------
+            # --------------------------------------------------------------------------------------------
+            # Wiktionary English version has lots of words from other languages too. This includes
+            # words that have accents as well. Therefore, we check if all the characters in the word
+            # are from the English alphabet. If not, and the server is set to only English, then
+            # this is an invalid word. We do not go for an API query and end the execution here.
+            # --------------------------------------------------------------------------------------------
+            if (not word_whitelisted
+                and unidecode(word) != word  # => Word is not in English...
+                and Languages.ENGLISH in self.server_configs[server_id].languages  # ... but English is enabled in the server...
+                and len(self.server_configs[server_id].languages) == 1):  # ...AND English is the ONLY language in the server
+
+                response: str = f'''{message.author.mention} messed up the chain! \
+*The word you entered does not exist.^*
+{f'The chain length was {self.server_configs[server_id].game_state[game_mode].current_count} when it was broken. :sob:\n' if self.server_configs[server_id].game_state[game_mode].current_count > 0 else ''}\
+Restart with a word starting with **{self.server_configs[server_id].game_state[game_mode].current_word[-game_mode.value:]}** and try to beat the \
+current high score of **{self.server_configs[server_id].game_state[game_mode].high_score}**!
+
+-# ^ The bot now supports multiple languages. When a word is invalid, it pertains to the language(s) \
+enabled in this server.\n-# To check enabled languages, use `/show_languages`.'''
+
+                await self.handle_mistake(message, response, connection, game_mode)
+                return
+
+            # ----------------------------------------
             # Check if word is valid
             # (if and only if not whitelisted)
-            # ------------------------------
-            future: Optional[concurrent.futures.Future]
+            # -----------------------------------------
+            futures: Optional[list[Future]]
 
             # First check the whitelist or the word cache
-            if word_whitelisted or await self.is_word_in_cache(word, connection):
+            if word_whitelisted or \
+                    await self.is_word_in_cache(word, connection, self.server_configs[server_id].languages):
                 # Word found in cache. No need to query API
-                future = None
+                futures = None
             else:
                 # Word neither whitelisted, nor found in cache.
                 # Start the API request, but deal with it later
-                future = self.start_api_query(word)
+                futures = self.start_api_queries(word, self.server_configs[server_id].languages)
 
             # -----------------------------------
             # Check repetitions
@@ -400,9 +445,11 @@ try to beat the current high score of **{self.server_configs[server_id].game_sta
 
             # -------------------------
             # Wrong starting letter
+            # (inc. accents)
             # -------------------------
             if (self.server_configs[server_id].game_state[game_mode].current_word and word[:game_mode.value] !=
                     self.server_configs[server_id].game_state[game_mode].current_word[-game_mode.value:]):
+
                 response: str = f'''{message.author.mention} messed up the chain! \
 *The word you entered did not begin with the last letter of the previous word* (**{self.server_configs[server_id].game_state[game_mode].current_word[-game_mode.value:]}**).
 {f'The chain length was {self.server_configs[server_id].game_state[game_mode].current_count} when it was broken. :sob:\n' if self.server_configs[server_id].game_state[game_mode].current_count > 0 else ''}\
@@ -416,17 +463,31 @@ current high score of **{self.server_configs[server_id].game_state[game_mode].hi
             # ----------------------------------
             # Check if word is valid (contd.)
             # ----------------------------------
-            if future:
-                result: int = self.get_query_response(future)
+            query_result_code: int
 
-                if result == word_chain_bot.API_RESPONSE_WORD_DOESNT_EXIST:
+            if futures:
+                for future in futures:
+                    query_result_code = self.get_query_response(future)
+
+                    if query_result_code == WordChainBot.API_RESPONSE_WORD_EXISTS:
+                        # The word exists in at least one of the languages the server is configured for.
+                        # We don't need to loop over the other Future objects.
+                        break
+
+                # Add the words to the cache for all languages
+                await WordChainBot.add_words_to_cache(futures, connection)
+
+                if query_result_code == WordChainBot.API_RESPONSE_WORD_DOESNT_EXIST:
 
                     if self.server_configs[server_id].game_state[game_mode].current_word:
                         response: str = f'''{message.author.mention} messed up the chain! \
-*The word you entered does not exist.*
+*The word you entered does not exist.^*
 {f'The chain length was {self.server_configs[server_id].game_state[game_mode].current_count} when it was broken. :sob:\n' if self.server_configs[server_id].game_state[game_mode].current_count > 0 else ''}\
 Restart with a word starting with **{self.server_configs[server_id].game_state[game_mode].current_word[-game_mode.value:]}** and try to beat the \
-current high score of **{self.server_configs[server_id].game_state[game_mode].high_score}**!'''
+current high score of **{self.server_configs[server_id].game_state[game_mode].high_score}**!
+
+-# ^ The bot now supports multiple languages. When a word is invalid, it pertains to the language(s) \
+enabled in this server.\n-# To check enabled languages, use `/show_languages`.'''
 
                     else:
                         response: str = f'''{message.author.mention} messed up the chain! \
@@ -437,8 +498,7 @@ Restart and try to beat the current high score of **{self.server_configs[server_
                     await connection.commit()
                     return
 
-                elif result == word_chain_bot.API_RESPONSE_ERROR:
-
+                elif query_result_code == WordChainBot.API_RESPONSE_ERROR:
                     await WordChainBot.add_reaction(message, '⚠️')
                     await WordChainBot.send_message_to_channel(message.channel, ''':octagonal_sign: There was an issue in the backend.
 The above entered word is **NOT** being taken into account.''')
@@ -446,7 +506,7 @@ The above entered word is **NOT** being taken into account.''')
 
             # --------------------
             # Everything is fine
-            # ---------------------
+            # --------------------
             self.server_configs[server_id].update_current(game_mode=game_mode,
                                                           member_id=message.author.id,
                                                           current_word=word)
@@ -493,7 +553,6 @@ The above entered word is **NOT** being taken into account.''')
                     self.server_configs[server_id].correct_inputs_by_failed_member = 0
                     await self.add_remove_failed_role(message.guild, connection)
 
-            await self.add_to_cache(word, connection)
             await self.add_remove_reliable_role(message.guild, connection)
             await self.server_configs[server_id].sync_to_db_with_connection(connection)
 
@@ -572,6 +631,36 @@ The above entered word is **NOT** being taken into account.''')
             await message.add_reaction(emoji)
         except discord.errors.Forbidden:
             pass
+        except discord.errors.NotFound:
+            logger.warning("Failed to add reaction as message was not found.")
+
+    # ---------------------------------------------------------------------------------------------------------------
+
+    @staticmethod
+    def word_matches_pattern(word: str) -> bool:
+        """
+        Check if the given word matches the pattern for allowed words.
+
+        Uses the `Unidecode` library to remove accents, then checks using regex.
+
+        !! WARNING !!
+        NOT safe for all languages. Eg. letters in the Bengali alphabet will be mapped
+        to letters in the English as well, and the final letter will be the vowel sound rather
+        than the consonant. Applicable for most other Indian languages and probably
+        other Asian languages as well.
+
+        Parameters
+        ----------
+        word : str
+            The word to check.
+
+        Returns
+        -------
+        bool
+            `True` if the word matches the pattern, otherwise `False`.
+        """
+        word = unidecode(word.lower())
+        return True if re.search(ALLOWED_WORDS_PATTERN, word) else False
 
     # ---------------------------------------------------------------------------------------------------------------
 
@@ -595,37 +684,45 @@ The above entered word is **NOT** being taken into account.''')
     # ---------------------------------------------------------------------------------------------------------------
 
     @staticmethod
-    def start_api_query(word: str) -> concurrent.futures.Future:
+    def start_api_queries(word: str, languages: List[Languages]) -> List[Future]:
         """
-        Starts a Wiktionary API query in the background to find the given word.
+        Starts Wiktionary API queries in the background to find the given word, in each of the
+        given languages.
 
         Parameters
         ----------
+        languages : list[consts.Languages]
+             A list of languages to search in.
         word : str
              The word to be searched for.
 
         Returns
         -------
-        concurrent.futures.Future
-              A Futures object for the API query.
+        list[concurrent.futures.Future]
+              A list of Future objects for the API query, one for each language.
         """
+        futures: List[Future] = []
 
-        session: FuturesSession = FuturesSession()
+        for language in languages:
 
-        url: str = "https://en.wiktionary.org/w/api.php"
-        params: dict = {
-            "action": "opensearch",
-            "namespace": "0",
-            "search": word,
-            "limit": "2",
-            "format": "json",
-            "profile": "strict"
-        }
-        headers: dict = {
-            "User-Agent": "word-chain-bot"
-        }
+            url: str = f"https://{language.value}.wiktionary.org/w/api.php"
+            params: dict = {
+                "action": "opensearch",
+                "namespace": "0",
+                "search": word,
+                "limit": "2",
+                "format": "json",
+                "profile": "strict"
+            }
+            headers: dict = {
+                "User-Agent": "word-chain-bot"
+            }
 
-        return session.get(url=url, params=params, headers=headers)
+            session: FuturesSession = FuturesSession()
+            future: Future = session.get(url=url, params=params, headers=headers)
+            futures.append(future)
+
+        return futures
 
     # ---------------------------------------------------------------------------------------------------------------
 
@@ -642,8 +739,9 @@ The above entered word is **NOT** being taken into account.''')
         Returns
         -------
         int
-            `bot.API_RESPONSE_WORD_EXISTS` is the word exists, `bot.API_RESPONSE_WORD_DOESNT_EXIST` if the word
-            does not exist, or `bot.API_RESPONSE_ERROR` if an error (of any type) was raised in the query.
+            `WordChainBot.API_RESPONSE_WORD_EXISTS` is the word exists,
+            `WordChainBot.API_RESPONSE_WORD_DOESNT_EXIST` if the word does not exist, or
+            `WordChainBot.API_RESPONSE_ERROR` if an error (of any type) was raised in the query.
         """
         try:
             response = future.result(timeout=5)
@@ -653,7 +751,6 @@ The above entered word is **NOT** being taken into account.''')
                 return word_chain_bot.API_RESPONSE_ERROR
 
             data = response.json()
-
             word: str = data[0]
             best_match: str = data[1][0]  # Should raise an IndexError if no match is returned
 
@@ -676,6 +773,42 @@ The above entered word is **NOT** being taken into account.''')
 
     # ---------------------------------------------------------------------------------------------------------------
 
+    @staticmethod
+    async def add_words_to_cache(futures: List[Future], connection: AsyncConnection) -> None:
+        """
+        From the given list of Future objects, get the results of the queries and
+        add the words that were found to the cache.
+
+        Parameters
+        ----------
+        futures : List[Future]
+            A list of Future objects for the API queries.
+        connection : AsyncConnection
+            The AsyncConnection object to access the db.
+        """
+        future: Future
+        for future in futures:
+            try:
+                response = future.result(timeout=5)
+
+                if response.status_code >= 400:
+                    continue
+
+                data = response.json()
+
+                word: str = data[0]  # The word that was searched
+                best_match: str = data[1][0]  # Should raise an IndexError if no match is returned
+                lang_code: str = (data[3][0]).split('//')[1].split('.')[0]
+                language: Languages = Languages(lang_code)
+
+                if best_match.lower() == word.lower():
+                    await word_chain_bot.add_to_cache(word, connection, language)
+
+            except (IndexError, TimeoutError, CancelledError, JSONDecodeError):
+                continue
+
+    # ---------------------------------------------------------------------------------------------------------------
+
     async def on_message_delete(self, message: discord.Message) -> None:
         """Post a message in the channel if a user deletes their input."""
 
@@ -687,11 +820,11 @@ The above entered word is **NOT** being taken into account.''')
 
         # Check if the message is in the channel
         if message.channel.id not in (self.server_configs[message.guild.id].game_state[GameMode.NORMAL].channel_id,
-                                     self.server_configs[message.guild.id].game_state[GameMode.HARD].channel_id):
+                                      self.server_configs[message.guild.id].game_state[GameMode.HARD].channel_id):
             return
         if not message.reactions:
             return
-        if not re.search(ALLOWED_WORDS_PATTERN, message.content.lower()):
+        if not WordChainBot.word_matches_pattern(message.content):
             return
 
         if message.channel.id == self.server_configs[message.guild.id].game_state[GameMode.NORMAL].channel_id:
@@ -724,7 +857,7 @@ The above entered word is **NOT** being taken into account.''')
             return
         if not before.reactions:
             return
-        if not re.search(ALLOWED_WORDS_PATTERN, before.content.lower()):
+        if not WordChainBot.word_matches_pattern(before.content):
             return
         if before.content.lower() == after.content.lower():
             return
@@ -742,11 +875,10 @@ The above entered word is **NOT** being taken into account.''')
             else:
                 await WordChainBot.send_message_to_channel(after.channel, f'{after.author.mention} edited their word!')
 
-
     # ---------------------------------------------------------------------------------------------------------------
 
     @staticmethod
-    async def is_word_in_cache(word: str, connection: AsyncConnection) -> bool:
+    async def is_word_in_cache(word: str, connection: AsyncConnection, languages: List[Languages]) -> bool:
         """
         Check if a word is in the correct word cache schema.
 
@@ -759,24 +891,52 @@ The above entered word is **NOT** being taken into account.''')
             The word to be searched for in the schema.
         connection : AsyncConnection
             The Cursor object to access the schema.
+        languages : list[Languages]
+            A list of languages to search in.
 
         Returns
         -------
         bool
             `True` if the word exists in the cache, otherwise `False`.
         """
-        stmt = select(exists(WordCacheModel).where(WordCacheModel.word == word))
+        stmt = select(exists(WordCacheModel)
+                      .where(and_(
+                                  WordCacheModel.word == word,
+                                  WordCacheModel.language.in_([language.value for language in languages])
+                                  )
+                             )
+                      )
         result: CursorResult = await connection.execute(stmt)
         return result.scalar()
 
     # ---------------------------------------------------------------------------------------------------------------
 
-    async def add_to_cache(self, word: str, connection: AsyncConnection) -> None:
+    async def add_to_cache(self, word: str, connection: AsyncConnection,
+                           language: Languages) -> None:
         """
-        Add a word into the `bot.TABLE_CACHE` schema.
+        Adds a word to the word cache schema.
+
+        Parameters
+        ----------
+        word : str
+            The word to be added.
+        connection : AsyncConnection
+            The connection to access the schema.
+        language : consts.Languages
+            The language the word belongs to.
         """
         if not await self.is_word_blacklisted(word):  # Do NOT insert globally blacklisted words into the cache
-            stmt = insert(WordCacheModel).values(word=word).prefix_with('OR IGNORE')
+
+            # If language is `en`, check if the word is a legal English word
+            # This is because many non-English words have `en.wiktionary` entries
+            if language == Languages.ENGLISH and unidecode(word) != word:
+                logger.warning(f'The word "{word}" is not a legal English word, but was tried '
+                               f'to be added to the cache for English words.')
+                return
+
+            stmt = insert(WordCacheModel) \
+                   .values(word=word, language=language.value) \
+                   .prefix_with('OR IGNORE')
             await connection.execute(stmt)
 
     # ---------------------------------------------------------------------------------------------------------------
@@ -785,11 +945,15 @@ The above entered word is **NOT** being taken into account.''')
     async def is_word_blacklisted(word: str, server_id: Optional[int] = None,
                                   connection: Optional[AsyncConnection] = None) -> bool:
         """
-        Checks if a word is blacklisted.
+        Checks if a word is blacklisted for all languages enabled in the guild.
 
         Checking hierarchy:
-        1. Global blacklists/whitelists, THEN
-        2. Server blacklist.
+            Is the word an English word?
+                ├── Yes
+                │   ├── Check global blacklists/whitelists.
+                │   └── Check server blacklist.
+                └── No
+                    └── Check server blacklist.
 
         Do not pass the `server_id` or `connection` instance if you want to query the global blacklists only.
 
@@ -807,18 +971,35 @@ The above entered word is **NOT** being taken into account.''')
         bool
             `True` if the word is blacklisted, otherwise `False`.
         """
-        # Check global blacklists
-        if word in GLOBAL_BLACKLIST_2_LETTER_WORDS or word in GLOBAL_BLACKLIST_N_LETTER_WORDS:
-            return True
 
-        # Check global 3-letter words WHITElist
-        if len(word) == 3 and word not in GLOBAL_WHITELIST_3_LETTER_WORDS:
-            return True
+        # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+        # GLOBAL BLACKLISTS & WHITELISTS (English)
+        # -----------------------------------------
+        # Check these if and only if all letters in
+        # the word belong to the English alphabet.
+        # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-        # Either of these two params being null implies only the global blacklists should be checked
+        if word == unidecode(word):
+
+            if word in GLOBAL_BLACKLIST_2_LETTER_WORDS_EN or \
+                    word in GLOBAL_BLACKLIST_N_LETTER_WORDS_EN:
+                return True
+
+            # Check global 3-letter words WHITElist
+            if len(word) == 3 and word not in GLOBAL_WHITELIST_3_LETTER_WORDS_EN:
+                # TODO this will create an error if the three-letter word is not an English word, but also
+                #  does not have any accents
+                return True
+
+        # +++++++++++++ Global Blacklist and whitelist checking complete ++++++++++++++++++++
+
+        # If the control is here, it means that the word  has neither been globally
+        # blacklisted nor whitelisted, or is not an English word.
+
+        # Now, if `server` and `connection` are both not `None`, we proceed to check the server
+        # blacklist and whitelist. Otherwise, we return `False`.
+
         if server_id is None or connection is None:
-            # Global blacklists have already been checked. If the control is here, it means that
-            # the word is not globally blacklisted. So, return False.
             return False
 
         # Check server blacklist
@@ -859,7 +1040,7 @@ The above entered word is **NOT** being taken into account.''')
         ))
         result: CursorResult = await connection.execute(stmt)
         return result.scalar()
-    
+
     # ---------------------------------------------------------------------------------------------------------------
 
     async def setup_hook(self) -> None:
