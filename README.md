@@ -36,7 +36,7 @@ to the codebase.
 - Base code for `main.py` taken from the repo
 [Counting Bot for Indently](https://github.com/guanciottaman/counting_bot_indently). Thanks to [@guanciottaman](https://github.com/guanciottaman) for
 making the codebase available under the MIT License!
-- Base code edited for the word chain game by me, Wrichik.
+- Base code edited for the word chain game by me, [@WrichikBasu](https://github.com/WrichikBasu).
 - Karma system, multi-server support and hard mode designed and coded by [@SirLefti](https://github.com/SirLefti).
 - Basic idea of the word chain game and the use of Wiktionary API is inspired by the (now discontinued) bot
 [Literally](https://github.com/mettlex/literally-discord-bot).
