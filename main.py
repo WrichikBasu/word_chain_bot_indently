@@ -11,7 +11,6 @@ import time
 from asyncio import CancelledError
 from collections import defaultdict, deque
 from concurrent.futures import Future
-from copy import deepcopy
 from json import JSONDecodeError
 from logging.config import fileConfig
 from typing import AsyncIterator, Optional, List
