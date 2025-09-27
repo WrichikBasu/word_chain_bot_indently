@@ -15,8 +15,8 @@ from sqlalchemy import delete, insert, select, update
 
 from consts import (COG_NAME_ADMIN_CMDS, LOGGER_NAME_ADMIN_COG, LOGGER_NAME_MAIN, LOGGER_NAME_MANAGER_COG,
                     LOGGER_NAME_USER_COG, LOGGERS_LIST, GameMode)
-from model import BannedMemberModel, BlacklistModel, MemberModel, ServerConfigModel, UsedWordsModel, WhitelistModel, \
-    ServerConfig
+from model import (BannedMemberModel, BlacklistModel, MemberModel, ServerConfig, ServerConfigModel, UsedWordsModel,
+                   WhitelistModel)
 
 if TYPE_CHECKING:
     from main import WordChainBot

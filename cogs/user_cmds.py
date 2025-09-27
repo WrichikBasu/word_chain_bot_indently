@@ -17,7 +17,7 @@ from sqlalchemy.sql.functions import count
 from unidecode import unidecode
 
 from cogs.manager_cmds import ManagerCommandsCog
-from consts import COG_NAME_USER_CMDS, GameMode, LOGGER_NAME_USER_COG, Languages
+from consts import COG_NAME_USER_CMDS, LOGGER_NAME_USER_COG, GameMode, Languages
 from model import BannedMemberModel, Member, MemberModel, ServerConfig, ServerConfigModel
 from views.dropdown import Dropdown
 

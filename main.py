@@ -14,7 +14,7 @@ from concurrent.futures import Future
 from copy import deepcopy
 from json import JSONDecodeError
 from logging.config import fileConfig
-from typing import AsyncIterator, Optional, List
+from typing import AsyncIterator, List, Optional
 
 import discord
 from alembic import command as alembic_command
@@ -23,21 +23,20 @@ from discord import Colour, Embed, Interaction, Object, app_commands
 from discord.ext.commands import AutoShardedBot, ExtensionNotLoaded
 from dotenv import load_dotenv
 from requests_futures.sessions import FuturesSession
-from sqlalchemy import CursorResult, delete, exists, func, insert, select, update, and_
+from sqlalchemy import CursorResult, and_, delete, exists, func, insert, select, update
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, create_async_engine
+from unidecode import unidecode
 
-from consts import (COG_NAME_ADMIN_CMDS, COG_NAME_MANAGER_CMDS, COG_NAME_USER_CMDS,
-                    LOGGER_NAME_MAIN, GameMode, HISTORY_LENGTH, RELIABLE_ROLE_KARMA_THRESHOLD,
-                    RELIABLE_ROLE_ACCURACY_THRESHOLD, ALLOWED_WORDS_PATTERN, SPECIAL_REACTION_EMOJIS, MISTAKE_PENALTY,
+from consts import (ALLOWED_WORDS_PATTERN, COG_NAME_ADMIN_CMDS, COG_NAME_MANAGER_CMDS, COG_NAME_USER_CMDS, COGS_LIST,
                     GLOBAL_BLACKLIST_2_LETTER_WORDS_EN, GLOBAL_BLACKLIST_N_LETTER_WORDS_EN,
-                    GLOBAL_WHITELIST_3_LETTER_WORDS_EN,
-                    COGS_LIST, Languages, )
+                    GLOBAL_WHITELIST_3_LETTER_WORDS_EN, HISTORY_LENGTH, LOGGER_NAME_MAIN, MISTAKE_PENALTY,
+                    RELIABLE_ROLE_ACCURACY_THRESHOLD, RELIABLE_ROLE_KARMA_THRESHOLD, SPECIAL_REACTION_EMOJIS, GameMode,
+                    Languages)
 from decorator import log_execution_time
 from karma_calcs import calculate_total_karma
 from model import (BannedMemberModel, BlacklistModel, MemberModel, ServerConfig, ServerConfigModel, UsedWordsModel,
                    WhitelistModel, WordCacheModel)
-from unidecode import unidecode
 
 load_dotenv('.env')
 # running in single player mode changes some game rules - you can chain words alone now
