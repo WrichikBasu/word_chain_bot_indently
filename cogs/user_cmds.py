@@ -310,7 +310,7 @@ Therefore, a word that is valid in this server may not be valid in another serve
 ## Normal Mode
 The game is pretty simple.
 
-- Enter a word that starts with the last letter of the previous correct word (or with the last two letters in hard mode).  
+- Enter a word that starts with the last letter of the previous correct word.  
 - If your word is correct, the bot will react with a tick mark — :white_check_mark:.  
 - No characters other than the letters of the English alphabet (capital and small) and hyphen (`-`) are accepted. \
 Messages with anything else will be ignored.
