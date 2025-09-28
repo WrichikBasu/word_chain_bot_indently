@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-import os
 from collections import defaultdict
 from concurrent.futures import Future
 from typing import TYPE_CHECKING, Optional, Sequence
@@ -10,14 +9,13 @@ import discord
 from discord import Colour, Embed, Interaction, SelectOption, app_commands
 from discord.ext.commands import Cog
 from discord.ui import View
-from dotenv import load_dotenv
 from sqlalchemy import CursorResult, func, or_, select
 from sqlalchemy.engine.row import Row
 from sqlalchemy.sql.functions import count
 from unidecode import unidecode
 
 from cogs.manager_cmds import ManagerCommandsCog
-from consts import COG_NAME_USER_CMDS, LOGGER_NAME_USER_COG, GameMode, Languages
+from consts import COG_NAME_USER_CMDS, LOGGER_NAME_USER_COG, SETTINGS, GameMode, Languages
 from model import BannedMemberModel, Member, MemberModel, ServerConfig, ServerConfigModel
 from views.dropdown import Dropdown
 
@@ -26,9 +24,6 @@ if TYPE_CHECKING:
 
 logging.basicConfig(level=logging.INFO, format='[%(asctime)s] [%(levelname)s] %(name)s: %(message)s')
 logger: logging.Logger = logging.getLogger(LOGGER_NAME_USER_COG)
-
-load_dotenv()
-ADMIN_GUILD_ID: int = int(os.environ['ADMIN_GUILD_ID'])
 
 
 class UserCommandsCog(Cog, name=COG_NAME_USER_CMDS):
@@ -461,7 +456,7 @@ https://discord.gg/yhbzVGBNw3''', colour=Colour.pink())
 `/whitelist remove` - Remove a word from the whitelist of this server.
 `/whitelist show` - Show the whitelist words for this server.'''
 
-            if interaction.user.guild_permissions.administrator and interaction.guild.id == ADMIN_GUILD_ID:
+            if interaction.user.guild_permissions.administrator and interaction.guild.id == SETTINGS.admin_guild_id:
                 emb.description += '''\n
 **Restricted commands — Bot Admins only**
 `/reload` - Reload a specific Cog (or all Cogs).
