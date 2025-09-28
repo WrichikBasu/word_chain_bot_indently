@@ -312,8 +312,9 @@ The game is pretty simple.
 
 - Enter a word that starts with the last letter of the previous correct word.  
 - If your word is correct, the bot will react with a tick mark — :white_check_mark:.  
-- No characters other than the letters of the English alphabet (capital and small) and hyphen (`-`) are accepted. \
-Messages with anything else will be ignored.
+- No characters other than letters and hyphen (`-`) are accepted. Messages with anything else will be ignored. \
+If only English is selected (default), only letters of the English alphabet are accepted. If other languages are \
+selected, letters with accents are accepted as well.
 - You can check if a word is correct using the `/check_word` command - this checks only if the word is generally \
 accepted, it does **not** check if it has the matching starting letter to continue the current chain.
 - Words that have been used once cannot be used again until the chain is broken. The chain, however, will **not**
