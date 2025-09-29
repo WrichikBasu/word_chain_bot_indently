@@ -1,0 +1,22 @@
+
+EN_REGEX: str = r'^[a-z]+([-][a-z]+)*$'
+FR_REGEX: str = r'^[a-zàâæçéèêëîïôœùûüÿ]+([-][a-zàâæçéèêëîïôœùûüÿ]+)*$'
+DE_REGEX: str = r'^(?!ß)[a-zäöüß]+([-][a-zäöüß]+)*$'
+NL_REGEX: str = r'^[a-zéèëç]+([-][a-zéèëç]+)*$'
+ES_REGEX: str = r'^[a-záéíóúüñ]+([-][a-záéíóúüñ]+)*$'
+PT_REGEX: str = r'^[a-záâãàçéêíóôõú]+([-][a-záâãàçéêíóôõú]+)*$'
+IT_REGEX: str = r'^[a-zàèéìíîòóùú]+([-][a-zàèéìíîòóùú]+)*$'
+NN_REGEX: str = r'^[a-zæøå]+([-][a-zæøå]+)*$'  # north germanic (danish, norwegian)
+SE_REGEX: str = r'^[a-zåäö]+([-][a-zåäö]+)*$'
+IS_REGEX: str = r'^(?!ð)[a-záéíóúýþæöð]+([-][a-záéíóúýþæöð]+)*$'
+PL_REGEX: str = r'^[a-ząćęłńóśźż]+([-][a-ząćęłńóśźż]+)*$'
+CZ_REGEX: str = r'^[a-záčďéěíňóřšťůýž]+([-][a-záčďéěíňóřšťůýž]+)*$'  # czech and slovak
+SS_REGEX: str = r'^[a-zčćđšž]+([-][a-zčćđšž]+)*$'  # south slavic (slovene, croatian, bosnian, serbian)
+HU_REGEX: str = r'^[a-záéíóöőúüű]+([-][a-záéíóöőúüű]+)*$'
+RO_REGEX: str = r'^[a-zăâîșț]+([-][a-zăâîșț]+)*$'
+AL_REGEX: str = r'^[a-zëç]+([-][a-zëç]+)*$'
+GA_REGEX: str = r'^[a-záéíóú]+([-][a-záéíóú]+)*$'  # irish
+GD_REGEX: str = r'^[a-zàèìòù]+([-][a-zàèìòù]+)*$'  # scottish, gaelic
+CY_REGEX: str = r'^[a-zâêîôûŷ]+([-][a-zâêîôûŷ]+)*$'  # welsh
+MT_REGEX: str = r'^[a-zċġħż]+([-][a-zċġħż]+)*$'  # maltese
+TR_REGEX: str = r'^[a-zçğıöşü]+([-][a-zçğıöşü]+)*$'
