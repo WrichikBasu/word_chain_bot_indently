@@ -9,7 +9,7 @@ PT_REGEX: str = r'^[a-záâãàçéêíóôõú]+([-][a-záâãàçéêíóôõ�
 IT_REGEX: str = r'^[a-zàèéìíîòóùú]+([-][a-zàèéìíîòóùú]+)*$'
 NN_REGEX: str = r'^[a-zæøå]+([-][a-zæøå]+)*$'  # north germanic (danish, norwegian)
 SE_REGEX: str = r'^[a-zåäö]+([-][a-zåäö]+)*$'
-IS_REGEX: str = r'^(?!ð)[a-záéíóúýþæöð]+([-][a-záéíóúýþæöð]+)*$'
+IS_REGEX: str = r'^(?!ð)[a-záéíóúýþæöð]+([-][a-záéíóúýþæöð]+)*$'  # icelandic and faroese
 PL_REGEX: str = r'^[a-ząćęłńóśźż]+([-][a-ząćęłńóśźż]+)*$'
 CZ_REGEX: str = r'^[a-záčďéěíňóřšťůýž]+([-][a-záčďéěíňóřšťůýž]+)*$'  # czech and slovak
 SS_REGEX: str = r'^[a-zčćđšž]+([-][a-zčćđšž]+)*$'  # south slavic (slovene, croatian, bosnian, serbian)
