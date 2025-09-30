@@ -1,3 +1,4 @@
+from pydantic import BaseModel, Field
 
 EN_REGEX: str = r'^[a-z]+([-][a-z]+)*$'
 FR_REGEX: str = r'^[a-zàâæçéèêëîïôœùûüÿ]+([-][a-zàâæçéèêëîïôœùûüÿ]+)*$'
@@ -20,3 +21,9 @@ GD_REGEX: str = r'^[a-zàèìòù]+([-][a-zàèìòù]+)*$'  # scottish, gaelic
 CY_REGEX: str = r'^[a-zâêîôûŷ]+([-][a-zâêîôûŷ]+)*$'  # welsh
 MT_REGEX: str = r'^[a-zċġħż]+([-][a-zċġħż]+)*$'  # maltese
 TR_REGEX: str = r'^[a-zçğıöşü]+([-][a-zçğıöşü]+)*$'
+
+
+class Language(BaseModel):
+    language_code: str = Field(max_length=2, min_length=2)
+    allowed_word_regex: str
+
