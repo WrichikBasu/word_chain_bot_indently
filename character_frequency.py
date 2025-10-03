@@ -1,4 +1,6 @@
 import json
+import re
+import string
 from collections import defaultdict
 from itertools import product
 
@@ -30,7 +32,7 @@ def analyze(words: list[str], token_width=1) -> Result:
     valid_words = [word.lower() for word in words if len(word) >= token_width]
     first_char_occurrences = defaultdict(lambda: 0)
     last_char_occurrences = defaultdict(lambda: 0)
-    single_tokens = set()
+    single_tokens = set(string.ascii_lowercase)
 
     for word in valid_words:
         start_token = word[:token_width]
@@ -49,11 +51,15 @@ def analyze(words: list[str], token_width=1) -> Result:
         only_end_chars=sorted([token for token in last_char_occurrences if first_char_occurrences[token] == 0])
     )
 
-def main(language: Language):
+def main(language: Language, token_width: int = 1):
     words = load_file(f'words_{language.value.code}.txt')
-    result = analyze(words, 1)
-    with open(f'frequency_{language.value.code}.json', 'w', encoding='utf-8') as export_file:
+    regex = re.compile(language.value.allowed_word_regex)
+    accepted_words = [word for word in words if regex.match(word)]
+    result = analyze(accepted_words, token_width)
+    with open(f'frequency_{language.value.code}_{token_width}.json', 'w', encoding='utf-8') as export_file:
         json.dump(result.model_dump(), export_file, indent=4, sort_keys=True, ensure_ascii=False)
 
 if __name__ == '__main__':
-    main(Language.ENGLISH)
+    for l in [Language.ENGLISH, Language.GERMAN, Language.FRENCH, Language.SPANISH]:
+        for t in [1, 2]:
+            main(l, t)
