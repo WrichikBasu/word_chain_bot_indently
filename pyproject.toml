@@ -1,29 +1,34 @@
-[tool.poetry]
+[project]
 name = "word-chain-bot-indently"
-version = "6.0.0"
+version = "9.0.0"
 description = "Word Chain Discord bot, born from the Indently Discord server!"
-authors = ["Wrichik Basu <56736644+WrichikBasu@users.noreply.github.com>",
-           "Sir Lefti <62506842+SirLefti@users.noreply.github.com"]
+authors = [
+    { name = "Wrichik Basu", email = "56736644+WrichikBasu@users.noreply.github.com" },
+    { name = "SirLefti", email = "62506842+SirLefti@users.noreply.github.com" }
+]
 license = "BSD-3-Clause"
 readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "discord.py >=2.5.0,<3.0.0",
+    "requests-futures >=1.0.2,<2.0.0",
+    "pydantic >=2.11.7,<3.0.0",
+    "pydantic-settings >=2.11.0,<3.0.0",
+    "SQLAlchemy >=2.0.36,<3.0.0",
+    "aiosqlite >=0.21.0,<1.0.0",
+    "alembic >=1.16.5,<2.0.0",
+    "uuid6 >=2025.0.1",
+    "unidecode >=1.4.0,<2.0.0"
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest >=8.2.1,<9.0.0",
+    "isort >=6.0.1,<7.0.0"
+]
+
+[tool.setuptools] # when using pip/venv or uv
+packages = ["views"]
+
+[tool.poetry] # when using poetry
 package-mode = false
-
-[tool.poetry.dependencies]
-python = "^3.12"
-"discord.py" = "^2.5.0"
-python-dotenv = "^1.1.1"
-requests-futures = "^1.0.2"
-pydantic = "^2.11.7"
-SQLAlchemy = "^2.0.36"
-aiosqlite = "^0.21.0"
-alembic = "^1.16.5"
-uuid6 = "2025.0.1"
-unidecode = "^1.4.0"
-
-[tool.poetry.group.dev.dependencies]
-pytest = "^8.2.1"
-isort = "^6.0.1"
-
-[build-system]
-requires = ["poetry-core"]
-build-backend = "poetry.core.masonry.api"
