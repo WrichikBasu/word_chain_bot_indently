@@ -1,8 +1,10 @@
 import json
-import string
 from collections import defaultdict
+from itertools import product
 
 from pydantic import BaseModel
+
+from language import Language
 
 
 class Result(BaseModel):
@@ -12,31 +14,32 @@ class Result(BaseModel):
     only_end_chars: list[str]
 
 
-def word_list() -> list[str]:
-    # words_alpha.txt must be a line break delimited file containing the words
-    # we use this dictionary: https://raw.githubusercontent.com/dwyl/english-words/refs/heads/master/words_alpha.txt
-    with open('words_alpha.txt', 'r') as dictionary_file:
+def load_file(file_name: str) -> list[str]:
+    with open(file_name, 'r', encoding='utf-8') as dictionary_file:
         words = [line.strip() for line in dictionary_file]
         return words
 
 
-def analyze(token_width=1) -> Result:
+def analyze(words: list[str], token_width=1) -> Result:
     """
     Analyzes the dictionary and returns a frequency list per letter.
+    :param words: list of words to check
     :param token_width: width of token in the start and end of the word
     :return: result object
     """
-    valid_words = [word for word in word_list() if len(word) >= token_width]
+    valid_words = [word.lower() for word in words if len(word) >= token_width]
     first_char_occurrences = defaultdict(lambda: 0)
     last_char_occurrences = defaultdict(lambda: 0)
+    single_tokens = set()
 
     for word in valid_words:
         start_token = word[:token_width]
         first_char_occurrences[start_token] += 1
         end_token = word[-token_width:]
         last_char_occurrences[end_token] += 1
+        single_tokens.update(set([c for c in word]))
 
-    tokens = [(l1 + l2) for l1 in string.ascii_lowercase for l2 in string.ascii_lowercase]
+    tokens = [''.join(c) for c in product(*[single_tokens for _ in range(token_width)])]
     total_words = len(valid_words)
     total_tokens = len(tokens)
     return Result(
@@ -46,7 +49,11 @@ def analyze(token_width=1) -> Result:
         only_end_chars=sorted([token for token in last_char_occurrences if first_char_occurrences[token] == 0])
     )
 
+def main(language: Language):
+    words = load_file(f'words_{language.value.code}.txt')
+    result = analyze(words, 1)
+    with open(f'frequency_{language.value.code}.json', 'w', encoding='utf-8') as export_file:
+        json.dump(result.model_dump(), export_file, indent=4, sort_keys=True, ensure_ascii=False)
+
 if __name__ == '__main__':
-    result = analyze(2)
-    with open('frequency.json', 'w') as export_file:
-        json.dump(result.model_dump(), export_file, indent=4, sort_keys=True)
+    main(Language.ENGLISH)
