@@ -70,3 +70,11 @@ class Language(Enum):
     BASQUE = LanguageInfo(code='eu', allowed_word_regex=ES_REGEX)
     MALTESE = LanguageInfo(code='mt', allowed_word_regex=MT_REGEX)
     TURKISH = LanguageInfo(code='tr', allowed_word_regex=TR_REGEX)
+
+    @classmethod
+    def from_language_code(cls, code: str):
+        matches = [e for e in cls if e.value.code == code]
+        if matches:
+            return matches[0]
+        else:
+            raise ValueError(f'no language found for code "{code}"')
