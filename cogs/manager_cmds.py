@@ -12,9 +12,8 @@ from discord.ext.commands import Cog
 from sqlalchemy import CursorResult, delete, insert, select
 from sqlalchemy.exc import SQLAlchemyError
 
-from consts import COG_NAME_MANAGER_CMDS, FIRST_TOKEN_SCORES, LOGGER_NAME_MANAGER_COG, \
-    GameMode, Languages
-from model import BlacklistModel, WhitelistModel, GameModeState, MemberModel
+from consts import COG_NAME_MANAGER_CMDS, FIRST_TOKEN_SCORES, LOGGER_NAME_MANAGER_COG, GameMode, Languages
+from model import BlacklistModel, GameModeState, MemberModel, WhitelistModel
 
 if TYPE_CHECKING:
     from main import WordChainBot

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import math
 from collections import deque
+
 from unidecode import unidecode
 
 from consts import FIRST_TOKEN_SCORES, GameMode

@@ -11,40 +11,30 @@ import time
 from asyncio import CancelledError
 from collections import defaultdict, deque
 from concurrent.futures import Future
-from copy import deepcopy
 from json import JSONDecodeError
 from logging.config import fileConfig
-from typing import AsyncIterator, Optional, List
+from typing import AsyncIterator, List, Optional
 
 import discord
 from alembic import command as alembic_command
 from alembic.config import Config as AlembicConfig
 from discord import Colour, Embed, Interaction, Object, app_commands
 from discord.ext.commands import AutoShardedBot, ExtensionNotLoaded
-from dotenv import load_dotenv
 from requests_futures.sessions import FuturesSession
-from sqlalchemy import CursorResult, delete, exists, func, insert, select, update, and_
+from sqlalchemy import CursorResult, and_, delete, exists, func, insert, select, update
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, create_async_engine
+from unidecode import unidecode
 
-from consts import (COG_NAME_ADMIN_CMDS, COG_NAME_MANAGER_CMDS, COG_NAME_USER_CMDS,
-                    LOGGER_NAME_MAIN, GameMode, HISTORY_LENGTH, RELIABLE_ROLE_KARMA_THRESHOLD,
-                    RELIABLE_ROLE_ACCURACY_THRESHOLD, ALLOWED_WORDS_PATTERN, SPECIAL_REACTION_EMOJIS, MISTAKE_PENALTY,
+from consts import (ALLOWED_WORDS_PATTERN, COG_NAME_ADMIN_CMDS, COG_NAME_MANAGER_CMDS, COG_NAME_USER_CMDS, COGS_LIST,
                     GLOBAL_BLACKLIST_2_LETTER_WORDS_EN, GLOBAL_BLACKLIST_N_LETTER_WORDS_EN,
-                    GLOBAL_WHITELIST_3_LETTER_WORDS_EN,
-                    COGS_LIST, Languages, )
+                    GLOBAL_WHITELIST_3_LETTER_WORDS_EN, HISTORY_LENGTH, LOGGER_NAME_MAIN, MISTAKE_PENALTY,
+                    RELIABLE_ROLE_ACCURACY_THRESHOLD, RELIABLE_ROLE_KARMA_THRESHOLD, SETTINGS, SPECIAL_REACTION_EMOJIS,
+                    GameMode, Languages)
 from decorator import log_execution_time
 from karma_calcs import calculate_total_karma
 from model import (BannedMemberModel, BlacklistModel, MemberModel, ServerConfig, ServerConfigModel, UsedWordsModel,
                    WhitelistModel, WordCacheModel)
-from unidecode import unidecode
-
-load_dotenv('.env')
-# running in single player mode changes some game rules - you can chain words alone now
-# getenv reads always strings, which are truthy if not empty - thus checking for common false-ish tokens
-SINGLE_PLAYER = os.getenv('SINGLE_PLAYER', False) not in {False, 'False', 'false', '0'}
-DEV_MODE = os.getenv('DEV_MODE', False) not in {False, 'False', 'false', '0'}
-ADMIN_GUILD_ID = int(os.environ['ADMIN_GUILD_ID'])
 
 # load logging config from alembic file because it would be loaded anyway when using alembic
 fileConfig(fname='config.ini')
@@ -73,6 +63,8 @@ class WordChainBot(AutoShardedBot):
         # maps from server_id -> member_id -> game_mode -> deque
         self._server_histories: dict[int, dict[int, dict[GameMode, deque[str]]]] = defaultdict(
             lambda: defaultdict(lambda: defaultdict(lambda: deque(maxlen=HISTORY_LENGTH))))
+
+        self._servers_ready: set[int] = set()
 
         super().__init__(command_prefix='!', intents=intents)
 
@@ -140,6 +132,13 @@ class WordChainBot(AutoShardedBot):
                 channel: Optional[discord.TextChannel] = self.get_channel(config.game_state[game_mode].channel_id)
                 if channel:
 
+                    last_message = await channel.fetch_message(channel.last_message_id)
+                    if (last_message and
+                        last_message.author.id == self.server_configs[guild.id].game_state[game_mode].last_member_id and
+                        last_message.content.lower() == self.server_configs[guild.id].game_state[game_mode].current_word):
+                        logger.debug(f'Skipped restart message for {guild.name} ({guild.id}) in game mode {game_mode}')
+                        continue
+
                     emb: discord.Embed = discord.Embed(description='**I\'m now online!**',
                                                        colour=discord.Color.brand_green())
 
@@ -160,6 +159,8 @@ class WordChainBot(AutoShardedBot):
                     except discord.errors.Forbidden:
                         logger.info(f'Could not send ready message to {guild.name} ({guild.id}) due to missing permissions.')
 
+            self._servers_ready.add(guild.id)
+
         logger.info(f'Loaded {len(self.server_configs)} server configs, running on {len(self.guilds)} servers')
 
     # ---------------------------------------------------------------------------------------------------------------
@@ -175,6 +176,7 @@ class WordChainBot(AutoShardedBot):
                 await connection.execute(stmt)
                 await connection.commit()
                 self.server_configs[new_config.server_id] = new_config
+                self._servers_ready.add(guild.id)
             except SQLAlchemyError:
                 pass
                 # we cannot insert on duplicate key, but we just want to make sure here that a config exists
@@ -432,7 +434,7 @@ Please enter another word.''')
             # -------------
             # Wrong member
             # -------------
-            if not SINGLE_PLAYER and self.server_configs[server_id].game_state[game_mode].last_member_id == message.author.id:
+            if not SETTINGS.single_player and self.server_configs[server_id].game_state[game_mode].last_member_id == message.author.id:
                 response: str = f'''{message.author.mention} messed up the count! \
 *You cannot send two words in a row!*
 {f'The chain length was {self.server_configs[server_id].game_state[game_mode].current_count} when it was broken. :sob:\n' if self.server_configs[server_id].game_state[game_mode].current_count > 0 else ''}\
@@ -569,8 +571,8 @@ The above entered word is **NOT** being taken into account.''')
 
         server_id = message.guild.id
 
-        # Check if we have a config ready for this server
-        if server_id not in self.server_configs:
+        # Check if we have a config ready for this server, and the server has been marked as ready
+        if server_id not in self.server_configs or server_id not in self._servers_ready:
             return
 
         if message.channel.id == self.server_configs[server_id].game_state[GameMode.NORMAL].channel_id:
@@ -1048,10 +1050,10 @@ The above entered word is **NOT** being taken into account.''')
         for cog_name in COGS_LIST:
             await self.load_extension(f'cogs.{cog_name}')
 
-        if not DEV_MODE:
+        if not SETTINGS.dev_mode:
             # only sync when not in dev mode to avoid syncing over and over again - use sync command explicitly
             global_sync = await self.tree.sync()
-            admin_sync = await self.tree.sync(guild=discord.Object(id=ADMIN_GUILD_ID))
+            admin_sync = await self.tree.sync(guild=discord.Object(id=SETTINGS.admin_guild_id))
 
             logger.info(f'Synchronized {len(global_sync)} global commands and {len(admin_sync)} admin commands')
 
@@ -1066,7 +1068,7 @@ word_chain_bot: WordChainBot = WordChainBot()
 
 
 @word_chain_bot.tree.command(name='reload', description='Unload and reload a cog')
-@app_commands.guilds(ADMIN_GUILD_ID)
+@app_commands.guilds(SETTINGS.admin_guild_id)
 @app_commands.default_permissions(administrator=True)
 @app_commands.describe(cog_name='The cog to reload')
 @app_commands.choices(cog_name=[
@@ -1100,7 +1102,7 @@ async def reload(interaction: Interaction, cog_name: str):
             await word_chain_bot.load_extension(f'cogs.{cog_name}')
 
     global_sync: list[app_commands.AppCommand] = await word_chain_bot.tree.sync()
-    admin_sync: list[app_commands.AppCommand] = await word_chain_bot.tree.sync(guild=Object(id=ADMIN_GUILD_ID))
+    admin_sync: list[app_commands.AppCommand] = await word_chain_bot.tree.sync(guild=Object(id=SETTINGS.admin_guild_id))
 
     emb: Embed = Embed(title=f'Sync status', description=f'Synchronization complete.', colour=Colour.dark_magenta())
     emb.add_field(name="Global commands", value=f"{len(global_sync)}")
@@ -1112,4 +1114,4 @@ async def reload(interaction: Interaction, cog_name: str):
 # ===================================================================================================================
 
 if __name__ == '__main__':
-    word_chain_bot.run(os.getenv('TOKEN'), log_handler=None)
+    word_chain_bot.run(SETTINGS.token, log_handler=None)

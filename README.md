@@ -32,11 +32,30 @@ in the production version.
 Or maybe just use the public version to keep things simple, unless you are developing with the intention of contributing
 to the codebase.
 
+### Dev & Ops
+Install the dependencies with either `pip/venv`, `poetry` or `uv`. `dev` dependencies are only used for development and
+are thus optional and can be skipped.
+
+Using `pip/venv`:
+```
+pip install -e .[dev]
+```
+
+Using `poetry`:
+```
+peotry install --with dev
+```
+
+Using `uv`:
+```
+uv pip install -e .[dev]
+```
+
 ### Credits
 - Base code for `main.py` taken from the repo
 [Counting Bot for Indently](https://github.com/guanciottaman/counting_bot_indently). Thanks to [@guanciottaman](https://github.com/guanciottaman) for
 making the codebase available under the MIT License!
-- Base code edited for the word chain game by me, Wrichik.
+- Base code edited for the word chain game by me, [@WrichikBasu](https://github.com/WrichikBasu).
 - Karma system, multi-server support and hard mode designed and coded by [@SirLefti](https://github.com/SirLefti).
 - Basic idea of the word chain game and the use of Wiktionary API is inspired by the (now discontinued) bot
 [Literally](https://github.com/mettlex/literally-discord-bot).
