@@ -64,6 +64,8 @@ class WordChainBot(AutoShardedBot):
         self._server_histories: dict[int, dict[int, dict[GameMode, deque[str]]]] = defaultdict(
             lambda: defaultdict(lambda: defaultdict(lambda: deque(maxlen=HISTORY_LENGTH))))
 
+        self._servers_ready: set[int] = set()
+
         super().__init__(command_prefix='!', intents=intents)
 
     # ----------------------------------------------------------------------------------------------------------------
@@ -130,6 +132,13 @@ class WordChainBot(AutoShardedBot):
                 channel: Optional[discord.TextChannel] = self.get_channel(config.game_state[game_mode].channel_id)
                 if channel:
 
+                    last_message = await channel.fetch_message(channel.last_message_id)
+                    if (last_message and
+                        last_message.author.id == self.server_configs[guild.id].game_state[game_mode].last_member_id and
+                        last_message.content.lower() == self.server_configs[guild.id].game_state[game_mode].current_word):
+                        logger.debug(f'Skipped restart message for {guild.name} ({guild.id}) in game mode {game_mode}')
+                        continue
+
                     emb: discord.Embed = discord.Embed(description='**I\'m now online!**',
                                                        colour=discord.Color.brand_green())
 
@@ -150,6 +159,8 @@ class WordChainBot(AutoShardedBot):
                     except discord.errors.Forbidden:
                         logger.info(f'Could not send ready message to {guild.name} ({guild.id}) due to missing permissions.')
 
+            self._servers_ready.add(guild.id)
+
         logger.info(f'Loaded {len(self.server_configs)} server configs, running on {len(self.guilds)} servers')
 
     # ---------------------------------------------------------------------------------------------------------------
@@ -165,6 +176,7 @@ class WordChainBot(AutoShardedBot):
                 await connection.execute(stmt)
                 await connection.commit()
                 self.server_configs[new_config.server_id] = new_config
+                self._servers_ready.add(guild.id)
             except SQLAlchemyError:
                 pass
                 # we cannot insert on duplicate key, but we just want to make sure here that a config exists
@@ -559,8 +571,8 @@ The above entered word is **NOT** being taken into account.''')
 
         server_id = message.guild.id
 
-        # Check if we have a config ready for this server
-        if server_id not in self.server_configs:
+        # Check if we have a config ready for this server, and the server has been marked as ready
+        if server_id not in self.server_configs or server_id not in self._servers_ready:
             return
 
         if message.channel.id == self.server_configs[server_id].game_state[GameMode.NORMAL].channel_id:
