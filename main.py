@@ -18,7 +18,7 @@ from typing import AsyncIterator, List, Optional
 import discord
 from alembic import command as alembic_command
 from alembic.config import Config as AlembicConfig
-from discord import Colour, Embed, Interaction, Object, app_commands, MessageType
+from discord import Colour, Embed, Interaction, MessageType, Object, app_commands
 from discord.ext.commands import AutoShardedBot, ExtensionNotLoaded
 from requests_futures.sessions import FuturesSession
 from sqlalchemy import CursorResult, and_, delete, exists, func, insert, select, update
