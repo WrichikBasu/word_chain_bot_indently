@@ -12,10 +12,10 @@ from discord.ui import View
 from sqlalchemy import CursorResult, func, or_, select
 from sqlalchemy.engine.row import Row
 from sqlalchemy.sql.functions import count
-from unidecode import unidecode
 
 from cogs.manager_cmds import ManagerCommandsCog
-from consts import COG_NAME_USER_CMDS, LOGGER_NAME_USER_COG, SETTINGS, GameMode, Languages
+from consts import COG_NAME_USER_CMDS, LOGGER_NAME_USER_COG, SETTINGS, GameMode
+from language import Language
 from model import BannedMemberModel, Member, MemberModel, ServerConfig, ServerConfigModel
 from views.dropdown import Dropdown
 
@@ -92,10 +92,11 @@ class UserCommandsCog(Cog, name=COG_NAME_USER_CMDS):
         6. Query API.
         """
         await interaction.response.defer(ephemeral=True)
+        valid_languages = self.bot.server_configs[interaction.guild.id].languages
 
         emb = Embed(color=Colour.blurple())
 
-        if not self.bot.word_matches_pattern(word):
+        if not any(self.bot.word_matches_pattern(word, language.value) for language in valid_languages):
             emb.description = f'❌ **{word}** is **not** a legal word.'
             await interaction.followup.send(embed=emb)
             return
@@ -117,24 +118,6 @@ Therefore, a word that is valid in this server may not be valid in another serve
 
             if await self.bot.is_word_blacklisted(word, interaction.guild.id, connection):
                 emb.description = f'❌ The word **{word}** is **blacklisted** and hence, **not** valid.'
-                await interaction.followup.send(embed=emb)
-                return
-
-            # --------------------------------------------------------------------------------------------
-            # Wiktionary English version has lots of words from other languages too. This includes
-            # words that have accents as well. Therefore, we check if all the characters in the word
-            # are from the English alphabet. If not, and the server is set to only English, then
-            # this is an invalid word. We do not go for an API query and end the execution here.
-            # --------------------------------------------------------------------------------------------
-            if (unidecode(word) != word  # => Word is not in English...
-                and Languages.ENGLISH in self.bot.server_configs[interaction.guild.id].languages  # ... but English is enabled in the server...
-                    and len(self.bot.server_configs[interaction.guild.id].languages) == 1):  # ...AND English is the ONLY language in the server
-
-                emb.description = f'''❌ The word **{word}** does not exist, and hence, **not** valid.
-               
--# ^ The bot now supports multiple languages. When a word is invalid, it pertains to the language(s) \
-enabled in this server.\n-# To check enabled languages, use `/show_languages`.'''
-
                 await interaction.followup.send(embed=emb)
                 return
 
@@ -349,7 +332,7 @@ have other rules that are not covered here. Please check with the server moderat
 The bot now allows you to enable upto two languages in a server.
 
 The following languages are supported:
-{', '.join(f'{language.name.capitalize()}' for language in Languages)}
+{', '.join(f'{language.name.capitalize()}' for language in Language)}
 
 In order to enable/disable languages, server managers can use the commands under the `/language` category.
 ''', colour=Colour.dark_orange())
