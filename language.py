@@ -758,6 +758,7 @@ class LanguageInfo(BaseModel):
     code: str = Field(max_length=2, min_length=2)
     allowed_word_regex: str
     first_token_scores: dict[GameMode, dict[str, float]] = Field(default=EN_FIRST_TOKEN_SCORES)  # fallback to english
+    score_threshold: dict[GameMode, float] = Field(default={GameMode.NORMAL: 0.05, GameMode.HARD: 0.05})
 
 class Language(Enum):
     """

@@ -326,6 +326,15 @@ class WordChainBot(AutoShardedBot):
 The chain has **not** been broken. Please enter another word.''')
             return
 
+        # --------------------
+        # Check word score
+        # --------------------
+        if all(language.value.score_threshold[game_mode] > self.calculate_word_score(word, game_mode, language) for language in valid_languages):
+            await WordChainBot.add_reaction(message, '⚠️')
+            await WordChainBot.send_message_to_channel(message.channel, f'''Your word has no or just few words to continue with.
+The chain has **not** been broken. Please enter another word.''')
+            return
+
         # ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
         # ADD USER TO THE DATABASE
         # ------------------------------------
@@ -930,6 +939,15 @@ The above entered word is **NOT** being taken into account.''')
     # ---------------------------------------------------------------------------------------------------------------
 
     @staticmethod
+    def calculate_word_score(word: str, game_mode: GameMode, language: Language) -> float:
+        if re.match(language.value.allowed_word_regex, word):
+            end_token = word[-game_mode.value:]
+            return language.value.first_token_scores[game_mode][end_token]
+        return 0.0
+
+    # ---------------------------------------------------------------------------------------------------------------
+
+    @staticmethod
     async def is_word_blacklisted(word: str, server_id: Optional[int] = None,
                                   connection: Optional[AsyncConnection] = None) -> bool:
         """
@@ -967,7 +985,7 @@ The above entered word is **NOT** being taken into account.''')
         # the word belong to the English alphabet.
         # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-        if re.search(Language.ENGLISH.value, word):
+        if re.search(Language.ENGLISH.value.allowed_word_regex, word):
 
             if word in GLOBAL_BLACKLIST_2_LETTER_WORDS_EN or word in GLOBAL_BLACKLIST_N_LETTER_WORDS_EN:
                 return True
