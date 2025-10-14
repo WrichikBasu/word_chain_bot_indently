@@ -1,12 +1,21 @@
 import json
+import os
 import re
 import string
 from collections import defaultdict
 from itertools import product
 
 from pydantic import BaseModel
+import requests
 
 from language import Language
+
+__LANGUAGE_SOURCES: dict[Language, str] = {
+    Language.ENGLISH: 'https://raw.githubusercontent.com/dwyl/english-words/refs/heads/master/words_alpha.txt',
+    Language.GERMAN: 'https://gist.github.com/MarvinJWendt/2f4f4154b8ae218600eb091a5706b5f4/raw/36b70dd6be330aa61cd4d4cdfda6234dcb0b8784/wordlist-german.txt',
+    Language.FRENCH: 'https://github.com/hbenbel/French-Dictionary/raw/refs/heads/master/dictionary/dictionary.csv',
+    Language.SPANISH: 'https://github.com/xavier-hernandez/spanish-wordlist/raw/refs/heads/main/text/spanish_words.txt'
+}
 
 
 class Result(BaseModel):
@@ -52,7 +61,18 @@ def analyze(words: list[str], token_width=1) -> Result:
     )
 
 def main(language: Language, token_width: int = 1):
-    words = load_file(f'words_{language.value.code}.txt')
+    dictionary_file_name = f'words_{language.value.code}.txt'
+    if not os.path.exists(dictionary_file_name):
+        with requests.get(__LANGUAGE_SOURCES[language], stream=True) as r:
+            r.raise_for_status()
+            with open(dictionary_file_name, 'w', encoding='utf-8') as f:
+                for line in r.iter_lines():  # type: bytes
+                    try:
+                        f.write(f'{line.decode('utf-8')}\n')
+                    except UnicodeError:
+                        pass
+
+    words = load_file(dictionary_file_name)
     regex = re.compile(language.value.allowed_word_regex)
     accepted_words = [word for word in words if regex.match(word)]
     result = analyze(accepted_words, token_width)
@@ -60,6 +80,6 @@ def main(language: Language, token_width: int = 1):
         json.dump(result.model_dump(), export_file, indent=4, sort_keys=True, ensure_ascii=False)
 
 if __name__ == '__main__':
-    for l in [Language.ENGLISH, Language.GERMAN, Language.FRENCH, Language.SPANISH]:
+    for l in __LANGUAGE_SOURCES.keys():
         for t in [1, 2]:
             main(l, t)
