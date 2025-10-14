@@ -77,7 +77,8 @@ EN_FIRST_TOKEN_SCORES: dict[GameMode, defaultdict[str, float]] = load_token_scor
 DE_FIRST_TOKEN_SCORES: dict[GameMode, defaultdict[str, float]] = load_token_scores_from_json('de')
 FR_FIRST_TOKEN_SCORES: dict[GameMode, defaultdict[str, float]] = load_token_scores_from_json('fr')
 ES_FIRST_TOKEN_SCORES: dict[GameMode, defaultdict[str, float]] = load_token_scores_from_json('es')
-
+IT_FIRST_TOKEN_SCORES: dict[GameMode, defaultdict[str, float]] = load_token_scores_from_json('it')
+TR_FIRST_TOKEN_SCORES: dict[GameMode, defaultdict[str, float]] = load_token_scores_from_json('tr')
 
 class Language(Enum):
     """
@@ -91,7 +92,7 @@ class Language(Enum):
     LUXEMBOURGISH = LanguageInfo(code='lb', allowed_word_regex=DE_REGEX)
     SPANISH = LanguageInfo(code='es', allowed_word_regex=ES_REGEX, first_token_scores=ES_FIRST_TOKEN_SCORES)
     PORTUGUESE = LanguageInfo(code='pt', allowed_word_regex=PT_REGEX)
-    ITALIAN = LanguageInfo(code='it', allowed_word_regex=IT_REGEX)
+    ITALIAN = LanguageInfo(code='it', allowed_word_regex=IT_REGEX, first_token_scores=IT_FIRST_TOKEN_SCORES)
     CATALAN = LanguageInfo(code='ca', allowed_word_regex=FR_REGEX)
     GALICIAN = LanguageInfo(code='gl', allowed_word_regex=FR_REGEX)
     DANISH = LanguageInfo(code='da', allowed_word_regex=NN_REGEX)
