@@ -33,6 +33,8 @@ Or maybe just use the public version to keep things simple, unless you are devel
 to the codebase.
 
 ### Dev & Ops
+
+#### Dependencies
 Install the dependencies with either `pip/venv`, `poetry` or `uv`. `dev` dependencies are only used for development and
 are thus optional and can be skipped.
 
@@ -50,6 +52,15 @@ Using `uv`:
 ```
 uv pip install -e .[dev]
 ```
+
+#### Language specific character frequency dictionaries (optional, but recommended)
+The karma system needs a dictionary for each language with their character frequency to calculate karma scores
+accordingly. This is fully automated by executing `character_frequency.py` with your python environment. It will take a
+short moment to download, analyse and export the data.
+
+If additional languages are required, or a different dictionary source must be used to calculate the frequencies, edit
+the dictionary in the top of the script. The source must be a text file with one word per line.
+
 
 ### Credits
 - Base code for `main.py` taken from the repo

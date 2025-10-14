@@ -5,8 +5,8 @@ import string
 from collections import defaultdict
 from itertools import product
 
-from pydantic import BaseModel
 import requests
+from pydantic import BaseModel
 
 from language import Language
 
