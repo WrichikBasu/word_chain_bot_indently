@@ -27,6 +27,16 @@ class Result(BaseModel):
     only_end_chars: list[str]
 
 
+def download_file(file_name: str, url: str):
+    with requests.get(url, stream=True) as r:
+        r.raise_for_status()
+        with open(file_name, 'w', encoding='utf-8') as f:
+            for line in r.iter_lines():  # type: bytes
+                try:
+                    f.write(f'{line.decode('utf-8')}\n')
+                except UnicodeError:
+                    pass
+
 def load_file(file_name: str) -> list[str]:
     with open(file_name, 'r', encoding='utf-8') as dictionary_file:
         words = [line.strip() for line in dictionary_file]
@@ -65,14 +75,7 @@ def analyze(words: list[str], token_width=1) -> Result:
 def main(language: Language, token_width: int = 1):
     dictionary_file_name = f'words_{language.value.code}.txt'
     if not os.path.exists(dictionary_file_name):
-        with requests.get(__LANGUAGE_SOURCES[language], stream=True) as r:
-            r.raise_for_status()
-            with open(dictionary_file_name, 'w', encoding='utf-8') as f:
-                for line in r.iter_lines():  # type: bytes
-                    try:
-                        f.write(f'{line.decode('utf-8')}\n')
-                    except UnicodeError:
-                        pass
+        download_file(dictionary_file_name, __LANGUAGE_SOURCES[language])
 
     words = load_file(dictionary_file_name)
     regex = re.compile(language.value.allowed_word_regex)
