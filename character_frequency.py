@@ -13,10 +13,14 @@ from language import Language
 __LANGUAGE_SOURCES: dict[Language, str] = {
     Language.ENGLISH: 'https://raw.githubusercontent.com/dwyl/english-words/refs/heads/master/words_alpha.txt',
     Language.GERMAN: 'https://gist.github.com/MarvinJWendt/2f4f4154b8ae218600eb091a5706b5f4/raw/36b70dd6be330aa61cd4d4cdfda6234dcb0b8784/wordlist-german.txt',
-    Language.FRENCH: 'https://github.com/hbenbel/French-Dictionary/raw/refs/heads/master/dictionary/dictionary.csv',
+    Language.FRENCH: 'https://raw.githubusercontent.com/hbenbel/French-Dictionary/refs/heads/master/dictionary/dictionary.csv',
     Language.SPANISH: 'https://github.com/xavier-hernandez/spanish-wordlist/raw/refs/heads/main/text/spanish_words.txt',
-    Language.ITALIAN: 'https://github.com/napolux/paroleitaliane/raw/refs/heads/main/paroleitaliane/60000_parole_italiane.txt',
-    Language.TURKISH: 'https://github.com/mertemin/turkish-word-list/raw/refs/heads/master/words.txt'
+    Language.ITALIAN: 'https://raw.githubusercontent.com/napolux/paroleitaliane/refs/heads/main/paroleitaliane/60000_parole_italiane.txt',
+    Language.TURKISH: 'https://raw.githubusercontent.com/mertemin/turkish-word-list/refs/heads/master/words.txt',
+    Language.SWEDISH: 'https://raw.githubusercontent.com/martinlindhe/wordlist_swedish/refs/heads/master/swe_wordlist',
+    Language.DANISH: 'https://raw.githubusercontent.com/fraabye/Danish-wordlists/refs/heads/master/20200419-Danish-words.txt',
+    Language.NORWEGIAN: 'https://github.com/Ondkloss/norwegian-wordlist/raw/refs/heads/master/wordlist_20220201_norsk_ordbank_nob_2005.txt',
+    Language.DUTCH: 'https://raw.githubusercontent.com/OpenTaal/opentaal-wordlist/refs/heads/master/wordlist.txt'
 }
 
 
