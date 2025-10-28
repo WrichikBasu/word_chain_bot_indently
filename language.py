@@ -45,7 +45,8 @@ DEFAULT_FIRST_TOKEN_SCORES: dict[GameMode, defaultdict[str, float]] = {
 
 
 class LanguageInfo(BaseModel):
-    code: str = Field(max_length=2, min_length=2)
+    code: str = Field(max_length=2, min_length=2) # set 1 ISO-639-1
+    code_long: str = Field(max_length=3, min_length=3) # set 2/T ISO-639-2
     allowed_word_regex: str
     first_token_scores: dict[GameMode, defaultdict[str, float]] = Field(default=DEFAULT_FIRST_TOKEN_SCORES)
     score_threshold: dict[GameMode, float] = Field(default={GameMode.NORMAL: 0.05, GameMode.HARD: 0.05})
@@ -89,38 +90,38 @@ class Language(Enum):
     An enumeration of the languages supported by the bot.
     """
     # Latin script
-    ENGLISH = LanguageInfo(code="en", allowed_word_regex=EN_REGEX, first_token_scores=EN_FIRST_TOKEN_SCORES)
-    FRENCH = LanguageInfo(code='fr', allowed_word_regex=FR_REGEX, first_token_scores=FR_FIRST_TOKEN_SCORES)
-    GERMAN = LanguageInfo(code='de', allowed_word_regex=DE_REGEX, first_token_scores=DE_FIRST_TOKEN_SCORES)
-    DUTCH = LanguageInfo(code='nl', allowed_word_regex=NL_REGEX, first_token_scores=NL_FIRST_TOKEN_SCORES)
-    LUXEMBOURGISH = LanguageInfo(code='lb', allowed_word_regex=DE_REGEX)
-    SPANISH = LanguageInfo(code='es', allowed_word_regex=ES_REGEX, first_token_scores=ES_FIRST_TOKEN_SCORES)
-    PORTUGUESE = LanguageInfo(code='pt', allowed_word_regex=PT_REGEX)
-    ITALIAN = LanguageInfo(code='it', allowed_word_regex=IT_REGEX, first_token_scores=IT_FIRST_TOKEN_SCORES)
-    CATALAN = LanguageInfo(code='ca', allowed_word_regex=FR_REGEX)
-    GALICIAN = LanguageInfo(code='gl', allowed_word_regex=FR_REGEX)
-    DANISH = LanguageInfo(code='da', allowed_word_regex=NN_REGEX, first_token_scores=DA_FIRST_TOKEN_SCORES)
-    NORWEGIAN = LanguageInfo(code='no', allowed_word_regex=NN_REGEX, first_token_scores=NO_FIRST_TOKEN_SCORES)
-    SWEDISH = LanguageInfo(code='sv', allowed_word_regex=SV_REGEX, first_token_scores=SV_FIRST_TOKEN_SCORES)
-    ICELANDIC = LanguageInfo(code='is', allowed_word_regex=IS_REGEX)
-    FAROESE = LanguageInfo(code='fo', allowed_word_regex=IS_REGEX)
-    POLISH = LanguageInfo(code='pl', allowed_word_regex=PL_REGEX)
-    CZECH = LanguageInfo(code='cs', allowed_word_regex=CS_REGEX)
-    SLOVAK = LanguageInfo(code='sk', allowed_word_regex=CS_REGEX)
-    SLOVENE = LanguageInfo(code='sl', allowed_word_regex=SS_REGEX)
-    CROATIAN = LanguageInfo(code='hr', allowed_word_regex=SS_REGEX)
-    BOSNIAN = LanguageInfo(code='bs', allowed_word_regex=SS_REGEX)
-    SERBIAN = LanguageInfo(code='sr', allowed_word_regex=SS_REGEX)
-    HUNGARIAN = LanguageInfo(code='hu', allowed_word_regex=HU_REGEX)
-    ROMANIAN = LanguageInfo(code='ro', allowed_word_regex=RO_REGEX)
-    ALBANIAN = LanguageInfo(code='sq', allowed_word_regex=SQ_REGEX)
-    IRISH = LanguageInfo(code='ga', allowed_word_regex=GA_REGEX)
-    SCOTTISH_GAELIC = LanguageInfo(code='gd', allowed_word_regex=GD_REGEX)
-    WELSH = LanguageInfo(code='cy', allowed_word_regex=CY_REGEX)
-    BRETON = LanguageInfo(code='br', allowed_word_regex=FR_REGEX)
-    BASQUE = LanguageInfo(code='eu', allowed_word_regex=ES_REGEX)
-    MALTESE = LanguageInfo(code='mt', allowed_word_regex=MT_REGEX)
-    TURKISH = LanguageInfo(code='tr', allowed_word_regex=TR_REGEX)
+    ENGLISH = LanguageInfo(code="en", code_long="eng", allowed_word_regex=EN_REGEX, first_token_scores=EN_FIRST_TOKEN_SCORES)
+    FRENCH = LanguageInfo(code='fr', code_long="fra", allowed_word_regex=FR_REGEX, first_token_scores=FR_FIRST_TOKEN_SCORES)
+    GERMAN = LanguageInfo(code='de', code_long="deu", allowed_word_regex=DE_REGEX, first_token_scores=DE_FIRST_TOKEN_SCORES)
+    DUTCH = LanguageInfo(code='nl', code_long="nld", allowed_word_regex=NL_REGEX, first_token_scores=NL_FIRST_TOKEN_SCORES)
+    LUXEMBOURGISH = LanguageInfo(code='lb', code_long="ltz", allowed_word_regex=DE_REGEX)  # ?
+    SPANISH = LanguageInfo(code='es', code_long="spa", allowed_word_regex=ES_REGEX, first_token_scores=ES_FIRST_TOKEN_SCORES)
+    PORTUGUESE = LanguageInfo(code='pt', code_long="por", allowed_word_regex=PT_REGEX)
+    ITALIAN = LanguageInfo(code='it', code_long="ita", allowed_word_regex=IT_REGEX, first_token_scores=IT_FIRST_TOKEN_SCORES)
+    CATALAN = LanguageInfo(code='ca', code_long="cat", allowed_word_regex=FR_REGEX)  # ?
+    GALICIAN = LanguageInfo(code='gl', code_long="glg", allowed_word_regex=FR_REGEX)  # ?
+    DANISH = LanguageInfo(code='da', code_long="dan", allowed_word_regex=NN_REGEX, first_token_scores=DA_FIRST_TOKEN_SCORES)
+    NORWEGIAN = LanguageInfo(code='no', code_long="nor", allowed_word_regex=NN_REGEX, first_token_scores=NO_FIRST_TOKEN_SCORES)
+    SWEDISH = LanguageInfo(code='sv', code_long="swe", allowed_word_regex=SV_REGEX, first_token_scores=SV_FIRST_TOKEN_SCORES)
+    ICELANDIC = LanguageInfo(code='is', code_long="isl", allowed_word_regex=IS_REGEX)
+    FAROESE = LanguageInfo(code='fo', code_long="fao", allowed_word_regex=IS_REGEX)  # ?
+    POLISH = LanguageInfo(code='pl', code_long="pol", allowed_word_regex=PL_REGEX)
+    CZECH = LanguageInfo(code='cs', code_long="ces", allowed_word_regex=CS_REGEX)
+    SLOVAK = LanguageInfo(code='sk', code_long="slk", allowed_word_regex=CS_REGEX)
+    SLOVENE = LanguageInfo(code='sl', code_long="slv", allowed_word_regex=SS_REGEX)
+    CROATIAN = LanguageInfo(code='hr', code_long="hrv", allowed_word_regex=SS_REGEX)
+    BOSNIAN = LanguageInfo(code='bs', code_long="bos", allowed_word_regex=SS_REGEX)
+    SERBIAN = LanguageInfo(code='sr', code_long="srp", allowed_word_regex=SS_REGEX)
+    HUNGARIAN = LanguageInfo(code='hu', code_long="hun", allowed_word_regex=HU_REGEX)
+    ROMANIAN = LanguageInfo(code='ro', code_long="ron", allowed_word_regex=RO_REGEX)
+    ALBANIAN = LanguageInfo(code='sq', code_long="sqi", allowed_word_regex=SQ_REGEX)  # ?
+    IRISH = LanguageInfo(code='ga', code_long="gle", allowed_word_regex=GA_REGEX)  # ?
+    SCOTTISH_GAELIC = LanguageInfo(code='gd', code_long="gla", allowed_word_regex=GD_REGEX)  # ?
+    WELSH = LanguageInfo(code='cy', code_long="cym", allowed_word_regex=CY_REGEX)  # ?
+    BRETON = LanguageInfo(code='br', code_long="bre", allowed_word_regex=FR_REGEX)  # ?
+    BASQUE = LanguageInfo(code='eu', code_long="eus", allowed_word_regex=ES_REGEX)  # ?
+    MALTESE = LanguageInfo(code='mt', code_long="mlt", allowed_word_regex=MT_REGEX)  # ?
+    TURKISH = LanguageInfo(code='tr', code_long="tur", allowed_word_regex=TR_REGEX)
 
     @classmethod
     def from_language_code(cls, code: str):

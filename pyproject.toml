@@ -16,6 +16,7 @@ dependencies = [
     "pydantic-settings >=2.11.0,<3.0.0",
     "SQLAlchemy >=2.0.36,<3.0.0",
     "aiosqlite >=0.21.0,<1.0.0",
+    "aiofiles >=25.1.0,<26.0.0",
     "alembic >=1.16.5,<2.0.0",
     "uuid6 >=2025.0.1"
 ]
