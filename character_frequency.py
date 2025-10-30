@@ -1,26 +1,41 @@
+import asyncio
 import json
 import os
 import re
 import string
 from collections import defaultdict
 from itertools import product
+from pathlib import Path
+import logging
 
 import requests
 from pydantic import BaseModel
 
 from language import Language
+from wortschatz import extract_words, CorporaSize
 
+__LOGGER = logging.getLogger(__name__)
+__LANGUAGES_DIRECTORY = Path('languages')
+__CACHE_DIRECTORY = __LANGUAGES_DIRECTORY / Path('cache')
+__DEFAULT_SIZE = CorporaSize.Size_30K.value
 __LANGUAGE_SOURCES: dict[Language, str] = {
-    Language.ENGLISH: 'https://raw.githubusercontent.com/dwyl/english-words/refs/heads/master/words_alpha.txt',
-    Language.GERMAN: 'https://gist.github.com/MarvinJWendt/2f4f4154b8ae218600eb091a5706b5f4/raw/36b70dd6be330aa61cd4d4cdfda6234dcb0b8784/wordlist-german.txt',
-    Language.FRENCH: 'https://raw.githubusercontent.com/hbenbel/French-Dictionary/refs/heads/master/dictionary/dictionary.csv',
-    Language.SPANISH: 'https://github.com/xavier-hernandez/spanish-wordlist/raw/refs/heads/main/text/spanish_words.txt',
-    Language.ITALIAN: 'https://raw.githubusercontent.com/napolux/paroleitaliane/refs/heads/main/paroleitaliane/60000_parole_italiane.txt',
-    Language.TURKISH: 'https://raw.githubusercontent.com/mertemin/turkish-word-list/refs/heads/master/words.txt',
-    Language.SWEDISH: 'https://raw.githubusercontent.com/martinlindhe/wordlist_swedish/refs/heads/master/swe_wordlist',
-    Language.DANISH: 'https://raw.githubusercontent.com/fraabye/Danish-wordlists/refs/heads/master/20200419-Danish-words.txt',
-    Language.NORWEGIAN: 'https://github.com/Ondkloss/norwegian-wordlist/raw/refs/heads/master/wordlist_20220201_norsk_ordbank_nob_2005.txt',
-    Language.DUTCH: 'https://raw.githubusercontent.com/OpenTaal/opentaal-wordlist/refs/heads/master/wordlist.txt'
+    Language.ENGLISH: f'https://downloads.wortschatz-leipzig.de/corpora/eng-simple_wikipedia_2021_{__DEFAULT_SIZE}.tar.gz',
+    Language.GERMAN: f'https://downloads.wortschatz-leipzig.de/corpora/deu_wikipedia_2021_{__DEFAULT_SIZE}.tar.gz',
+    Language.FRENCH: f'https://downloads.wortschatz-leipzig.de/corpora/fra_wikipedia_2021_{__DEFAULT_SIZE}.tar.gz',
+    Language.SPANISH: f'https://downloads.wortschatz-leipzig.de/corpora/spa_wikipedia_2021_{__DEFAULT_SIZE}.tar.gz',
+    Language.ITALIAN: f'https://downloads.wortschatz-leipzig.de/corpora/ita_wikipedia_2021_{__DEFAULT_SIZE}.tar.gz',
+    Language.PORTUGUESE: f'https://downloads.wortschatz-leipzig.de/corpora/por_wikipedia_2021_{__DEFAULT_SIZE}.tar.gz',
+    Language.TURKISH: f'https://downloads.wortschatz-leipzig.de/corpora/tur_wikipedia_2021_{__DEFAULT_SIZE}.tar.gz',
+    Language.SWEDISH: f'https://downloads.wortschatz-leipzig.de/corpora/swe_wikipedia_2021_{__DEFAULT_SIZE}.tar.gz',
+    Language.DANISH: f'https://downloads.wortschatz-leipzig.de/corpora/dan_wikipedia_2021_{__DEFAULT_SIZE}.tar.gz',
+    Language.NORWEGIAN: f'https://downloads.wortschatz-leipzig.de/corpora/nor_wikipedia_2021_{__DEFAULT_SIZE}.tar.gz',
+    Language.DUTCH: f'https://downloads.wortschatz-leipzig.de/corpora/nld_wikipedia_2021_{__DEFAULT_SIZE}.tar.gz',
+    Language.CROATIAN: f'https://downloads.wortschatz-leipzig.de/corpora/hrv_wikipedia_2021_{__DEFAULT_SIZE}.tar.gz',
+    Language.SERBIAN: f'https://downloads.wortschatz-leipzig.de/corpora/srp_wikipedia_2021_{__DEFAULT_SIZE}.tar.gz',
+    Language.SLOVENE: f'https://downloads.wortschatz-leipzig.de/corpora/slv_wikipedia_2021_{__DEFAULT_SIZE}.tar.gz',
+    Language.SLOVAK: f'https://downloads.wortschatz-leipzig.de/corpora/slk_wikipedia_2021_{__DEFAULT_SIZE}.tar.gz',
+    Language.HUNGARIAN: f'https://downloads.wortschatz-leipzig.de/corpora/hun_wikipedia_2021_{__DEFAULT_SIZE}.tar.gz',
+    Language.ROMANIAN: f'https://downloads.wortschatz-leipzig.de/corpora/ron_wikipedia_2021_{__DEFAULT_SIZE}.tar.gz'
 }
 
 
@@ -76,19 +91,23 @@ def analyze(words: list[str], token_width=1) -> Result:
         only_end_chars=sorted([token for token in last_char_occurrences if first_char_occurrences[token] == 0])
     )
 
-def main(language: Language, token_width: int = 1):
-    dictionary_file_name = f'words_{language.value.code}.txt'
-    if not os.path.exists(dictionary_file_name):
-        download_file(dictionary_file_name, __LANGUAGE_SOURCES[language])
-
-    words = load_file(dictionary_file_name)
+async def main(language: Language, token_width: int = 1):
+    __LOGGER.info(f'analyzing for {language.value.code}')
+    words = await extract_words(__LANGUAGE_SOURCES[language], __CACHE_DIRECTORY)
     regex = re.compile(language.value.allowed_word_regex)
     accepted_words = [word for word in words if regex.match(word)]
     result = analyze(accepted_words, token_width)
-    with open(f'frequency_{language.value.code}_{token_width}.json', 'w', encoding='utf-8') as export_file:
+    with open(__LANGUAGES_DIRECTORY / f'frequency_{language.value.code}_{token_width}.json', 'w', encoding='utf-8') as export_file:
         json.dump(result.model_dump(), export_file, indent=4, sort_keys=True, ensure_ascii=False)
+        __LOGGER.info(f'analyzed and exported for {language.value.code}')
 
 if __name__ == '__main__':
+    logging.basicConfig(level=logging.INFO)
+    if not os.path.exists(__LANGUAGES_DIRECTORY):
+        os.mkdir(__LANGUAGES_DIRECTORY)
+    if not os.path.exists(__CACHE_DIRECTORY):
+        os.mkdir(__CACHE_DIRECTORY)
+
     for l in __LANGUAGE_SOURCES.keys():
         for t in [1, 2]:
-            main(l, t)
+            asyncio.run(main(l, t))
