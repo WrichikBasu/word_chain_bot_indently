@@ -4,7 +4,6 @@ import os.path
 from collections import defaultdict
 from enum import Enum
 from json import JSONDecodeError
-from os import PathLike
 from pathlib import Path
 
 from pydantic import BaseModel, Field
