@@ -1,12 +1,12 @@
+import logging
 import os
 import tarfile
 import tempfile
+from enum import Enum
 from urllib.parse import urlparse
 
-import aiohttp
 import aiofiles
-from enum import Enum
-import logging
+import aiohttp
 
 """
 Module to query data from Wortschatz project of university of Leipzig

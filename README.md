@@ -53,13 +53,10 @@ Using `uv`:
 uv pip install -e .[dev]
 ```
 
-#### Language specific character frequency dictionaries (optional, but recommended)
+#### Language specific character frequency dictionaries
 The karma system needs a dictionary for each language with their character frequency to calculate karma scores
 accordingly. This is fully automated by executing `character_frequency.py` with your python environment. It will take a
 short moment to download, analyse and export the data.
-
-If additional languages are required, or a different dictionary source must be used to calculate the frequencies, edit
-the dictionary in the top of the script. The source must be a text file with one word per line.
 
 
 ### Credits

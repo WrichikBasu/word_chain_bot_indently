@@ -1,22 +1,21 @@
 import asyncio
 import json
+import logging
 import os
 import re
 import string
 from collections import defaultdict
 from itertools import product
 from pathlib import Path
-import logging
 
 import requests
 from pydantic import BaseModel
 
-from language import Language
-from wortschatz import extract_words, CorporaSize
+from language import LANGUAGES_DIRECTORY, Language
+from wortschatz import CorporaSize, extract_words
 
 __LOGGER = logging.getLogger(__name__)
-__LANGUAGES_DIRECTORY = Path('languages')
-__CACHE_DIRECTORY = __LANGUAGES_DIRECTORY / Path('cache')
+__CACHE_DIRECTORY = LANGUAGES_DIRECTORY / Path('cache')
 __DEFAULT_SIZE = CorporaSize.Size_30K.value
 __LANGUAGE_SOURCES: dict[Language, str] = {
     Language.ENGLISH: f'https://downloads.wortschatz-leipzig.de/corpora/eng-simple_wikipedia_2021_{__DEFAULT_SIZE}.tar.gz',
@@ -97,14 +96,14 @@ async def main(language: Language, token_width: int = 1):
     regex = re.compile(language.value.allowed_word_regex)
     accepted_words = [word for word in words if regex.match(word)]
     result = analyze(accepted_words, token_width)
-    with open(__LANGUAGES_DIRECTORY / f'frequency_{language.value.code}_{token_width}.json', 'w', encoding='utf-8') as export_file:
+    with open(LANGUAGES_DIRECTORY / f'frequency_{language.value.code}_{token_width}.json', 'w', encoding='utf-8') as export_file:
         json.dump(result.model_dump(), export_file, indent=4, sort_keys=True, ensure_ascii=False)
         __LOGGER.info(f'analyzed and exported for {language.value.code}')
 
 if __name__ == '__main__':
     logging.basicConfig(level=logging.INFO)
-    if not os.path.exists(__LANGUAGES_DIRECTORY):
-        os.mkdir(__LANGUAGES_DIRECTORY)
+    if not os.path.exists(LANGUAGES_DIRECTORY):
+        os.mkdir(LANGUAGES_DIRECTORY)
     if not os.path.exists(__CACHE_DIRECTORY):
         os.mkdir(__CACHE_DIRECTORY)
 

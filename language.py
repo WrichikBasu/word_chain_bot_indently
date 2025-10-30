@@ -4,6 +4,8 @@ import os.path
 from collections import defaultdict
 from enum import Enum
 from json import JSONDecodeError
+from os import PathLike
+from pathlib import Path
 
 from pydantic import BaseModel, Field
 
@@ -31,17 +33,14 @@ CS_REGEX: str = build_regex('[a-záčďéěíňóřšťůýž]', '[-]|[a-záčď
 SS_REGEX: str = build_regex('[a-zčćđšž]', '[-]|[a-zčćđšž]','[a-zčćđšž]')  # south slavic (slovene, croatian, bosnian, serbian)
 HU_REGEX: str = build_regex('[a-záéíóöőúüű]', '[-]|[a-záéíóöőúüű]', '[a-záéíóöőúüű]')
 RO_REGEX: str = build_regex('[a-zăâîșț]', '[-]|[a-zăâîșț]', '[a-zăâîșț]')
-SQ_REGEX: str = build_regex('[a-zëç]', '[-]|[a-zëç]', '[a-zëç]')  # albanian
-GA_REGEX: str = build_regex('[a-záéíóú]', '[-]|[a-záéíóú]', '[a-záéíóú]')  # irish
-GD_REGEX: str = build_regex('[a-zàèìòù]', '[-]|[a-zàèìòù]', '[a-zàèìòù]')  # scottish, gaelic
-CY_REGEX: str = build_regex('[a-zâêîôûŷ]', '[-]|[a-zâêîôûŷ]', '[a-zâêîôûŷ]')  # welsh
-MT_REGEX: str = build_regex('[a-zċġħż]', '[-]|[a-zċġħż]', '[a-zċġħż]')  # maltese
 TR_REGEX: str = build_regex('[a-zçğıöşü]', '[-]|[a-zçğıöşü]', '[a-zçğıöşü]')
 
 DEFAULT_FIRST_TOKEN_SCORES: dict[GameMode, defaultdict[str, float]] = {
     GameMode.NORMAL: defaultdict(lambda: 1.0),
     GameMode.HARD: defaultdict(lambda: 1.0)
 }
+
+LANGUAGES_DIRECTORY = Path('languages')
 
 
 class LanguageInfo(BaseModel):
@@ -52,7 +51,7 @@ class LanguageInfo(BaseModel):
     score_threshold: dict[GameMode, float] = Field(default={GameMode.NORMAL: 0.05, GameMode.HARD: 0.05})
 
 
-def load_token_scores_from_json(language_code: str) -> dict[GameMode, defaultdict[str, float]]:
+def load_token_scores_from_json(language_code: PathLike[str] | str) -> dict[GameMode, defaultdict[str, float]]:
     def load_file_or_default(code: str, mode: GameMode) -> defaultdict[str, float]:
         file_path = f'frequency_{code}_{mode.value}.json'
         try:
@@ -74,17 +73,28 @@ def load_token_scores_from_json(language_code: str) -> dict[GameMode, defaultdic
     }
 
 
-EN_FIRST_TOKEN_SCORES: dict[GameMode, defaultdict[str, float]] = load_token_scores_from_json('languages/en')
-DE_FIRST_TOKEN_SCORES: dict[GameMode, defaultdict[str, float]] = load_token_scores_from_json('languages/de')
-FR_FIRST_TOKEN_SCORES: dict[GameMode, defaultdict[str, float]] = load_token_scores_from_json('languages/fr')
-ES_FIRST_TOKEN_SCORES: dict[GameMode, defaultdict[str, float]] = load_token_scores_from_json('languages/es')
-IT_FIRST_TOKEN_SCORES: dict[GameMode, defaultdict[str, float]] = load_token_scores_from_json('languages/it')
-TR_FIRST_TOKEN_SCORES: dict[GameMode, defaultdict[str, float]] = load_token_scores_from_json('languages/tr')
-SV_FIRST_TOKEN_SCORES: dict[GameMode, defaultdict[str, float]] = load_token_scores_from_json('languages/sv')
-DA_FIRST_TOKEN_SCORES: dict[GameMode, defaultdict[str, float]] = load_token_scores_from_json('languages/da')
-NO_FIRST_TOKEN_SCORES: dict[GameMode, defaultdict[str, float]] = load_token_scores_from_json('languages/no')
-IS_FIRST_TOKEN_SCORES: dict[GameMode, defaultdict[str, float]] = load_token_scores_from_json('languages/is')
-NL_FIRST_TOKEN_SCORES: dict[GameMode, defaultdict[str, float]] = load_token_scores_from_json('languages/nl')
+EN_FIRST_TOKEN_SCORES: dict[GameMode, defaultdict[str, float]] = load_token_scores_from_json(LANGUAGES_DIRECTORY / 'en')
+FR_FIRST_TOKEN_SCORES: dict[GameMode, defaultdict[str, float]] = load_token_scores_from_json(LANGUAGES_DIRECTORY / 'fr')
+DE_FIRST_TOKEN_SCORES: dict[GameMode, defaultdict[str, float]] = load_token_scores_from_json(LANGUAGES_DIRECTORY / 'de')
+NL_FIRST_TOKEN_SCORES: dict[GameMode, defaultdict[str, float]] = load_token_scores_from_json(LANGUAGES_DIRECTORY / 'nl')
+ES_FIRST_TOKEN_SCORES: dict[GameMode, defaultdict[str, float]] = load_token_scores_from_json(LANGUAGES_DIRECTORY / 'es')
+PT_FIRST_TOKEN_SCORES: dict[GameMode, defaultdict[str, float]] = load_token_scores_from_json(LANGUAGES_DIRECTORY / 'pt')
+IT_FIRST_TOKEN_SCORES: dict[GameMode, defaultdict[str, float]] = load_token_scores_from_json(LANGUAGES_DIRECTORY / 'it')
+DA_FIRST_TOKEN_SCORES: dict[GameMode, defaultdict[str, float]] = load_token_scores_from_json(LANGUAGES_DIRECTORY / 'da')
+NO_FIRST_TOKEN_SCORES: dict[GameMode, defaultdict[str, float]] = load_token_scores_from_json(LANGUAGES_DIRECTORY / 'no')
+SV_FIRST_TOKEN_SCORES: dict[GameMode, defaultdict[str, float]] = load_token_scores_from_json(LANGUAGES_DIRECTORY / 'sv')
+IS_FIRST_TOKEN_SCORES: dict[GameMode, defaultdict[str, float]] = load_token_scores_from_json(LANGUAGES_DIRECTORY / 'is')
+PL_FIRST_TOKEN_SCORES: dict[GameMode, defaultdict[str, float]] = load_token_scores_from_json(LANGUAGES_DIRECTORY / 'pl')
+CS_FIRST_TOKEN_SCORES: dict[GameMode, defaultdict[str, float]] = load_token_scores_from_json(LANGUAGES_DIRECTORY / 'cs')
+SK_FIRST_TOKEN_SCORES: dict[GameMode, defaultdict[str, float]] = load_token_scores_from_json(LANGUAGES_DIRECTORY / 'sk')
+SL_FIRST_TOKEN_SCORES: dict[GameMode, defaultdict[str, float]] = load_token_scores_from_json(LANGUAGES_DIRECTORY / 'sl')
+HR_FIRST_TOKEN_SCORES: dict[GameMode, defaultdict[str, float]] = load_token_scores_from_json(LANGUAGES_DIRECTORY / 'hr')
+BS_FIRST_TOKEN_SCORES: dict[GameMode, defaultdict[str, float]] = load_token_scores_from_json(LANGUAGES_DIRECTORY / 'bs')
+SR_FIRST_TOKEN_SCORES: dict[GameMode, defaultdict[str, float]] = load_token_scores_from_json(LANGUAGES_DIRECTORY / 'sr')
+HU_FIRST_TOKEN_SCORES: dict[GameMode, defaultdict[str, float]] = load_token_scores_from_json(LANGUAGES_DIRECTORY / 'hu')
+RO_FIRST_TOKEN_SCORES: dict[GameMode, defaultdict[str, float]] = load_token_scores_from_json(LANGUAGES_DIRECTORY / 'ro')
+TR_FIRST_TOKEN_SCORES: dict[GameMode, defaultdict[str, float]] = load_token_scores_from_json(LANGUAGES_DIRECTORY / 'tr')
+
 
 class Language(Enum):
     """
@@ -95,34 +105,23 @@ class Language(Enum):
     FRENCH = LanguageInfo(code='fr', code_long="fra", allowed_word_regex=FR_REGEX, first_token_scores=FR_FIRST_TOKEN_SCORES)
     GERMAN = LanguageInfo(code='de', code_long="deu", allowed_word_regex=DE_REGEX, first_token_scores=DE_FIRST_TOKEN_SCORES)
     DUTCH = LanguageInfo(code='nl', code_long="nld", allowed_word_regex=NL_REGEX, first_token_scores=NL_FIRST_TOKEN_SCORES)
-    LUXEMBOURGISH = LanguageInfo(code='lb', code_long="ltz", allowed_word_regex=DE_REGEX)  # ?
     SPANISH = LanguageInfo(code='es', code_long="spa", allowed_word_regex=ES_REGEX, first_token_scores=ES_FIRST_TOKEN_SCORES)
-    PORTUGUESE = LanguageInfo(code='pt', code_long="por", allowed_word_regex=PT_REGEX)
+    PORTUGUESE = LanguageInfo(code='pt', code_long="por", allowed_word_regex=PT_REGEX, first_token_scores=PT_FIRST_TOKEN_SCORES)
     ITALIAN = LanguageInfo(code='it', code_long="ita", allowed_word_regex=IT_REGEX, first_token_scores=IT_FIRST_TOKEN_SCORES)
-    CATALAN = LanguageInfo(code='ca', code_long="cat", allowed_word_regex=FR_REGEX)  # ?
-    GALICIAN = LanguageInfo(code='gl', code_long="glg", allowed_word_regex=FR_REGEX)  # ?
     DANISH = LanguageInfo(code='da', code_long="dan", allowed_word_regex=NN_REGEX, first_token_scores=DA_FIRST_TOKEN_SCORES)
     NORWEGIAN = LanguageInfo(code='no', code_long="nor", allowed_word_regex=NN_REGEX, first_token_scores=NO_FIRST_TOKEN_SCORES)
     SWEDISH = LanguageInfo(code='sv', code_long="swe", allowed_word_regex=SV_REGEX, first_token_scores=SV_FIRST_TOKEN_SCORES)
     ICELANDIC = LanguageInfo(code='is', code_long="isl", allowed_word_regex=IS_REGEX, first_token_scores=IS_FIRST_TOKEN_SCORES)
-    FAROESE = LanguageInfo(code='fo', code_long="fao", allowed_word_regex=IS_REGEX)  # ?
-    POLISH = LanguageInfo(code='pl', code_long="pol", allowed_word_regex=PL_REGEX)
-    CZECH = LanguageInfo(code='cs', code_long="ces", allowed_word_regex=CS_REGEX)
-    SLOVAK = LanguageInfo(code='sk', code_long="slk", allowed_word_regex=CS_REGEX)
-    SLOVENE = LanguageInfo(code='sl', code_long="slv", allowed_word_regex=SS_REGEX)
-    CROATIAN = LanguageInfo(code='hr', code_long="hrv", allowed_word_regex=SS_REGEX)
-    BOSNIAN = LanguageInfo(code='bs', code_long="bos", allowed_word_regex=SS_REGEX)
-    SERBIAN = LanguageInfo(code='sr', code_long="srp", allowed_word_regex=SS_REGEX)
-    HUNGARIAN = LanguageInfo(code='hu', code_long="hun", allowed_word_regex=HU_REGEX)
-    ROMANIAN = LanguageInfo(code='ro', code_long="ron", allowed_word_regex=RO_REGEX)
-    ALBANIAN = LanguageInfo(code='sq', code_long="sqi", allowed_word_regex=SQ_REGEX)  # ?
-    IRISH = LanguageInfo(code='ga', code_long="gle", allowed_word_regex=GA_REGEX)  # ?
-    SCOTTISH_GAELIC = LanguageInfo(code='gd', code_long="gla", allowed_word_regex=GD_REGEX)  # ?
-    WELSH = LanguageInfo(code='cy', code_long="cym", allowed_word_regex=CY_REGEX)  # ?
-    BRETON = LanguageInfo(code='br', code_long="bre", allowed_word_regex=FR_REGEX)  # ?
-    BASQUE = LanguageInfo(code='eu', code_long="eus", allowed_word_regex=ES_REGEX)  # ?
-    MALTESE = LanguageInfo(code='mt', code_long="mlt", allowed_word_regex=MT_REGEX)  # ?
-    TURKISH = LanguageInfo(code='tr', code_long="tur", allowed_word_regex=TR_REGEX)
+    POLISH = LanguageInfo(code='pl', code_long="pol", allowed_word_regex=PL_REGEX, first_token_scores=PL_FIRST_TOKEN_SCORES)
+    CZECH = LanguageInfo(code='cs', code_long="ces", allowed_word_regex=CS_REGEX, first_token_scores=CS_FIRST_TOKEN_SCORES)
+    SLOVAK = LanguageInfo(code='sk', code_long="slk", allowed_word_regex=CS_REGEX, first_token_scores=SK_FIRST_TOKEN_SCORES)
+    SLOVENE = LanguageInfo(code='sl', code_long="slv", allowed_word_regex=SS_REGEX, first_token_scores=SL_FIRST_TOKEN_SCORES)
+    CROATIAN = LanguageInfo(code='hr', code_long="hrv", allowed_word_regex=SS_REGEX, first_token_scores=HR_FIRST_TOKEN_SCORES)
+    BOSNIAN = LanguageInfo(code='bs', code_long="bos", allowed_word_regex=SS_REGEX, first_token_scores=BS_FIRST_TOKEN_SCORES)
+    SERBIAN = LanguageInfo(code='sr', code_long="srp", allowed_word_regex=SS_REGEX, first_token_scores=SR_FIRST_TOKEN_SCORES)
+    HUNGARIAN = LanguageInfo(code='hu', code_long="hun", allowed_word_regex=HU_REGEX, first_token_scores=HU_FIRST_TOKEN_SCORES)
+    ROMANIAN = LanguageInfo(code='ro', code_long="ron", allowed_word_regex=RO_REGEX, first_token_scores=RO_FIRST_TOKEN_SCORES)
+    TURKISH = LanguageInfo(code='tr', code_long="tur", allowed_word_regex=TR_REGEX, first_token_scores=TR_FIRST_TOKEN_SCORES)
 
     @classmethod
     def from_language_code(cls, code: str):

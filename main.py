@@ -26,10 +26,9 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, create_async_engine
 
 from consts import (COG_NAME_ADMIN_CMDS, COG_NAME_MANAGER_CMDS, COG_NAME_USER_CMDS, COGS_LIST,
-                    GLOBAL_BLACKLIST_2_LETTER_WORDS_EN, GLOBAL_BLACKLIST_N_LETTER_WORDS_EN,
-                    GLOBAL_WHITELIST_3_LETTER_WORDS_EN, HISTORY_LENGTH, LOGGER_NAME_MAIN, MISTAKE_PENALTY,
-                    RELIABLE_ROLE_ACCURACY_THRESHOLD, RELIABLE_ROLE_KARMA_THRESHOLD, SETTINGS, SPECIAL_REACTION_EMOJIS,
-                    GameMode)
+                    GLOBAL_BLACKLIST_2_LETTER_WORDS_EN, GLOBAL_BLACKLIST_N_LETTER_WORDS_EN, HISTORY_LENGTH,
+                    LOGGER_NAME_MAIN, MISTAKE_PENALTY, RELIABLE_ROLE_ACCURACY_THRESHOLD, RELIABLE_ROLE_KARMA_THRESHOLD,
+                    SETTINGS, SPECIAL_REACTION_EMOJIS, GameMode)
 from decorator import log_execution_time
 from karma_calcs import calculate_total_karma
 from language import Language, LanguageInfo
@@ -995,12 +994,6 @@ The above entered word is **NOT** being taken into account.''')
         if re.search(Language.ENGLISH.value.allowed_word_regex, word):
 
             if word in GLOBAL_BLACKLIST_2_LETTER_WORDS_EN or word in GLOBAL_BLACKLIST_N_LETTER_WORDS_EN:
-                return True
-
-            # Check global 3-letter words WHITElist
-            if len(word) == 3 and word not in GLOBAL_WHITELIST_3_LETTER_WORDS_EN:
-                # TODO this will create an error if the three-letter word is not an English word, but also
-                # does not have any accents
                 return True
 
         # +++++++++++++ Global Blacklist and whitelist checking complete ++++++++++++++++++++
