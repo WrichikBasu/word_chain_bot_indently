@@ -131,7 +131,7 @@ class WordChainBot(AutoShardedBot):
             for game_mode in GameMode:
                 try:
                     channel: Optional[discord.TextChannel] = self.get_channel(config.game_state[game_mode].channel_id)
-                except (discord.errors.Forbidden, discord.errors.NotFound):
+                except discord.errors.HTTPException:
                     channel = None
 
                 if channel:
@@ -142,7 +142,7 @@ class WordChainBot(AutoShardedBot):
                             last_message.content.lower() == self.server_configs[guild.id].game_state[game_mode].current_word):
                             logger.debug(f'Skipped restart message for {guild.name} ({guild.id}) in game mode {game_mode}')
                             continue
-                    except (discord.errors.Forbidden, discord.errors.NotFound):
+                    except discord.errors.HTTPException:
                         pass
 
 
@@ -163,7 +163,7 @@ class WordChainBot(AutoShardedBot):
 
                     try:
                         await channel.send(embed=emb)
-                    except (discord.errors.Forbidden, discord.errors.NotFound):
+                    except discord.errors.HTTPException:
                         logger.info(f'Could not send ready message to {guild.name} ({guild.id}) due to missing permissions.')
 
             self._servers_ready.add(guild.id)
