@@ -51,25 +51,26 @@ class LanguageInfo(BaseModel):
 
 
 def load_token_scores_from_json(language_code: str) -> dict[GameMode, defaultdict[str, float]]:
-    def load_file_or_default(code: str, mode: GameMode) -> defaultdict[str, float]:
-        file_path = LANGUAGES_DIRECTORY / f'frequency_{code}_{mode.value}.json'
-        try:
-            if os.path.exists(file_path):
-                with open(file_path, 'r', encoding='utf-8') as f:
-                    content = json.load(f)
-                    first_chars = content['first_chars']
-                    assert type(first_chars) == dict
-                    return defaultdict(lambda: 0.0, first_chars)
-            else:
-                logger.warning(f'token score file {file_path} not found, using default scores as fallback')
-                return DEFAULT_FIRST_TOKEN_SCORES[mode]
-        except (KeyError, AttributeError, ValueError, AssertionError, JSONDecodeError):
-            logger.warning(f'there was an error loading data from {file_path}, using default scores as fallback')
-            return DEFAULT_FIRST_TOKEN_SCORES[mode]
+    file_path = LANGUAGES_DIRECTORY / f'scores_{language_code}.json'
+    try:
+        if os.path.exists(file_path):
+            with open(file_path, 'r', encoding='utf-8') as f:
+                content: dict = json.load(f)
+                assert isinstance(content, dict)
 
-    return {
-        game_mode: load_file_or_default(language_code, game_mode) for game_mode in [GameMode.NORMAL, GameMode.HARD]
-    }
+                return {
+                    game_mode: defaultdict(lambda: 0.0, content[str(game_mode.value)]) for game_mode in GameMode
+                }
+        else:
+            logger.warning(f'token score file {file_path} not found, using default scores as fallback')
+            return {
+                game_mode: DEFAULT_FIRST_TOKEN_SCORES[game_mode] for game_mode in GameMode
+            }
+    except (KeyError, AttributeError, ValueError, AssertionError, JSONDecodeError):
+        logger.warning(f'there was an error loading data from {file_path}, using default scores as fallback')
+        return {
+            game_mode: DEFAULT_FIRST_TOKEN_SCORES[game_mode] for game_mode in GameMode
+        }
 
 
 EN_FIRST_TOKEN_SCORES: dict[GameMode, defaultdict[str, float]] = load_token_scores_from_json('en')
