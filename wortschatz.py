@@ -25,10 +25,11 @@ async def extract_words(url: str, cache_directory: os.PathLike[str] | str | None
     # Extract the original filename from the URL and remove the extension
     parsed_url = urlparse(url)
     original_filename = os.path.basename(parsed_url.path)
-    if original_filename.endswith('.tar.gz'):
-        original_filename = original_filename[:-7]  # Remove .tar.gz
+    extension = '.tar.gz'
+    if original_filename.endswith(extension):
+        original_filename = original_filename[:-len(extension)]  # Remove .tar.gz
     else:
-        raise ValueError("file is not a .tar.gz")
+        raise ValueError(f"file is not a {extension}")
 
     extracted_dir = os.path.join(cache_directory, original_filename)
     if not cache_directory or not os.path.exists(extracted_dir):
