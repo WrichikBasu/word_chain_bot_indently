@@ -1,6 +1,6 @@
 [project]
 name = "word-chain-bot-indently"
-version = "10.0.0"
+version = "9.1.0"
 description = "Word Chain Discord bot, born from the Indently Discord server!"
 authors = [
     { name = "Wrichik Basu", email = "56736644+WrichikBasu@users.noreply.github.com" },
