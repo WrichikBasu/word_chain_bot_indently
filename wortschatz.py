@@ -3,6 +3,7 @@ import os
 import tarfile
 import tempfile
 from enum import Enum
+from os import PathLike
 from urllib.parse import urlparse
 
 import aiofiles
@@ -14,6 +15,7 @@ Module to query data from Wortschatz project of university of Leipzig
 
 __LOGGER = logging.getLogger(__name__)
 
+
 class CorporaSize(str, Enum):
     Size_10K = '10K',
     Size_30K = '30K',
@@ -21,7 +23,8 @@ class CorporaSize(str, Enum):
     Size_300K = '300K',
     Size_1M = '1M'
 
-async def extract_words(url: str, cache_directory: os.PathLike[str] | str | None = None) -> list[str]:
+
+async def __download_and_extract_tar(url: str, extraction_directory: PathLike[str] | str) -> PathLike[str] | str:
     # Extract the original filename from the URL and remove the extension
     parsed_url = urlparse(url)
     original_filename = os.path.basename(parsed_url.path)
@@ -31,50 +34,36 @@ async def extract_words(url: str, cache_directory: os.PathLike[str] | str | None
     else:
         raise ValueError(f"file is not a {extension}")
 
-    extracted_dir = os.path.join(cache_directory, original_filename)
-    if not cache_directory or not os.path.exists(extracted_dir):
+    extracted_directory = os.path.join(extraction_directory, original_filename)
+    if not os.path.exists(extracted_directory):
         __LOGGER.info(f'{original_filename} does not exist, proceed with download')
         async with aiohttp.ClientSession() as session:
             async with session.get(url) as response:
                 if response.status != 200:
                     raise ValueError(f"Failed to download file: HTTP {response.status}")
 
-                if cache_directory:
-                    tar_path = os.path.join(cache_directory, f"{original_filename}.tar.gz")
+                tar_path = os.path.join(extraction_directory, f"{original_filename}{extension}")
+                # Save the downloaded file
+                async with aiofiles.open(tar_path, "wb") as f:
+                    await f.write(await response.read())
+                    __LOGGER.info('file downloaded and saved to disk')
 
-                    # Save the downloaded file
-                    async with aiofiles.open(tar_path, "wb") as f:
-                        await f.write(await response.read())
-                        __LOGGER.info('file downloaded and saved to disc')
+                # Extract the tar.gz file
+                with tarfile.open(tar_path, "r:gz") as tar:
+                    tar.extractall(path=extraction_directory, filter='tar')
+                    __LOGGER.info('file extracted')
+    else:
+        __LOGGER.info(f'{original_filename} already exists, using from cache')
 
-                    # Extract the tar.gz file
-                    with tarfile.open(tar_path, "r:gz") as tar:
-                        tar.extractall(path=cache_directory, filter='tar')
-                        __LOGGER.info('file extracted')
+    return extracted_directory
 
-                else:
-                    # Create a temporary directory (automatically cleaned up)
-                    with tempfile.TemporaryDirectory() as tmpdir:
-                        tar_path = os.path.join(tmpdir, "corpus.tar.gz")
 
-                        # Save the downloaded file
-                        async with aiofiles.open(tar_path, "wb") as f:
-                            await f.write(await response.read())
-                            __LOGGER.info('file downloaded and saved to disc')
-
-                        # Extract the tar.gz file
-                        with tarfile.open(tar_path, "r:gz") as tar:
-                            tar.extractall(path=tmpdir, filter='tar')
-                            __LOGGER.info('file extracted')
-
-    if not os.path.isdir(extracted_dir):
-        raise FileNotFoundError(f"Extracted directory not found: {original_filename}")
-
+async def __load_words(extracted_directory: PathLike[str] | str) -> list[str]:
     # Find the *-words.txt file inside the extracted directory
     words_file = None
-    for file in os.listdir(extracted_dir):
+    for file in os.listdir(extracted_directory):
         if file.endswith("-words.txt"):
-            words_file = os.path.join(extracted_dir, file)
+            words_file = os.path.join(extracted_directory, file)
             break
 
     if not words_file:
@@ -93,3 +82,13 @@ async def extract_words(url: str, cache_directory: os.PathLike[str] | str | None
                 result.append(parts[1])
 
     return result
+
+
+async def extract_words(url: str, cache_directory: PathLike[str] | str | None = None) -> list[str]:
+    if not cache_directory:
+        with tempfile.TemporaryDirectory() as temp_directory:
+            extracted_directory = await __download_and_extract_tar(url, temp_directory)
+            return await __load_words(extracted_directory)
+    else:
+        extracted_directory = await __download_and_extract_tar(url, cache_directory)
+        return await __load_words(extracted_directory)
