@@ -5,14 +5,14 @@ import logging
 from typing import TYPE_CHECKING
 
 import discord
-import unidecode
 from discord import Colour, Embed, Interaction, Permissions, Role, TextChannel, app_commands
 from discord.app_commands import Group
 from discord.ext.commands import Cog
 from sqlalchemy import CursorResult, delete, insert, select
 from sqlalchemy.exc import SQLAlchemyError
 
-from consts import COG_NAME_MANAGER_CMDS, FIRST_TOKEN_SCORES, LOGGER_NAME_MANAGER_COG, GameMode, Languages
+from consts import COG_NAME_MANAGER_CMDS, LOGGER_NAME_MANAGER_COG, GameMode
+from language import Language
 from model import BlacklistModel, GameModeState, MemberModel, WhitelistModel
 
 if TYPE_CHECKING:
@@ -35,14 +35,9 @@ class ManagerCommandsCog(Cog, name=COG_NAME_MANAGER_CMDS):
     # ----------------------------------------------------------------------------------------------------------------
 
     @staticmethod
-    def is_generally_illegal_word(bot: WordChainBot, word: str):
-        decoded_word = unidecode.unidecode(word.lower())
-
-        return (not bot.word_matches_pattern(word) or
-                any(decoded_word[:game_mode.value] not in FIRST_TOKEN_SCORES[game_mode] or
-                    decoded_word[-game_mode.value:] not in FIRST_TOKEN_SCORES[game_mode]
-                    for game_mode in GameMode)
-                )
+    def is_generally_illegal_word(bot: WordChainBot, word: str, server_id: int):
+        valid_languages = bot.server_configs[server_id].languages
+        return not any(bot.word_matches_pattern(word.lower(), language.value) for language in valid_languages)
 
     # ----------------------------------------------------------------------------------------------------------------
 
@@ -282,7 +277,7 @@ to the other game mode!''')
 
             emb: Embed = Embed(colour=Colour.blurple())
 
-            if self.cog.is_generally_illegal_word(self.cog.bot, word):
+            if self.cog.is_generally_illegal_word(self.cog.bot, word, interaction.guild.id):
                 emb.description = f'⚠️ The word *{word.lower()}* is not a legal word.'
                 await interaction.followup.send(embed=emb)
                 return
@@ -307,7 +302,7 @@ to the other game mode!''')
 
             emb: Embed = Embed(colour=Colour.blurple())
 
-            if self.cog.is_generally_illegal_word(self.cog.bot, word):
+            if self.cog.is_generally_illegal_word(self.cog.bot, word, interaction.guild.id):
                 emb.description = f'⚠️ The word *{word.lower()}* is not a legal word.'
                 await interaction.followup.send(embed=emb)
                 return
@@ -376,7 +371,7 @@ to the other game mode!''')
 
             emb: Embed = Embed(colour=Colour.blurple())
 
-            if self.cog.is_generally_illegal_word(self.cog.bot, word):
+            if self.cog.is_generally_illegal_word(self.cog.bot, word, interaction.guild.id):
                 emb.description = f'⚠️ The word *{word.lower()}* is not a legal word.'
                 await interaction.followup.send(embed=emb)
                 return
@@ -401,7 +396,7 @@ to the other game mode!''')
 
             emb: Embed = Embed(colour=Colour.blurple())
 
-            if self.cog.is_generally_illegal_word(self.cog.bot, word):
+            if self.cog.is_generally_illegal_word(self.cog.bot, word, interaction.guild.id):
                 emb.description = f'⚠️ The word *{word.lower()}* is not a legal word.'
                 await interaction.followup.send(embed=emb)
                 return
@@ -474,7 +469,7 @@ to the other game mode!''')
                 Embed descriptions.
             """
             return f'''Currently enabled languages:
-{'\n'.join(f'- {lang.name.capitalize()} (`{lang.value}`)' for lang in bot.server_configs[server_id].languages)}'''
+{'\n'.join(f'- {lang.name.capitalize()} (`{lang.value.code}`)' for lang in bot.server_configs[server_id].languages)}'''
 
         # -------------------------------------------------------------------------------------------------------------
 
@@ -484,8 +479,8 @@ to the other game mode!''')
 
             emb: Embed = Embed(colour=Colour.yellow(), title='Languages supported by the bot', description='')
             emb.description += f'''The bot supports the following languages:
-{'\n'.join(f'- {language.name.capitalize()} (`{language.value}`) \
-{'✅' if language in self.cog.bot.server_configs[interaction.guild.id].languages else ''}' for language in Languages)}
+{'\n'.join(f'- {language.name.capitalize()} (`{language.value.code}`) \
+{'✅' if language in self.cog.bot.server_configs[interaction.guild.id].languages else ''}' for language in Language)}
 
 **Use the code within brackets when enabling or disabling a language.**'''
 
@@ -500,14 +495,14 @@ to the other game mode!''')
 
             embed: Embed = Embed(title='Add new language', colour=Colour.green())
 
-            if language_code.lower() not in Languages:
+            try:
+                language = Language.from_language_code(language_code.lower())
+            except ValueError:
                 embed.description = f'❌ Invalid language code. Please use the codes as stated in `/language show-all`.'
                 embed.colour = Colour.red()
 
                 await interaction.followup.send(embed=embed)
                 return
-
-            language: Languages = Languages(language_code.lower())
 
             if language in self.cog.bot.server_configs[interaction.guild.id].languages:
 
@@ -546,15 +541,14 @@ to the other game mode!''')
 
             embed: Embed = Embed(title='Remove language')
 
-            if language_code.lower() not in Languages:
-
+            try:
+                language = Language.from_language_code(language_code.lower())
+            except ValueError:
                 embed.description = f'❌ Invalid language code.\nPlease use the codes as stated in `/language show-all`.'
                 embed.colour = Colour.red()
 
                 await interaction.followup.send(embed=embed)
                 return
-
-            language = Languages(language_code)
 
             if len(self.cog.bot.server_configs[interaction.guild.id].languages) == 1:
 
@@ -578,7 +572,7 @@ to the other game mode!''')
                 await self.cog.bot.server_configs[interaction.guild.id].sync_to_db_with_connection(connection)
                 await connection.commit()
 
-            embed.description = f'''✅ *{language.name.capitalize()}* was successfully disabled.\n
+            embed.description = f'''✅ *{language.name.capitalize()}* has been disabled for this server.\n
 {self.get_current_languages(self.cog.bot, interaction.guild.id)}'''
             embed.colour = Colour.green()
 

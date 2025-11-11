@@ -3,9 +3,8 @@ from __future__ import annotations
 import math
 from collections import deque
 
-from unidecode import unidecode
-
-from consts import FIRST_TOKEN_SCORES, GameMode
+from consts import GameMode
+from language import Language, LanguageInfo
 
 
 def calculate_decay(n: float, drop_rate: float = .33) -> float:
@@ -29,7 +28,7 @@ def calculate_decay(n: float, drop_rate: float = .33) -> float:
 # ==================================================================================================================
 
 
-def calculate_base_karma(word: str, game_mode: GameMode, last_char_bias: float = .7) -> float:
+def calculate_base_karma(word: str, language: LanguageInfo, game_mode: GameMode, last_char_bias: float = .7) -> float:
     """
     Calculates the base karma gain or loss for given word.
 
@@ -37,8 +36,10 @@ def calculate_base_karma(word: str, game_mode: GameMode, last_char_bias: float =
     ----------
     word : str
         The word to calculate the karma change from.
+    language : LanguageInfo
+        The language used to validate the word.
     game_mode : GameMode
-        Game Mode to be used to determine the token length
+        Game Mode to be used to determine the token length.
     last_char_bias : float
         Bias to be multiplied with the karma part for the last character.
 
@@ -51,11 +52,11 @@ def calculate_base_karma(word: str, game_mode: GameMode, last_char_bias: float =
     def score_adaption(score: float, exponent: float = .5, rise: float = .025) -> float:
         return score ** exponent + rise
 
-    first_char: str = unidecode(word[:game_mode.value])
-    last_char: str = unidecode(word[-game_mode.value:])
+    first_char: str = word[:game_mode.value]
+    last_char: str = word[-game_mode.value:]
 
-    first_char_score: float = score_adaption(FIRST_TOKEN_SCORES[game_mode][first_char])  # how difficult is it to find this word
-    last_char_score: float = score_adaption(FIRST_TOKEN_SCORES[game_mode][last_char])  # how difficult is it for the next player
+    first_char_score: float = score_adaption(language.first_token_scores[game_mode][first_char])  # how difficult is it to find this word
+    last_char_score: float = score_adaption(language.first_token_scores[game_mode][last_char])  # how difficult is it for the next player
 
     first_char_karma: float = (first_char_score - 1) * -1  # distance to average, inverted
     last_char_karma: float = (last_char_score - 1)  # distance to average
@@ -67,7 +68,7 @@ def calculate_base_karma(word: str, game_mode: GameMode, last_char_bias: float =
 # ==================================================================================================================
 
 
-def calculate_total_karma(word: str, last_words: deque[str], game_mode: GameMode = GameMode.NORMAL) -> float:
+def calculate_total_karma(word: str, last_words: deque[str], language: LanguageInfo = Language.ENGLISH.value, game_mode: GameMode = GameMode.NORMAL) -> float:
     """
     Calculates the total karma gain or loss for given word and history.
 
@@ -77,8 +78,10 @@ def calculate_total_karma(word: str, last_words: deque[str], game_mode: GameMode
         The word to calculate the karma change from.
     last_words : deque[str]
         The history to include in the karma calculation.
+    language : LanguageInfo
+        The language used to validate the word.
     game_mode : GameMode
-        Game Mode to be used to determine the token length
+        Game Mode to be used to determine the token length.
 
     Returns
     -------
@@ -91,7 +94,7 @@ def calculate_total_karma(word: str, last_words: deque[str], game_mode: GameMode
     n: float = sum(weight for weight, e in weighted_words if e[-game_mode.value:] == end_letter)
 
     decay: float = calculate_decay(n)
-    base_karma: float = calculate_base_karma(word, game_mode)
+    base_karma: float = calculate_base_karma(word, language, game_mode)
     return decay * base_karma if base_karma > 0 else base_karma
 
 

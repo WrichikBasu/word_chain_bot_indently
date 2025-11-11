@@ -8,7 +8,8 @@ from sqlalchemy.engine.row import Row
 from sqlalchemy.ext.asyncio import AsyncConnection
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
-from consts import GameMode, Languages
+from consts import GameMode
+from language import Language
 
 if TYPE_CHECKING:
     from main import WordChainBot  # Thanks to https://stackoverflow.com/a/39757388/8387076
@@ -111,7 +112,7 @@ class ServerConfig(BaseModel):
     failed_member_id: Optional[int] = None
     correct_inputs_by_failed_member: int = 0
     is_banned: bool = False
-    languages: List[Languages] = Field(default_factory=lambda: [Languages.ENGLISH])
+    languages: List[Language] = Field(default_factory=lambda: [Language.ENGLISH])
 
     def fail_chain(self, game_mode: GameMode, member_id: int) -> None:
         """
@@ -174,7 +175,7 @@ class ServerConfig(BaseModel):
             failed_member_id=self.failed_member_id,
             correct_inputs_by_failed_member=self.correct_inputs_by_failed_member,
             is_banned=self.is_banned,
-            languages=','.join(language.value for language in self.languages)
+            languages=','.join(language.value.code for language in self.languages)
         ).where(ServerConfigModel.server_id == self.server_id)
         return stmt
 
@@ -213,7 +214,7 @@ class ServerConfig(BaseModel):
             failed_member_id=row.failed_member_id,
             correct_inputs_by_failed_member=row.correct_inputs_by_failed_member,
             is_banned=row.is_banned,
-            languages=[Languages(lang_code) for lang_code in row.languages.split(',') if lang_code]
+            languages=[Language.from_language_code(lang_code) for lang_code in row.languages.split(',') if lang_code]
         )
 
     def to_sqlalchemy_dict(self) -> dict[str, Any]:
