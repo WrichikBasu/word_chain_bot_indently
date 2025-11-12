@@ -243,7 +243,7 @@ class ServerConfig(BaseModel):
             "failed_member_id": self.failed_member_id,
             "correct_inputs_by_failed_member": self.correct_inputs_by_failed_member,
             "is_banned": self.is_banned,
-            "languages": ','.join([language.value for language in self.languages])
+            "languages": ','.join([language.value.code for language in self.languages])
         }
 
     async def sync_to_db(self, bot: WordChainBot):

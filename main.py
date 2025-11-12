@@ -815,8 +815,6 @@ The above entered word is **NOT** being taken into account.''')
             # return early if it was not caused by a normal user message, e.g. use of commands
             return
 
-        valid_languages = self.server_configs[message.guild.id].languages
-
         if not self.is_ready():
             return
 
@@ -829,7 +827,8 @@ The above entered word is **NOT** being taken into account.''')
             return
         if not message.reactions:
             return
-        if not any(WordChainBot.word_matches_pattern(message.content, language.value) for language in valid_languages):
+        if not any(WordChainBot.word_matches_pattern(message.content, language.value) for language in
+                   self.server_configs[message.guild.id].languages):
             return
 
         if message.channel.id == self.server_configs[message.guild.id].game_state[GameMode.NORMAL].channel_id:
@@ -853,7 +852,6 @@ The above entered word is **NOT** being taken into account.''')
             # return early if it was not caused by a normal user message, e.g. use of commands
             return
 
-        valid_languages = self.server_configs[before.guild.id].languages
 
         if not self.is_ready():
             return
@@ -867,7 +865,8 @@ The above entered word is **NOT** being taken into account.''')
             return
         if not before.reactions:
             return
-        if not any(WordChainBot.word_matches_pattern(before.content, language.value) for language in valid_languages):
+        if not any(WordChainBot.word_matches_pattern(before.content, language.value) for language in
+                   self.server_configs[before.guild.id].languages):
             return
         if before.content.lower() == after.content.lower():
             return
