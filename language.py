@@ -47,7 +47,7 @@ class LanguageInfo(BaseModel):
     code_long: str = Field(max_length=3, min_length=3) # set 2/T ISO-639-2
     allowed_word_regex: str
     first_token_scores: dict[GameMode, defaultdict[str, float]] = Field(default=DEFAULT_FIRST_TOKEN_SCORES)
-    score_threshold: dict[GameMode, float] = Field(default={GameMode.NORMAL: 0.05, GameMode.HARD: 0.05})
+    score_threshold: dict[GameMode, float] = Field(default={GameMode.NORMAL: 0.075, GameMode.HARD: 0.075})
 
 
 def load_token_scores_from_json(language_code: str) -> dict[GameMode, defaultdict[str, float]]:
