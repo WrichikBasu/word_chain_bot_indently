@@ -70,7 +70,7 @@ async def __load_words(extracted_directory: PathLike[str] | str) -> list[str]:
         raise FileNotFoundError("No *-words.txt file found in the extracted directory.")
 
     # Process the file
-    result = []
+    result = set()
     async with aiofiles.open(words_file, "r", encoding="utf-8") as f:
         contents = await f.read()
         __LOGGER.info('word file read')
@@ -79,9 +79,9 @@ async def __load_words(extracted_directory: PathLike[str] | str) -> list[str]:
         for line in contents.splitlines():
             parts = line.strip().split("\t")
             if len(parts) >= 2:
-                result.append(parts[1])
+                result.add(parts[1].lower())
 
-    return result
+    return list(result)
 
 
 async def extract_words(url: str, cache_directory: PathLike[str] | str | None = None) -> list[str]:
