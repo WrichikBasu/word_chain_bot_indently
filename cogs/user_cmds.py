@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-import os
 from collections import defaultdict
 from concurrent.futures import Future
 from typing import TYPE_CHECKING, Optional, Sequence
@@ -10,14 +9,13 @@ import discord
 from discord import Colour, Embed, Interaction, SelectOption, app_commands
 from discord.ext.commands import Cog
 from discord.ui import View
-from dotenv import load_dotenv
 from sqlalchemy import CursorResult, func, or_, select
 from sqlalchemy.engine.row import Row
 from sqlalchemy.sql.functions import count
-from unidecode import unidecode
 
 from cogs.manager_cmds import ManagerCommandsCog
-from consts import COG_NAME_USER_CMDS, GameMode, LOGGER_NAME_USER_COG, Languages
+from consts import COG_NAME_USER_CMDS, LOGGER_NAME_USER_COG, SETTINGS, GameMode
+from language import Language
 from model import BannedMemberModel, Member, MemberModel, ServerConfig, ServerConfigModel
 from views.dropdown import Dropdown
 
@@ -26,9 +24,6 @@ if TYPE_CHECKING:
 
 logging.basicConfig(level=logging.INFO, format='[%(asctime)s] [%(levelname)s] %(name)s: %(message)s')
 logger: logging.Logger = logging.getLogger(LOGGER_NAME_USER_COG)
-
-load_dotenv()
-ADMIN_GUILD_ID: int = int(os.environ['ADMIN_GUILD_ID'])
 
 
 class UserCommandsCog(Cog, name=COG_NAME_USER_CMDS):
@@ -97,10 +92,11 @@ class UserCommandsCog(Cog, name=COG_NAME_USER_CMDS):
         6. Query API.
         """
         await interaction.response.defer(ephemeral=True)
+        valid_languages = self.bot.server_configs[interaction.guild.id].languages
 
         emb = Embed(color=Colour.blurple())
 
-        if not self.bot.word_matches_pattern(word):
+        if not any(self.bot.word_matches_pattern(word, language.value) for language in valid_languages):
             emb.description = f'❌ **{word}** is **not** a legal word.'
             await interaction.followup.send(embed=emb)
             return
@@ -122,24 +118,6 @@ Therefore, a word that is valid in this server may not be valid in another serve
 
             if await self.bot.is_word_blacklisted(word, interaction.guild.id, connection):
                 emb.description = f'❌ The word **{word}** is **blacklisted** and hence, **not** valid.'
-                await interaction.followup.send(embed=emb)
-                return
-
-            # --------------------------------------------------------------------------------------------
-            # Wiktionary English version has lots of words from other languages too. This includes
-            # words that have accents as well. Therefore, we check if all the characters in the word
-            # are from the English alphabet. If not, and the server is set to only English, then
-            # this is an invalid word. We do not go for an API query and end the execution here.
-            # --------------------------------------------------------------------------------------------
-            if (unidecode(word) != word  # => Word is not in English...
-                and Languages.ENGLISH in self.bot.server_configs[interaction.guild.id].languages  # ... but English is enabled in the server...
-                    and len(self.bot.server_configs[interaction.guild.id].languages) == 1):  # ...AND English is the ONLY language in the server
-
-                emb.description = f'''❌ The word **{word}** does not exist, and hence, **not** valid.
-               
--# ^ The bot now supports multiple languages. When a word is invalid, it pertains to the language(s) \
-enabled in this server.\n-# To check enabled languages, use `/show_languages`.'''
-
                 await interaction.followup.send(embed=emb)
                 return
 
@@ -311,15 +289,18 @@ Therefore, a word that is valid in this server may not be valid in another serve
 The game is pretty simple.
 
 - Enter a word that starts with the last letter of the previous correct word.  
-- If your word is correct, the bot will react with a tick mark — :white_check_mark: .  
-- No characters other than the letters of the English alphabet (capital and small) and hyphen (`-`) are accepted. \
-Messages with anything else will be ignored.
-- You can check if a word is correct using the `/check_word` command.
+- If your word is correct, the bot will react with a tick mark — :white_check_mark:.  
+- No characters other than letters and hyphen (`-`) are accepted. Messages with anything else will be ignored. \
+If only English is selected (default), only letters of the English alphabet are accepted. If other languages are \
+selected, letters with accents are accepted as well.
+- You can check if a word is correct using the `/check_word` command - this checks only if the word is generally \
+accepted, it does **not** check if it has the matching starting letter to continue the current chain.
 - Words that have been used once cannot be used again until the chain is broken. The chain, however, will **not**
  be broken if you enter a word that has been used previously. The bot will simply ask you to enter another word.
 - Entering a wrong/non-existent word will break the chain.
+- Entering words twice in a row by the same user will also break the chain.
 - Once the chain is broken, all used words will be reset.
-- The chain continues even if someone messes up, in the sense that one still has to enter a word beginning with the 
+- The chain continues even if someone messes up, in the sense that one still has to enter a word beginning with the \
 last letter of the previous correct word.
 
 That's all. Go and beat the high score in your server and top the global leaderboard!! :fire:
@@ -351,7 +332,7 @@ have other rules that are not covered here. Please check with the server moderat
 The bot now allows you to enable upto two languages in a server.
 
 The following languages are supported:
-{', '.join(f'{language.name.capitalize()}' for language in Languages)}
+{', '.join(f'{language.name.capitalize()}' for language in Language)}
 
 In order to enable/disable languages, server managers can use the commands under the `/language` category.
 ''', colour=Colour.dark_orange())
@@ -458,7 +439,7 @@ https://discord.gg/yhbzVGBNw3''', colour=Colour.pink())
 `/whitelist remove` - Remove a word from the whitelist of this server.
 `/whitelist show` - Show the whitelist words for this server.'''
 
-            if interaction.user.guild_permissions.administrator and interaction.guild.id == ADMIN_GUILD_ID:
+            if interaction.user.guild_permissions.administrator and interaction.guild.id == SETTINGS.admin_guild_id:
                 emb.description += '''\n
 **Restricted commands — Bot Admins only**
 `/reload` - Reload a specific Cog (or all Cogs).

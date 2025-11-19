@@ -11,40 +11,29 @@ import time
 from asyncio import CancelledError
 from collections import defaultdict, deque
 from concurrent.futures import Future
-from copy import deepcopy
 from json import JSONDecodeError
 from logging.config import fileConfig
-from typing import AsyncIterator, Optional, List
+from typing import AsyncIterator, List, Optional
 
 import discord
 from alembic import command as alembic_command
 from alembic.config import Config as AlembicConfig
-from discord import Colour, Embed, Interaction, Object, app_commands
+from discord import Colour, Embed, Interaction, MessageType, Object, app_commands
 from discord.ext.commands import AutoShardedBot, ExtensionNotLoaded
-from dotenv import load_dotenv
 from requests_futures.sessions import FuturesSession
-from sqlalchemy import CursorResult, delete, exists, func, insert, select, update, and_
+from sqlalchemy import CursorResult, and_, delete, exists, func, insert, select, update
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, create_async_engine
 
-from consts import (COG_NAME_ADMIN_CMDS, COG_NAME_MANAGER_CMDS, COG_NAME_USER_CMDS,
-                    LOGGER_NAME_MAIN, GameMode, HISTORY_LENGTH, RELIABLE_ROLE_KARMA_THRESHOLD,
-                    RELIABLE_ROLE_ACCURACY_THRESHOLD, ALLOWED_WORDS_PATTERN, SPECIAL_REACTION_EMOJIS, MISTAKE_PENALTY,
-                    GLOBAL_BLACKLIST_2_LETTER_WORDS_EN, GLOBAL_BLACKLIST_N_LETTER_WORDS_EN,
-                    GLOBAL_WHITELIST_3_LETTER_WORDS_EN,
-                    COGS_LIST, Languages, )
+from consts import (COG_NAME_ADMIN_CMDS, COG_NAME_MANAGER_CMDS, COG_NAME_USER_CMDS, COGS_LIST,
+                    GLOBAL_BLACKLIST_2_LETTER_WORDS_EN, GLOBAL_BLACKLIST_N_LETTER_WORDS_EN, HISTORY_LENGTH,
+                    LOGGER_NAME_MAIN, MISTAKE_PENALTY, RELIABLE_ROLE_ACCURACY_THRESHOLD, RELIABLE_ROLE_KARMA_THRESHOLD,
+                    SETTINGS, SPECIAL_REACTION_EMOJIS, GameMode)
 from decorator import log_execution_time
 from karma_calcs import calculate_total_karma
+from language import Language, LanguageInfo
 from model import (BannedMemberModel, BlacklistModel, MemberModel, ServerConfig, ServerConfigModel, UsedWordsModel,
                    WhitelistModel, WordCacheModel)
-from unidecode import unidecode
-
-load_dotenv('.env')
-# running in single player mode changes some game rules - you can chain words alone now
-# getenv reads always strings, which are truthy if not empty - thus checking for common false-ish tokens
-SINGLE_PLAYER = os.getenv('SINGLE_PLAYER', False) not in {False, 'False', 'false', '0'}
-DEV_MODE = os.getenv('DEV_MODE', False) not in {False, 'False', 'false', '0'}
-ADMIN_GUILD_ID = int(os.environ['ADMIN_GUILD_ID'])
 
 # load logging config from alembic file because it would be loaded anyway when using alembic
 fileConfig(fname='config.ini')
@@ -73,6 +62,8 @@ class WordChainBot(AutoShardedBot):
         # maps from server_id -> member_id -> game_mode -> deque
         self._server_histories: dict[int, dict[int, dict[GameMode, deque[str]]]] = defaultdict(
             lambda: defaultdict(lambda: defaultdict(lambda: deque(maxlen=HISTORY_LENGTH))))
+
+        self._servers_ready: set[int] = set()
 
         super().__init__(command_prefix='!', intents=intents)
 
@@ -137,8 +128,22 @@ class WordChainBot(AutoShardedBot):
             self.load_discord_roles(guild)
 
             for game_mode in GameMode:
-                channel: Optional[discord.TextChannel] = self.get_channel(config.game_state[game_mode].channel_id)
+                try:
+                    channel: Optional[discord.TextChannel] = self.get_channel(config.game_state[game_mode].channel_id)
+                except discord.errors.HTTPException:
+                    channel = None
+
                 if channel:
+                    try:
+                        last_message = await channel.fetch_message(channel.last_message_id)
+                        if (last_message and
+                            last_message.author.id == self.server_configs[guild.id].game_state[game_mode].last_member_id and
+                            last_message.content.lower() == self.server_configs[guild.id].game_state[game_mode].current_word):
+                            logger.debug(f'Skipped restart message for {guild.name} ({guild.id}) in game mode {game_mode}')
+                            continue
+                    except discord.errors.HTTPException:
+                        pass
+
 
                     emb: discord.Embed = discord.Embed(description='**I\'m now online!**',
                                                        colour=discord.Color.brand_green())
@@ -157,8 +162,10 @@ class WordChainBot(AutoShardedBot):
 
                     try:
                         await channel.send(embed=emb)
-                    except discord.errors.Forbidden:
+                    except discord.errors.HTTPException:
                         logger.info(f'Could not send ready message to {guild.name} ({guild.id}) due to missing permissions.')
+
+            self._servers_ready.add(guild.id)
 
         logger.info(f'Loaded {len(self.server_configs)} server configs, running on {len(self.guilds)} servers')
 
@@ -175,6 +182,7 @@ class WordChainBot(AutoShardedBot):
                 await connection.execute(stmt)
                 await connection.commit()
                 self.server_configs[new_config.server_id] = new_config
+                self._servers_ready.add(guild.id)
             except SQLAlchemyError:
                 pass
                 # we cannot insert on duplicate key, but we just want to make sure here that a config exists
@@ -296,8 +304,9 @@ class WordChainBot(AutoShardedBot):
         timestamps = [time.monotonic()]  # t1
         server_id = message.guild.id
         word: str = message.content.lower()
+        valid_languages: list[Language] = self.server_configs[server_id].languages
 
-        if not WordChainBot.word_matches_pattern(word):
+        if not any(WordChainBot.word_matches_pattern(word, language.value) for language in valid_languages):
             return
         if len(word) == 0:
             return
@@ -320,6 +329,15 @@ class WordChainBot(AutoShardedBot):
         if len(word) == 1:
             await WordChainBot.add_reaction(message, '⚠️')
             await WordChainBot.send_message_to_channel(message.channel, f'''Single-letter inputs are no longer accepted.
+The chain has **not** been broken. Please enter another word.''')
+            return
+
+        # --------------------
+        # Check word score
+        # --------------------
+        if all(language.value.score_threshold[game_mode] > self.calculate_word_score(word, game_mode, language) for language in valid_languages):
+            await WordChainBot.add_reaction(message, '⚠️')
+            await WordChainBot.send_message_to_channel(message.channel, f'''Your word has no or just few words to continue with.
 The chain has **not** been broken. Please enter another word.''')
             return
 
@@ -372,29 +390,6 @@ The chain has **not** been broken. Please enter another word.''')
 The chain has **not** been broken. Please enter another word.''')
                 return
 
-            # --------------------------------------------------------------------------------------------
-            # Wiktionary English version has lots of words from other languages too. This includes
-            # words that have accents as well. Therefore, we check if all the characters in the word
-            # are from the English alphabet. If not, and the server is set to only English, then
-            # this is an invalid word. We do not go for an API query and end the execution here.
-            # --------------------------------------------------------------------------------------------
-            if (not word_whitelisted
-                and unidecode(word) != word  # => Word is not in English...
-                and Languages.ENGLISH in self.server_configs[server_id].languages  # ... but English is enabled in the server...
-                and len(self.server_configs[server_id].languages) == 1):  # ...AND English is the ONLY language in the server
-
-                response: str = f'''{message.author.mention} messed up the chain! \
-*The word you entered does not exist.^*
-{f'The chain length was {self.server_configs[server_id].game_state[game_mode].current_count} when it was broken. :sob:\n' if self.server_configs[server_id].game_state[game_mode].current_count > 0 else ''}\
-Restart with a word starting with **{self.server_configs[server_id].game_state[game_mode].current_word[-game_mode.value:]}** and try to beat the \
-current high score of **{self.server_configs[server_id].game_state[game_mode].high_score}**!
-
--# ^ The bot now supports multiple languages. When a word is invalid, it pertains to the language(s) \
-enabled in this server.\n-# To check enabled languages, use `/show_languages`.'''
-
-                await self.handle_mistake(message, response, connection, game_mode)
-                return
-
             # ----------------------------------------
             # Check if word is valid
             # (if and only if not whitelisted)
@@ -402,8 +397,8 @@ enabled in this server.\n-# To check enabled languages, use `/show_languages`.''
             futures: Optional[list[Future]]
 
             # First check the whitelist or the word cache
-            if word_whitelisted or \
-                    await self.is_word_in_cache(word, connection, self.server_configs[server_id].languages):
+            matched_language = await self.is_word_in_cache(word, connection, self.server_configs[server_id].languages)
+            if word_whitelisted or matched_language:
                 # Word found in cache. No need to query API
                 futures = None
             else:
@@ -432,7 +427,7 @@ Please enter another word.''')
             # -------------
             # Wrong member
             # -------------
-            if not SINGLE_PLAYER and self.server_configs[server_id].game_state[game_mode].last_member_id == message.author.id:
+            if not SETTINGS.single_player and self.server_configs[server_id].game_state[game_mode].last_member_id == message.author.id:
                 response: str = f'''{message.author.mention} messed up the count! \
 *You cannot send two words in a row!*
 {f'The chain length was {self.server_configs[server_id].game_state[game_mode].current_count} when it was broken. :sob:\n' if self.server_configs[server_id].game_state[game_mode].current_count > 0 else ''}\
@@ -472,7 +467,16 @@ current high score of **{self.server_configs[server_id].game_state[game_mode].hi
                     if query_result_code == WordChainBot.API_RESPONSE_WORD_EXISTS:
                         # The word exists in at least one of the languages the server is configured for.
                         # We don't need to loop over the other Future objects.
-                        break
+                        response = future.result(timeout=5)
+                        data = response.json()
+                        lang_code: str = (data[3][0]).split('//')[1].split('.')[0]
+                        queried_language: Language = Language.from_language_code(lang_code)
+
+                        # many foreign words can be found in a languages wiktionary, we accept a word only as existing
+                        # if it does match the languages word regex
+                        if re.search(queried_language.value.allowed_word_regex, word):
+                            matched_language: Language = queried_language
+                            break
 
                 # Add the words to the cache for all languages
                 await WordChainBot.add_words_to_cache(futures, connection)
@@ -518,7 +522,10 @@ The above entered word is **NOT** being taken into account.''')
                                             ))
 
             last_words: deque[str] = self._server_histories[server_id][message.author.id][game_mode]
-            karma: float = calculate_total_karma(word, last_words)
+            # fallback to first configured language if matched_language is unavailable (e.g. matched by whitelist)
+            matched_language = matched_language if matched_language else valid_languages[0]
+            karma: float = calculate_total_karma(word, last_words, matched_language.value, game_mode)
+            logger.debug(f'member {message.author.id} got {karma} karma for "{word}"')
             self._server_histories[server_id][message.author.id][game_mode].append(word)
 
             timestamps.append(time.monotonic())  # t3
@@ -569,8 +576,8 @@ The above entered word is **NOT** being taken into account.''')
 
         server_id = message.guild.id
 
-        # Check if we have a config ready for this server
-        if server_id not in self.server_configs:
+        # Check if we have a config ready for this server, and the server has been marked as ready
+        if server_id not in self.server_configs or server_id not in self._servers_ready:
             return
 
         if message.channel.id == self.server_configs[server_id].game_state[GameMode.NORMAL].channel_id:
@@ -637,30 +644,23 @@ The above entered word is **NOT** being taken into account.''')
     # ---------------------------------------------------------------------------------------------------------------
 
     @staticmethod
-    def word_matches_pattern(word: str) -> bool:
+    def word_matches_pattern(word: str, language_info: LanguageInfo) -> bool:
         """
         Check if the given word matches the pattern for allowed words.
-
-        Uses the `Unidecode` library to remove accents, then checks using regex.
-
-        !! WARNING !!
-        NOT safe for all languages. Eg. letters in the Bengali alphabet will be mapped
-        to letters in the English as well, and the final letter will be the vowel sound rather
-        than the consonant. Applicable for most other Indian languages and probably
-        other Asian languages as well.
 
         Parameters
         ----------
         word : str
             The word to check.
+        language_info : LanguageInfo
+            Language info to check validity
 
         Returns
         -------
         bool
             `True` if the word matches the pattern, otherwise `False`.
         """
-        word = unidecode(word.lower())
-        return True if re.search(ALLOWED_WORDS_PATTERN, word) else False
+        return True if re.search(language_info.allowed_word_regex, word.lower()) else False
 
     # ---------------------------------------------------------------------------------------------------------------
 
@@ -684,14 +684,14 @@ The above entered word is **NOT** being taken into account.''')
     # ---------------------------------------------------------------------------------------------------------------
 
     @staticmethod
-    def start_api_queries(word: str, languages: List[Languages]) -> List[Future]:
+    def start_api_queries(word: str, languages: List[Language]) -> List[Future]:
         """
         Starts Wiktionary API queries in the background to find the given word, in each of the
         given languages.
 
         Parameters
         ----------
-        languages : list[consts.Languages]
+        languages : list[Language]
              A list of languages to search in.
         word : str
              The word to be searched for.
@@ -705,7 +705,7 @@ The above entered word is **NOT** being taken into account.''')
 
         for language in languages:
 
-            url: str = f"https://{language.value}.wiktionary.org/w/api.php"
+            url: str = f"https://{language.value.code}.wiktionary.org/w/api.php"
             params: dict = {
                 "action": "opensearch",
                 "namespace": "0",
@@ -799,10 +799,10 @@ The above entered word is **NOT** being taken into account.''')
                 word: str = data[0]  # The word that was searched
                 best_match: str = data[1][0]  # Should raise an IndexError if no match is returned
                 lang_code: str = (data[3][0]).split('//')[1].split('.')[0]
-                language: Languages = Languages(lang_code)
+                language: Language = Language.from_language_code(lang_code)
 
                 if best_match.lower() == word.lower():
-                    await word_chain_bot.add_to_cache(word, connection, language)
+                    await word_chain_bot.add_to_cache(word, language, connection)
 
             except (IndexError, TimeoutError, CancelledError, JSONDecodeError):
                 continue
@@ -811,6 +811,9 @@ The above entered word is **NOT** being taken into account.''')
 
     async def on_message_delete(self, message: discord.Message) -> None:
         """Post a message in the channel if a user deletes their input."""
+        if message.type != MessageType.default:
+            # return early if it was not caused by a normal user message, e.g. use of commands
+            return
 
         if not self.is_ready():
             return
@@ -824,7 +827,8 @@ The above entered word is **NOT** being taken into account.''')
             return
         if not message.reactions:
             return
-        if not WordChainBot.word_matches_pattern(message.content):
+        if not any(WordChainBot.word_matches_pattern(message.content, language.value) for language in
+                   self.server_configs[message.guild.id].languages):
             return
 
         if message.channel.id == self.server_configs[message.guild.id].game_state[GameMode.NORMAL].channel_id:
@@ -844,6 +848,10 @@ The above entered word is **NOT** being taken into account.''')
 
     async def on_message_edit(self, before: discord.Message, after: discord.Message) -> None:
         """Send a message in the channel if a user modifies their input."""
+        if before.type != MessageType.default:
+            # return early if it was not caused by a normal user message, e.g. use of commands
+            return
+
 
         if not self.is_ready():
             return
@@ -857,7 +865,8 @@ The above entered word is **NOT** being taken into account.''')
             return
         if not before.reactions:
             return
-        if not WordChainBot.word_matches_pattern(before.content):
+        if not any(WordChainBot.word_matches_pattern(before.content, language.value) for language in
+                   self.server_configs[before.guild.id].languages):
             return
         if before.content.lower() == after.content.lower():
             return
@@ -878,7 +887,7 @@ The above entered word is **NOT** being taken into account.''')
     # ---------------------------------------------------------------------------------------------------------------
 
     @staticmethod
-    async def is_word_in_cache(word: str, connection: AsyncConnection, languages: List[Languages]) -> bool:
+    async def is_word_in_cache(word: str, connection: AsyncConnection, languages: List[Language]) -> Language | None:
         """
         Check if a word is in the correct word cache schema.
 
@@ -891,28 +900,24 @@ The above entered word is **NOT** being taken into account.''')
             The word to be searched for in the schema.
         connection : AsyncConnection
             The Cursor object to access the schema.
-        languages : list[Languages]
+        languages : list[Language]
             A list of languages to search in.
 
         Returns
         -------
-        bool
-            `True` if the word exists in the cache, otherwise `False`.
+        Language | None
+            Language of the word if the word exists in the cache, otherwise `None`.
         """
-        stmt = select(exists(WordCacheModel)
-                      .where(and_(
-                                  WordCacheModel.word == word,
-                                  WordCacheModel.language.in_([language.value for language in languages])
-                                  )
-                             )
-                      )
+        stmt = select(WordCacheModel.language).where(
+            and_(WordCacheModel.word == word, WordCacheModel.language.in_([language.value.code for language in languages]))
+        )
         result: CursorResult = await connection.execute(stmt)
-        return result.scalar()
+        code: str = result.scalar()
+        return Language.from_language_code(code) if code else None
 
     # ---------------------------------------------------------------------------------------------------------------
 
-    async def add_to_cache(self, word: str, connection: AsyncConnection,
-                           language: Languages) -> None:
+    async def add_to_cache(self, word: str, language: Language, connection: AsyncConnection) -> None:
         """
         Adds a word to the word cache schema.
 
@@ -920,24 +925,30 @@ The above entered word is **NOT** being taken into account.''')
         ----------
         word : str
             The word to be added.
+        language : Language
+            The language the word belongs to.
         connection : AsyncConnection
             The connection to access the schema.
-        language : consts.Languages
-            The language the word belongs to.
         """
         if not await self.is_word_blacklisted(word):  # Do NOT insert globally blacklisted words into the cache
-
-            # If language is `en`, check if the word is a legal English word
-            # This is because many non-English words have `en.wiktionary` entries
-            if language == Languages.ENGLISH and unidecode(word) != word:
-                logger.warning(f'The word "{word}" is not a legal English word, but was tried '
-                               f'to be added to the cache for English words.')
+            if not re.search(language.value.allowed_word_regex, word):
+                logger.warning(f'The word "{word}" is not a legal word in {language.name.capitalize()}, but was tried '
+                               f'to be added to the cache for words in that language.')
                 return
 
             stmt = insert(WordCacheModel) \
-                   .values(word=word, language=language.value) \
+                   .values(word=word, language=language.value.code) \
                    .prefix_with('OR IGNORE')
             await connection.execute(stmt)
+
+    # ---------------------------------------------------------------------------------------------------------------
+
+    @staticmethod
+    def calculate_word_score(word: str, game_mode: GameMode, language: Language) -> float:
+        if re.match(language.value.allowed_word_regex, word):
+            end_token = word[-game_mode.value:]
+            return language.value.first_token_scores[game_mode][end_token]
+        return 0.0
 
     # ---------------------------------------------------------------------------------------------------------------
 
@@ -979,16 +990,9 @@ The above entered word is **NOT** being taken into account.''')
         # the word belong to the English alphabet.
         # +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-        if word == unidecode(word):
+        if re.search(Language.ENGLISH.value.allowed_word_regex, word):
 
-            if word in GLOBAL_BLACKLIST_2_LETTER_WORDS_EN or \
-                    word in GLOBAL_BLACKLIST_N_LETTER_WORDS_EN:
-                return True
-
-            # Check global 3-letter words WHITElist
-            if len(word) == 3 and word not in GLOBAL_WHITELIST_3_LETTER_WORDS_EN:
-                # TODO this will create an error if the three-letter word is not an English word, but also
-                #  does not have any accents
+            if word in GLOBAL_BLACKLIST_2_LETTER_WORDS_EN or word in GLOBAL_BLACKLIST_N_LETTER_WORDS_EN:
                 return True
 
         # +++++++++++++ Global Blacklist and whitelist checking complete ++++++++++++++++++++
@@ -1048,10 +1052,10 @@ The above entered word is **NOT** being taken into account.''')
         for cog_name in COGS_LIST:
             await self.load_extension(f'cogs.{cog_name}')
 
-        if not DEV_MODE:
+        if not SETTINGS.dev_mode:
             # only sync when not in dev mode to avoid syncing over and over again - use sync command explicitly
             global_sync = await self.tree.sync()
-            admin_sync = await self.tree.sync(guild=discord.Object(id=ADMIN_GUILD_ID))
+            admin_sync = await self.tree.sync(guild=discord.Object(id=SETTINGS.admin_guild_id))
 
             logger.info(f'Synchronized {len(global_sync)} global commands and {len(admin_sync)} admin commands')
 
@@ -1066,7 +1070,7 @@ word_chain_bot: WordChainBot = WordChainBot()
 
 
 @word_chain_bot.tree.command(name='reload', description='Unload and reload a cog')
-@app_commands.guilds(ADMIN_GUILD_ID)
+@app_commands.guilds(SETTINGS.admin_guild_id)
 @app_commands.default_permissions(administrator=True)
 @app_commands.describe(cog_name='The cog to reload')
 @app_commands.choices(cog_name=[
@@ -1100,7 +1104,7 @@ async def reload(interaction: Interaction, cog_name: str):
             await word_chain_bot.load_extension(f'cogs.{cog_name}')
 
     global_sync: list[app_commands.AppCommand] = await word_chain_bot.tree.sync()
-    admin_sync: list[app_commands.AppCommand] = await word_chain_bot.tree.sync(guild=Object(id=ADMIN_GUILD_ID))
+    admin_sync: list[app_commands.AppCommand] = await word_chain_bot.tree.sync(guild=Object(id=SETTINGS.admin_guild_id))
 
     emb: Embed = Embed(title=f'Sync status', description=f'Synchronization complete.', colour=Colour.dark_magenta())
     emb.add_field(name="Global commands", value=f"{len(global_sync)}")
@@ -1112,4 +1116,4 @@ async def reload(interaction: Interaction, cog_name: str):
 # ===================================================================================================================
 
 if __name__ == '__main__':
-    word_chain_bot.run(os.getenv('TOKEN'), log_handler=None)
+    word_chain_bot.run(SETTINGS.token, log_handler=None)

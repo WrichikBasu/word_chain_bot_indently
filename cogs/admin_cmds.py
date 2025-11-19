@@ -4,25 +4,21 @@ from __future__ import annotations
 import io
 import json
 import logging
-import os
 from logging import Logger
 from typing import TYPE_CHECKING, Optional
 
 from discord import Colour, Embed, File, Forbidden, Interaction, Object, Permissions, app_commands
 from discord.ext.commands import Cog
-from dotenv import load_dotenv
 from sqlalchemy import delete, insert, select, update
 
 from consts import (COG_NAME_ADMIN_CMDS, LOGGER_NAME_ADMIN_COG, LOGGER_NAME_MAIN, LOGGER_NAME_MANAGER_COG,
-                    LOGGER_NAME_USER_COG, LOGGERS_LIST, GameMode)
-from model import BannedMemberModel, BlacklistModel, MemberModel, ServerConfigModel, UsedWordsModel, WhitelistModel, \
-    ServerConfig
+                    LOGGER_NAME_USER_COG, LOGGERS_LIST, SETTINGS, GameMode)
+from model import (BannedMemberModel, BlacklistModel, MemberModel, ServerConfig, ServerConfigModel, UsedWordsModel,
+                   WhitelistModel)
 
 if TYPE_CHECKING:
     from main import WordChainBot
 
-load_dotenv()
-ADMIN_GUILD_ID = int(os.environ['ADMIN_GUILD_ID'])
 
 logging.basicConfig(level=logging.INFO, format='[%(asctime)s] [%(levelname)s] %(name)s: %(message)s')
 logger = logging.getLogger(LOGGER_NAME_ADMIN_COG)
@@ -58,7 +54,7 @@ class AdminCommandsCog(Cog, name=COG_NAME_ADMIN_CMDS):
 
     @app_commands.command(name='list_servers', description='Lists all servers with ID and name for administration')
     @app_commands.default_permissions(administrator=True)
-    @app_commands.guilds(ADMIN_GUILD_ID)
+    @app_commands.guilds(SETTINGS.admin_guild_id)
     async def list_servers(self, interaction: Interaction):
 
         await interaction.response.defer()
@@ -76,7 +72,7 @@ class AdminCommandsCog(Cog, name=COG_NAME_ADMIN_CMDS):
 
         def __init__(self, cog: AdminCommandsCog):
             super().__init__(name='logging', description='Admin commands for setting the log level',
-                             guild_ids=[ADMIN_GUILD_ID], guild_only=True,
+                             guild_ids=[SETTINGS.admin_guild_id], guild_only=True,
                              default_permissions=Permissions(administrator=True))
             self.cog: AdminCommandsCog = cog
 
@@ -355,7 +351,7 @@ class AdminCommandsCog(Cog, name=COG_NAME_ADMIN_CMDS):
 
         def __init__(self, cog: AdminCommandsCog):
             super().__init__(name='purge_data', description='Admin commands for cleaning up the DB',
-                             guild_ids=[ADMIN_GUILD_ID], guild_only=True,
+                             guild_ids=[SETTINGS.admin_guild_id], guild_only=True,
                              default_permissions=Permissions(administrator=True))
             self.cog: AdminCommandsCog = cog
 
@@ -458,7 +454,7 @@ class AdminCommandsCog(Cog, name=COG_NAME_ADMIN_CMDS):
 
         def __init__(self, cog: AdminCommandsCog):
             super().__init__(name='ban_server', description='Admin commands for banning servers',
-                             guild_ids=[ADMIN_GUILD_ID], guild_only=True,
+                             guild_ids=[SETTINGS.admin_guild_id], guild_only=True,
                              default_permissions=Permissions(administrator=True))
             self.cog: AdminCommandsCog = cog
 
@@ -519,7 +515,7 @@ class AdminCommandsCog(Cog, name=COG_NAME_ADMIN_CMDS):
 
         def __init__(self, cog: AdminCommandsCog):
             super().__init__(name='announce', description='Admin commands for sending announcements',
-                             guild_ids=[ADMIN_GUILD_ID], guild_only=True,
+                             guild_ids=[SETTINGS.admin_guild_id], guild_only=True,
                              default_permissions=Permissions(administrator=True))
             self.cog: AdminCommandsCog = cog
 
@@ -582,7 +578,7 @@ class AdminCommandsCog(Cog, name=COG_NAME_ADMIN_CMDS):
 
         def __init__(self, cog: AdminCommandsCog):
             super().__init__(name='ban_member', description='Admin commands for banning servers',
-                             guild_ids=[ADMIN_GUILD_ID], guild_only=True,
+                             guild_ids=[SETTINGS.admin_guild_id], guild_only=True,
                              default_permissions=Permissions(administrator=True))
             self.cog: AdminCommandsCog = cog
 
@@ -645,4 +641,4 @@ class AdminCommandsCog(Cog, name=COG_NAME_ADMIN_CMDS):
 
 
 async def setup(bot: WordChainBot):
-    await bot.add_cog(AdminCommandsCog(bot), guild=Object(id=ADMIN_GUILD_ID))
+    await bot.add_cog(AdminCommandsCog(bot), guild=Object(id=SETTINGS.admin_guild_id))
