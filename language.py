@@ -40,6 +40,8 @@ DEFAULT_FIRST_TOKEN_SCORES: dict[GameMode, defaultdict[str, float]] = {
 }
 
 LANGUAGES_DIRECTORY = Path('languages')
+DEFAULT_THRESHOLD_NORMAL = 0.01
+DEFAULT_THRESHOLD_HARD = 0.05
 
 
 class LanguageInfo(BaseModel):
@@ -47,7 +49,10 @@ class LanguageInfo(BaseModel):
     code_long: str = Field(max_length=3, min_length=3) # set 2/T ISO-639-2
     allowed_word_regex: str
     first_token_scores: dict[GameMode, defaultdict[str, float]] = Field(default=DEFAULT_FIRST_TOKEN_SCORES)
-    score_threshold: dict[GameMode, float] = Field(default={GameMode.NORMAL: 0.025, GameMode.HARD: 0.075})
+    score_threshold: dict[GameMode, float] = Field(default={
+        GameMode.NORMAL: DEFAULT_THRESHOLD_NORMAL,
+        GameMode.HARD: DEFAULT_THRESHOLD_HARD
+    })
 
 
 def load_token_scores_from_json(language_code: str) -> dict[GameMode, defaultdict[str, float]]:
