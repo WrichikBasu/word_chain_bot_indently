@@ -307,6 +307,11 @@ class WordChainBot(AutoShardedBot):
         valid_languages: list[Language] = self.server_configs[server_id].languages
 
         if not any(WordChainBot.word_matches_pattern(word, language.value) for language in valid_languages):
+            if not any(c.isspace() for c in word):
+                # in this case, we have a single word, that did not match any of the configured language regex patterns
+                await WordChainBot.add_reaction(message, '⚠️')
+                await WordChainBot.send_message_to_channel(message.channel, f'''Your word is not a valid word in any of your configured languages.
+The chain has **not** been broken. Please enter another word.''')
             return
         if len(word) == 0:
             return
