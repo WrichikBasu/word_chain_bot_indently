@@ -7,9 +7,10 @@ import logging
 from logging import Logger
 from typing import TYPE_CHECKING, Optional
 
+import discord
 from discord import Colour, Embed, File, Forbidden, Interaction, Object, Permissions, app_commands
 from discord.ext.commands import Cog
-from sqlalchemy import delete, insert, select, update
+from sqlalchemy import CursorResult, delete, insert, select, update
 
 from consts import (COG_NAME_ADMIN_CMDS, LOGGER_NAME_ADMIN_COG, LOGGER_NAME_MAIN, LOGGER_NAME_MANAGER_COG,
                     LOGGER_NAME_USER_COG, LOGGERS_LIST, SETTINGS, GameMode)
@@ -49,6 +50,101 @@ class AdminCommandsCog(Cog, name=COG_NAME_ADMIN_CMDS):
                 self.bot.tree.remove_command(command.name)
 
         logger.info(f'Cog {self.qualified_name} unloaded.')
+
+    # -----------------------------------------------------------------------------------------------------------------
+
+    @app_commands.command(name='health_check', description='Performs a health check on a server')
+    @app_commands.default_permissions(administrator=True)
+    @app_commands.guilds(SETTINGS.admin_guild_id)
+    @app_commands.describe(guild_id='ID of the server to check')
+    async def health_check(self, interaction: Interaction, guild_id: str):
+
+        await interaction.response.defer()
+
+        # cannot use int directly in type annotation, because it would allow just 32-bit integers,
+        # but most IDs are 64-bit
+        try:
+            guild_id_as_number = int(guild_id)
+        except ValueError:
+            await interaction.followup.send('This is not a valid ID!')
+            return
+
+        cache_config: ServerConfig | None = None
+        db_config: ServerConfig | None = None
+        items: list[str] = []
+
+        try:
+            cache_config = self.bot.server_configs[guild_id_as_number]
+        except KeyError:
+            items.append('Server config not present in cache!\n')
+
+        async with self.bot.db_connection() as connection:
+            stmt = select(ServerConfigModel).where(
+                ServerConfigModel.server_id==guild_id_as_number
+            )
+            result: CursorResult = await connection.execute(stmt)
+            configs = [ServerConfig.from_sqlalchemy_row(row) for row in result]
+            if len(configs) == 0:
+                items.append('Server config not present in database!\n')
+            else:
+                db_config = configs[0]
+
+        if cache_config is not None and db_config is not None:
+            diff = {
+                k: (cache_config.model_dump()[k], db_config.model_dump()[k])
+                for k in cache_config.model_dump()
+                if cache_config.model_dump()[k] != db_config.model_dump()[k]
+            }
+            if len(diff) > 0:
+                items.append(f'Differences in cache and database configs: {diff}\n')
+
+        # permissions:
+        # manage roles
+        # view channels
+        # send messages
+        # view message history
+        # add reactions
+        # use external emotes (?)
+        guild = self.bot.get_guild(guild_id_as_number)
+        bot_member = guild.get_member(self.bot.user.id)
+
+        guild_permission_messages = [f'Can manage roles: {bot_member.guild_permissions.manage_roles}',
+                                     f'Can view channels: {bot_member.guild_permissions.view_channel}',
+                                     f'Can send messages: {bot_member.guild_permissions.send_messages}',
+                                     f'Can view message history: {bot_member.guild_permissions.read_message_history}',
+                                     f'Can add reactions: {bot_member.guild_permissions.add_reactions}',
+                                     f'Can use external emotes: {bot_member.guild_permissions.use_external_emojis}']
+
+        items.append('Guild permissions:\n' + '\n'.join(guild_permission_messages) + '\n')
+
+        config = cache_config or db_config
+        if not config:
+            await interaction.followup.send('\n'.join(items))
+            return
+
+        for game_mode in GameMode:
+            game_state = config.game_state[game_mode]
+            if game_state.channel_id is None:
+                items.append(f'Channel not set for {game_mode.name}')
+                continue
+            try:
+                channel = guild.get_channel(game_state.channel_id)
+            except discord.errors.HTTPException:
+                channel = None
+
+            if channel is None:
+                items.append(f'Could not get channel by ID {game_state.channel_id}\n')
+            else:
+                channel_permission_messages = [f'Can manage roles: {channel.permissions_for(bot_member).manage_roles}',
+                                               f'Can view channels: {channel.permissions_for(bot_member).view_channel}',
+                                               f'Can send messages: {channel.permissions_for(bot_member).send_messages}',
+                                               f'Can view message history: {channel.permissions_for(bot_member).read_message_history}',
+                                               f'Can add reactions: {channel.permissions_for(bot_member).add_reactions}',
+                                               f'Can use external emotes: {channel.permissions_for(bot_member).use_external_emojis}']
+                items.append(f'Channel permissions ({game_mode.name}):\n' + '\n'.join(channel_permission_messages) + '\n')
+
+        await interaction.followup.send('\n'.join(items))
+
 
     # -----------------------------------------------------------------------------------------------------------------
 
