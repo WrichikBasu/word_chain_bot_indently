@@ -108,12 +108,12 @@ class AdminCommandsCog(Cog, name=COG_NAME_ADMIN_CMDS):
         guild = self.bot.get_guild(guild_id_as_number)
         bot_member = guild.get_member(self.bot.user.id)
 
-        guild_permission_messages = [f'Can manage roles: {bot_member.guild_permissions.manage_roles}',
-                                     f'Can view channels: {bot_member.guild_permissions.view_channel}',
-                                     f'Can send messages: {bot_member.guild_permissions.send_messages}',
-                                     f'Can view message history: {bot_member.guild_permissions.read_message_history}',
-                                     f'Can add reactions: {bot_member.guild_permissions.add_reactions}',
-                                     f'Can use external emotes: {bot_member.guild_permissions.use_external_emojis}']
+        guild_permission_messages = [f'Can manage roles: {'✅' if bot_member.guild_permissions.manage_roles else '❌'}',
+                                     f'Can view channels: {'✅' if bot_member.guild_permissions.view_channel else '❌'}',
+                                     f'Can send messages: {'✅' if bot_member.guild_permissions.send_messages else '❌'}',
+                                     f'Can view message history: {'✅' if bot_member.guild_permissions.read_message_history else '❌'}',
+                                     f'Can add reactions: {'✅' if bot_member.guild_permissions.add_reactions else '❌'}',
+                                     f'Can use external emotes: {'✅' if bot_member.guild_permissions.use_external_emojis else '❌'}']
 
         items.append('Guild permissions:\n' + '\n'.join(guild_permission_messages) + '\n')
 
@@ -135,12 +135,12 @@ class AdminCommandsCog(Cog, name=COG_NAME_ADMIN_CMDS):
             if channel is None:
                 items.append(f'Could not get channel by ID {game_state.channel_id}\n')
             else:
-                channel_permission_messages = [f'Can manage roles: {channel.permissions_for(bot_member).manage_roles}',
-                                               f'Can view channels: {channel.permissions_for(bot_member).view_channel}',
-                                               f'Can send messages: {channel.permissions_for(bot_member).send_messages}',
-                                               f'Can view message history: {channel.permissions_for(bot_member).read_message_history}',
-                                               f'Can add reactions: {channel.permissions_for(bot_member).add_reactions}',
-                                               f'Can use external emotes: {channel.permissions_for(bot_member).use_external_emojis}']
+                channel_permission_messages = [f'Can manage roles: {'✅' if channel.permissions_for(bot_member).manage_roles else '❌'}',
+                                               f'Can view channels: {'✅' if channel.permissions_for(bot_member).view_channel else '❌'}',
+                                               f'Can send messages: {'✅' if channel.permissions_for(bot_member).send_messages else '❌'}',
+                                               f'Can view message history: {'✅' if channel.permissions_for(bot_member).read_message_history else '❌'}',
+                                               f'Can add reactions: {'✅' if channel.permissions_for(bot_member).add_reactions else '❌'}',
+                                               f'Can use external emotes: {'✅' if channel.permissions_for(bot_member).use_external_emojis else '❌'}']
                 items.append(f'Channel permissions ({game_mode.name}):\n' + '\n'.join(channel_permission_messages) + '\n')
 
         await interaction.followup.send('\n'.join(items))
