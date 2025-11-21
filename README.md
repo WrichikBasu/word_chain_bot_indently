@@ -40,7 +40,7 @@ are thus optional and can be skipped.
 
 Using `pip/venv`:
 ```
-pip install -e .[dev]
+pip install -e ".[dev]"
 ```
 
 Using `poetry`:
@@ -50,7 +50,7 @@ peotry install --with dev
 
 Using `uv`:
 ```
-uv pip install -e .[dev]
+uv pip install -e ".[dev]"
 ```
 
 #### Language specific character frequency dictionaries
