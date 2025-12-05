@@ -19,9 +19,9 @@ depends_on: Union[str, Sequence[str], None] = None
 
 def upgrade() -> None:
     op.execute("UPDATE server_config SET languages = replace(languages, 'sr', 'sh')")
-    op.execute("UPDATE word_cache set language = 'sh' where language = 'sr'")
+    op.execute("UPDATE word_cache SET language = 'sh' WHERE language = 'sr'")
 
 
 def downgrade() -> None:
     op.execute("UPDATE server_config SET languages = replace(languages, 'sh', 'sr')")
-    op.execute("UPDATE word_cache set language = 'sr' where language = 'sh'")
+    op.execute("UPDATE word_cache SET language = 'sr' WHERE language = 'sh'")
