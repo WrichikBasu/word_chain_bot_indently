@@ -469,7 +469,8 @@ to the other game mode!''')
                 Embed descriptions.
             """
             return f'''Currently enabled languages:
-{'\n'.join(f'- {lang.name.capitalize()} (`{lang.value.code}`)' for lang in bot.server_configs[server_id].languages)}'''
+{'\n'.join(f'- {language.display_name} (`{language.value.code}`)'
+           for language in bot.server_configs[server_id].languages)}'''
 
         # -------------------------------------------------------------------------------------------------------------
 
@@ -479,7 +480,7 @@ to the other game mode!''')
 
             emb: Embed = Embed(colour=Colour.yellow(), title='Languages supported by the bot', description='')
             emb.description += f'''The bot supports the following languages:
-{'\n'.join(f'- {language.name.capitalize()} (`{language.value.code}`) \
+{'\n'.join(f'- {language.display_name} (`{language.value.code}`) \
 {'✅' if language in self.cog.bot.server_configs[interaction.guild.id].languages else ''}' for language in Language)}
 
 **Use the code within brackets when enabling or disabling a language.**'''
@@ -506,7 +507,7 @@ to the other game mode!''')
 
             if language in self.cog.bot.server_configs[interaction.guild.id].languages:
 
-                embed.description = f'''✅ *{language.name.capitalize()}* is **already enabled** in this server.\n
+                embed.description = f'''✅ *{language.display_name}* is **already enabled** in this server.\n
 {ManagerCommandsCog.LanguageCmdGroup.get_current_languages(self.cog.bot, interaction.guild.id)}'''
                 embed.colour = Colour.green()
 
@@ -526,7 +527,7 @@ to the other game mode!''')
                 await self.cog.bot.server_configs[interaction.guild.id].sync_to_db_with_connection(connection)
                 await connection.commit()
 
-            embed.description = f'''✅ *{language.name.capitalize()}* has been enabled for this server.\n
+            embed.description = f'''✅ *{language.display_name}* has been enabled for this server.\n
 {ManagerCommandsCog.LanguageCmdGroup.get_current_languages(self.cog.bot, interaction.guild.id)}'''
             embed.colour = Colour.green()
 
@@ -560,7 +561,7 @@ to the other game mode!''')
                 return
 
             if language not in self.cog.bot.server_configs[interaction.guild.id].languages:
-                embed.description = f'''✅ *{language.name.capitalize()}* is **not enabled** in this server.
+                embed.description = f'''✅ *{language.display_name}* is **not enabled** in this server.
 \n{ManagerCommandsCog.LanguageCmdGroup.get_current_languages(self.cog.bot, interaction.guild.id)}'''
                 embed.colour = Colour.green()
                 await interaction.followup.send(embed=embed)
@@ -572,7 +573,7 @@ to the other game mode!''')
                 await self.cog.bot.server_configs[interaction.guild.id].sync_to_db_with_connection(connection)
                 await connection.commit()
 
-            embed.description = f'''✅ *{language.name.capitalize()}* has been disabled for this server.\n
+            embed.description = f'''✅ *{language.display_name}* has been disabled for this server.\n
 {self.get_current_languages(self.cog.bot, interaction.guild.id)}'''
             embed.colour = Colour.green()
 
