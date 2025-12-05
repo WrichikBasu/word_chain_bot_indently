@@ -46,7 +46,7 @@ DEFAULT_THRESHOLD_HARD = 0.05
 
 class LanguageInfo(BaseModel):
     code: str = Field(max_length=2, min_length=2) # set 1 ISO-639-1
-    code_long: str = Field(max_length=3, min_length=3) # set 2/T ISO-639-2
+    code_long: str = Field(max_length=3, min_length=3) # set 3 ISO-639-3
     allowed_word_regex: str
     first_token_scores: dict[GameMode, defaultdict[str, float]] = Field(default=DEFAULT_FIRST_TOKEN_SCORES)
     score_threshold: dict[GameMode, float] = Field(default={
@@ -95,7 +95,7 @@ SK_FIRST_TOKEN_SCORES: dict[GameMode, defaultdict[str, float]] = load_token_scor
 SL_FIRST_TOKEN_SCORES: dict[GameMode, defaultdict[str, float]] = load_token_scores_from_json('sl')
 HR_FIRST_TOKEN_SCORES: dict[GameMode, defaultdict[str, float]] = load_token_scores_from_json('hr')
 BS_FIRST_TOKEN_SCORES: dict[GameMode, defaultdict[str, float]] = load_token_scores_from_json('bs')
-SR_FIRST_TOKEN_SCORES: dict[GameMode, defaultdict[str, float]] = load_token_scores_from_json('sr')
+SH_FIRST_TOKEN_SCORES: dict[GameMode, defaultdict[str, float]] = load_token_scores_from_json('sh')
 HU_FIRST_TOKEN_SCORES: dict[GameMode, defaultdict[str, float]] = load_token_scores_from_json('hu')
 RO_FIRST_TOKEN_SCORES: dict[GameMode, defaultdict[str, float]] = load_token_scores_from_json('ro')
 TR_FIRST_TOKEN_SCORES: dict[GameMode, defaultdict[str, float]] = load_token_scores_from_json('tr')
@@ -123,7 +123,7 @@ class Language(Enum):
     SLOVENE = LanguageInfo(code='sl', code_long="slv", allowed_word_regex=SS_REGEX, first_token_scores=SL_FIRST_TOKEN_SCORES)
     CROATIAN = LanguageInfo(code='hr', code_long="hrv", allowed_word_regex=SS_REGEX, first_token_scores=HR_FIRST_TOKEN_SCORES)
     BOSNIAN = LanguageInfo(code='bs', code_long="bos", allowed_word_regex=SS_REGEX, first_token_scores=BS_FIRST_TOKEN_SCORES)
-    SERBIAN = LanguageInfo(code='sr', code_long="srp", allowed_word_regex=SS_REGEX, first_token_scores=SR_FIRST_TOKEN_SCORES)
+    SERBO_CROATIAN = LanguageInfo(code='sh', code_long="hbs", allowed_word_regex=SS_REGEX, first_token_scores=SH_FIRST_TOKEN_SCORES)
     HUNGARIAN = LanguageInfo(code='hu', code_long="hun", allowed_word_regex=HU_REGEX, first_token_scores=HU_FIRST_TOKEN_SCORES)
     ROMANIAN = LanguageInfo(code='ro', code_long="ron", allowed_word_regex=RO_REGEX, first_token_scores=RO_FIRST_TOKEN_SCORES)
     TURKISH = LanguageInfo(code='tr', code_long="tur", allowed_word_regex=TR_REGEX, first_token_scores=TR_FIRST_TOKEN_SCORES)
@@ -135,3 +135,11 @@ class Language(Enum):
             return matches[0]
         else:
             raise ValueError(f'no language found for code "{code}"')
+
+    @property
+    def display_name(self):
+        """
+        Converts the enum name (expected to be SCREAMING_SNAKE_CASE) to Pascal-Kebab-Case.
+        :return: display name of enum member
+        """
+        return '-'.join([p.capitalize() for p in self.name.split('_')])

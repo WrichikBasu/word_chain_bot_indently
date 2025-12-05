@@ -332,7 +332,7 @@ have other rules that are not covered here. Please check with the server moderat
 The bot now allows you to enable upto two languages in a server.
 
 The following languages are supported:
-{', '.join(f'{language.name.capitalize()}' for language in Language)}
+{', '.join(f'{language.display_name}' for language in Language)}
 
 In order to enable/disable languages, server managers can use the commands under the `/language` category.
 ''', colour=Colour.dark_orange())

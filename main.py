@@ -715,7 +715,7 @@ The above entered word is **NOT** being taken into account.''')
                 "action": "opensearch",
                 "namespace": "0",
                 "search": word,
-                "limit": "2",
+                "limit": "7",
                 "format": "json",
                 "profile": "strict"
             }
@@ -757,19 +757,14 @@ The above entered word is **NOT** being taken into account.''')
 
             data = response.json()
             word: str = data[0]
-            best_match: str = data[1][0]  # Should raise an IndexError if no match is returned
+            matches: list[str] = data[1]
+            _: str = next((match for match in matches if match.lower() == word.lower()))
 
-            if best_match.lower() == word.lower():
-                return word_chain_bot.API_RESPONSE_WORD_EXISTS
-            else:
-                # Normally, the control should not reach this else statement.
-                # If, however, some word is returned by chance, and it doesn't match the entered word,
-                # this else will take care of it
-                return word_chain_bot.API_RESPONSE_WORD_DOESNT_EXIST
+            return word_chain_bot.API_RESPONSE_WORD_EXISTS
 
         except TimeoutError:  # Send bot.API_RESPONSE_ERROR
             logger.error('Timeout error raised when trying to get the query result.')
-        except IndexError:
+        except StopIteration:
             return word_chain_bot.API_RESPONSE_WORD_DOESNT_EXIST
         except Exception as ex:
             logger.error(f'An exception was raised while getting the query result:\n{ex}')
@@ -937,7 +932,7 @@ The above entered word is **NOT** being taken into account.''')
         """
         if not await self.is_word_blacklisted(word):  # Do NOT insert globally blacklisted words into the cache
             if not re.search(language.value.allowed_word_regex, word):
-                logger.warning(f'The word "{word}" is not a legal word in {language.name.capitalize()}, but was tried '
+                logger.warning(f'The word "{word}" is not a legal word in {language.display_name}, but was tried '
                                f'to be added to the cache for words in that language.')
                 return
 
