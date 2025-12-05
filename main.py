@@ -932,7 +932,7 @@ The above entered word is **NOT** being taken into account.''')
         """
         if not await self.is_word_blacklisted(word):  # Do NOT insert globally blacklisted words into the cache
             if not re.search(language.value.allowed_word_regex, word):
-                logger.warning(f'The word "{word}" is not a legal word in {language.name.capitalize()}, but was tried '
+                logger.warning(f'The word "{word}" is not a legal word in {language.display_name}, but was tried '
                                f'to be added to the cache for words in that language.')
                 return
 

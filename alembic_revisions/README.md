@@ -9,3 +9,4 @@
   * or as am empty change: `alembic -c config.ini revision -m "<describe the change here>"`
 * check the new file and change it if necessary (table and column renames are usually not detected by autogenerate)
 * apply the change with `alembic -c config.ini upgrade head` (or run the bot, which applies it as well in the setup hook)
+* to revert the last change, run `alembic -c config.ini downgrade -1`
