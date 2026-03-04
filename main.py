@@ -26,10 +26,11 @@ from sqlalchemy import CursorResult, and_, delete, exists, func, insert, select,
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, create_async_engine
 
+import character_frequency as cf
 from consts import (COG_NAME_ADMIN_CMDS, COG_NAME_MANAGER_CMDS, COG_NAME_USER_CMDS, COGS_LIST,
                     GLOBAL_BLACKLIST_2_LETTER_WORDS_EN, GLOBAL_BLACKLIST_N_LETTER_WORDS_EN, HISTORY_LENGTH,
                     LOGGER_NAME_MAIN, MISTAKE_PENALTY, RELIABLE_ROLE_ACCURACY_THRESHOLD, RELIABLE_ROLE_KARMA_THRESHOLD,
-                    SETTINGS, SPECIAL_REACTION_EMOJIS, GameMode)
+                    SETTINGS, GameMode)
 from decorator import log_execution_time
 from karma_calcs import calculate_total_karma
 from language import Language, LanguageInfo
@@ -59,6 +60,10 @@ class WordChainBot(AutoShardedBot):
         self.server_configs: dict[int, ServerConfig] = dict()
         self.server_failed_roles: dict[int, Optional[discord.Role]] = defaultdict(lambda: None)
         self.server_reliable_roles: dict[int, Optional[discord.Role]] = defaultdict(lambda: None)
+
+        if SETTINGS.generate_language_on_start:
+            logger.info('generating language files on start')
+            asyncio.run(cf.main())
 
         # maps from server_id -> member_id -> game_mode -> deque
         self._server_histories: dict[int, dict[int, dict[GameMode, deque[str]]]] = defaultdict(
