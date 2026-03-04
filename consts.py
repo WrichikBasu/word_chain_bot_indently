@@ -19,6 +19,7 @@ class Settings(BaseSettings):
     admin_guild_id: int = Field(default=None, validate_default=True)
     token: str = Field(default=None, validate_default=True)
     command_signature_file: str | Path = Field(default="command_signature.json")
+    generate_language_on_start: bool = Field(default=True)
 
     model_config = SettingsConfigDict(env_file='.env')
 

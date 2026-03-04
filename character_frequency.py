@@ -54,7 +54,7 @@ def generate_token_scores(words: list[str], game_modes: list[GameMode]) -> dict[
 
     return scores
 
-async def main(language: Language):
+async def run_for_language(language: Language):
     __LOGGER.info(f'analyzing for {language.value.code}')
     words = await extract_words(__LANGUAGE_SOURCES[language], __CACHE_DIRECTORY)
     regex = re.compile(language.value.allowed_word_regex)
@@ -64,12 +64,16 @@ async def main(language: Language):
         json.dump(result, export_file, indent=4, sort_keys=True, ensure_ascii=False)
         __LOGGER.info(f'analyzed and exported for {language.value.code}')
 
-if __name__ == '__main__':
-    logging.basicConfig(level=logging.INFO)
+
+async def main():
     if not os.path.exists(LANGUAGES_DIRECTORY):
         os.mkdir(LANGUAGES_DIRECTORY)
     if not os.path.exists(__CACHE_DIRECTORY):
         os.mkdir(__CACHE_DIRECTORY)
 
     for l in Language:
-        asyncio.run(main(l))
+        await run_for_language(l)
+
+if __name__ == '__main__':
+    logging.basicConfig(level=logging.INFO)
+    asyncio.run(main())
