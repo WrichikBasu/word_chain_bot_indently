@@ -14,8 +14,9 @@ from sqlalchemy import CursorResult, delete, insert, select, update
 
 from consts import (COG_NAME_ADMIN_CMDS, LOGGER_NAME_ADMIN_COG, LOGGER_NAME_MAIN, LOGGER_NAME_MANAGER_COG,
                     LOGGER_NAME_USER_COG, LOGGERS_LIST, SETTINGS, GameMode)
+from language import Language
 from model import (BannedMemberModel, BlacklistModel, MemberModel, ServerConfig, ServerConfigModel, UsedWordsModel,
-                   WhitelistModel)
+                   WhitelistModel, GameModeState)
 
 if TYPE_CHECKING:
     from main import WordChainBot
@@ -725,30 +726,39 @@ class AdminCommandsCog(Cog, name=COG_NAME_ADMIN_CMDS):
                 result = await connection.execute(stmt)
                 total_rows_changed += result.rowcount
 
+                config_exists: bool = True
+
                 # delete config
                 if guild_id_as_number in self.cog.bot.server_configs:
                     # just reset the data instead to make sure that every current guild has an existing config
-                    config = self.cog.bot.server_configs[guild_id_as_number]
-                    config.channel_id = None
-                    config.current_count = 0
-                    config.current_word = None
-                    config.high_score = 0
-                    config.used_high_score_emoji = False
-                    config.reliable_role_id = None
-                    config.failed_role_id = None
-                    config.last_member_id = None
-                    config.failed_member_id = None
-                    config.correct_inputs_by_failed_member = 0
+                    if config := self.cog.bot.server_configs[guild_id_as_number]:
 
-                    total_rows_changed += await config.sync_to_db_with_connection(connection)
+                        new_config: ServerConfig = ServerConfig(server_id=guild_id_as_number,
+                                                                is_banned=config.is_banned)
+                        config = new_config
+                        # total_rows_changed += await config.sync_to_db_with_connection(connection)
+                    else:
+                        config_exists = False
                 else:
-                    new_config = ServerConfig(
-                        server_id=guild_id_as_number
-                    )
+                    config_exists = False
+
+                if not config_exists:
+
+                    new_config = ServerConfig(server_id=guild_id_as_number)
                     self.cog.bot.server_configs[guild_id_as_number] = new_config
+
+                try:
+                    stmt = delete(ServerConfigModel).where(ServerConfigModel.server_id==guild_id_as_number)
+                    await connection.execute(stmt)
+                except Exception as e:
+                    logger.warning(e)
+
+                try:
                     stmt = insert(ServerConfigModel).values(**new_config.to_sqlalchemy_dict())
                     result = await connection.execute(stmt)
                     total_rows_changed += result.rowcount
+                except Exception as e:
+                    logger.warning(e)
 
                 await connection.commit()
 
