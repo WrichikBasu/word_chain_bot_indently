@@ -34,7 +34,7 @@ class AdminCommandsCog(Cog, name=COG_NAME_ADMIN_CMDS):
         self.bot.tree.add_command(AdminCommandsCog.LoggingControlCmdGroup(self))
         self.bot.tree.add_command(AdminCommandsCog.BanServerCmdGroup(self))
         self.bot.tree.add_command(AdminCommandsCog.BanMemberCmdGroup(self))
-        self.bot.tree.add_command(AdminCommandsCog.RestCmdGroup(self))
+        self.bot.tree.add_command(AdminCommandsCog.ResetCmdGroup(self))
 
     # -----------------------------------------------------------------------------------------------------------------
 
@@ -676,7 +676,7 @@ class AdminCommandsCog(Cog, name=COG_NAME_ADMIN_CMDS):
 
     # ============================================================================================================
 
-    class RestCmdGroup(app_commands.Group):
+    class ResetCmdGroup(app_commands.Group):
 
         def __init__(self, cog: AdminCommandsCog):
             super().__init__(name='reset_config', description='Admin commands for resetting config',
