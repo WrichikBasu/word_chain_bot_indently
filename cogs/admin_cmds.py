@@ -34,6 +34,7 @@ class AdminCommandsCog(Cog, name=COG_NAME_ADMIN_CMDS):
         self.bot.tree.add_command(AdminCommandsCog.LoggingControlCmdGroup(self))
         self.bot.tree.add_command(AdminCommandsCog.BanServerCmdGroup(self))
         self.bot.tree.add_command(AdminCommandsCog.BanMemberCmdGroup(self))
+        self.bot.tree.add_command(AdminCommandsCog.RestCmdGroup(self))
 
     # -----------------------------------------------------------------------------------------------------------------
 
@@ -150,7 +151,6 @@ class AdminCommandsCog(Cog, name=COG_NAME_ADMIN_CMDS):
                 items.append(f'Channel permissions ({game_mode.name}):\n' + '\n'.join(channel_permission_messages) + '\n')
 
         await interaction.followup.send('\n'.join(items))
-
 
     # -----------------------------------------------------------------------------------------------------------------
 
@@ -675,6 +675,89 @@ class AdminCommandsCog(Cog, name=COG_NAME_ADMIN_CMDS):
                 return
 
     # ============================================================================================================
+
+    class RestCmdGroup(app_commands.Group):
+
+        def __init__(self, cog: AdminCommandsCog):
+            super().__init__(name='reset_config', description='Admin commands for resetting config',
+                             guild_ids=[SETTINGS.admin_guild_id], guild_only=True,
+                             default_permissions=Permissions(administrator=True))
+            self.cog: AdminCommandsCog = cog
+
+        # ---------------------------------------------------------------------------------------------------------
+
+        @app_commands.command(name='server',
+                              description='Resets all data for given guild id and makes sure a config exists')
+        @app_commands.describe(guild_id='ID of the guild to be reset in the DB')
+        async def reset_server(self, interaction: Interaction, guild_id: str):
+
+            await interaction.response.defer()
+
+            # cannot use int directly in type annotation, because it would allow just 32-bit integers,
+            # but most IDs are 64-bit
+            try:
+                guild_id_as_number = int(guild_id)
+            except ValueError:
+                await interaction.followup.send('This is not a valid ID!')
+                return
+
+            async with self.cog.bot.db_connection() as connection:
+
+                total_rows_changed = 0
+
+                # delete used words
+                stmt = delete(UsedWordsModel).where(UsedWordsModel.server_id == guild_id_as_number)
+                result = await connection.execute(stmt)
+                total_rows_changed += result.rowcount
+
+                # delete members
+                stmt = delete(MemberModel).where(MemberModel.server_id == guild_id_as_number)
+                result = await connection.execute(stmt)
+                total_rows_changed += result.rowcount
+
+                # delete blacklist
+                stmt = delete(BlacklistModel).where(BlacklistModel.server_id == guild_id_as_number)
+                result = await connection.execute(stmt)
+                total_rows_changed += result.rowcount
+
+                # delete whitelist
+                stmt = delete(WhitelistModel).where(WhitelistModel.server_id == guild_id_as_number)
+                result = await connection.execute(stmt)
+                total_rows_changed += result.rowcount
+
+                # delete config
+                if guild_id_as_number in self.cog.bot.server_configs:
+                    # just reset the data instead to make sure that every current guild has an existing config
+                    config = self.cog.bot.server_configs[guild_id_as_number]
+                    config.channel_id = None
+                    config.current_count = 0
+                    config.current_word = None
+                    config.high_score = 0
+                    config.used_high_score_emoji = False
+                    config.reliable_role_id = None
+                    config.failed_role_id = None
+                    config.last_member_id = None
+                    config.failed_member_id = None
+                    config.correct_inputs_by_failed_member = 0
+
+                    total_rows_changed += await config.sync_to_db_with_connection(connection)
+                else:
+                    new_config = ServerConfig(
+                        server_id=guild_id_as_number
+                    )
+                    self.cog.bot.server_configs[guild_id_as_number] = new_config
+                    stmt = insert(ServerConfigModel).values(**new_config.to_sqlalchemy_dict())
+                    result = await connection.execute(stmt)
+                    total_rows_changed += result.rowcount
+
+                await connection.commit()
+
+                if total_rows_changed > 0:
+                    await interaction.followup.send(f'Reset data for server {guild_id_as_number}')
+                else:
+                    await interaction.followup.send(f'No data to reset for server {guild_id_as_number}')
+
+    # =============================================================================================================
 
     class BanMemberCmdGroup(app_commands.Group):
 
