@@ -189,8 +189,8 @@ class WordChainBot(AutoShardedBot):
                 await connection.commit()
                 self.server_configs[new_config.server_id] = new_config
                 self._servers_ready.add(guild.id)
-            except SQLAlchemyError:
-                pass
+            except Exception as e:
+                logger.error(e)
                 # we cannot insert on duplicate key, but we just want to make sure here that a config exists
 
     # ---------------------------------------------------------------------------------------------------------------
