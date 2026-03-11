@@ -579,12 +579,18 @@ The chain has **not** been broken. Please enter another word.\n
     # ---------------------------------------------------------------------------------------------------------------
 
     async def on_message(self, message: discord.Message) -> None:
+
         if message.author == self.user:
             return
+
         if message.author.bot:
             return
+
         if not message.content:
             return
+
+        if not message.guild:
+            return 
 
         server_id = message.guild.id
 
