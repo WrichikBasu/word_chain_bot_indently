@@ -20,7 +20,6 @@ from model import (BannedMemberModel, BlacklistModel, MemberModel, ServerConfig,
 if TYPE_CHECKING:
     from main import WordChainBot
 
-
 logging.basicConfig(level=logging.INFO, format='[%(asctime)s] [%(levelname)s] %(name)s: %(message)s')
 logger = logging.getLogger(LOGGER_NAME_ADMIN_COG)
 
@@ -90,7 +89,7 @@ class AdminCommandsCog(Cog, name=COG_NAME_ADMIN_CMDS):
 
         async with self.bot.db_connection() as connection:
             stmt = select(ServerConfigModel).where(
-                ServerConfigModel.server_id==guild_id_as_number
+                ServerConfigModel.server_id == guild_id_as_number
             )
             result: CursorResult = await connection.execute(stmt)
             configs = [ServerConfig.from_sqlalchemy_row(row) for row in result]
@@ -148,7 +147,8 @@ class AdminCommandsCog(Cog, name=COG_NAME_ADMIN_CMDS):
                 items.append(f'Could not get channel by ID {game_state.channel_id}\n')
             else:
                 channel_permission_messages = permission_checks(channel.permissions_for(bot_member))
-                items.append(f'Channel permissions ({game_mode.name}):\n' + '\n'.join(channel_permission_messages) + '\n')
+                items.append(
+                    f'Channel permissions ({game_mode.name}):\n' + '\n'.join(channel_permission_messages) + '\n')
 
         await interaction.followup.send('\n'.join(items))
 
@@ -474,6 +474,7 @@ class AdminCommandsCog(Cog, name=COG_NAME_ADMIN_CMDS):
                 return
 
             async with self.cog.bot.db_connection() as connection:
+
                 total_rows_changed = 0
 
                 # delete used words
@@ -497,32 +498,22 @@ class AdminCommandsCog(Cog, name=COG_NAME_ADMIN_CMDS):
                 total_rows_changed += result.rowcount
 
                 # delete config
-                if guild_id_as_number in self.cog.bot.server_configs:
-                    # just reset the data instead to make sure that every current guild has an existing config
-                    config = self.cog.bot.server_configs[guild_id_as_number]
-                    config.channel_id = None
-                    config.current_count = 0
-                    config.current_word = None
-                    config.high_score = 0
-                    config.used_high_score_emoji = False
-                    config.reliable_role_id = None
-                    config.failed_role_id = None
-                    config.last_member_id = None
-                    config.failed_member_id = None
-                    config.correct_inputs_by_failed_member = 0
+                self.cog.bot.server_configs.pop(guild_id_as_number, None)
 
-                    total_rows_changed += await config.sync_to_db_with_connection(connection)
-                else:
+                # Delete data from DB
+                try:
                     stmt = delete(ServerConfigModel).where(ServerConfigModel.server_id == guild_id_as_number)
                     result = await connection.execute(stmt)
                     total_rows_changed += result.rowcount
+                except Exception as ex:
+                    logger.warning(f'Error raised when deleting data from DB:\n{ex}')
 
                 await connection.commit()
 
                 if total_rows_changed > 0:
                     await interaction.followup.send(f'Removed data for server {guild_id_as_number}')
                 else:
-                    await interaction.followup.send(f'No data to remove for server {guild_id_as_number}')
+                    await interaction.followup.send(f'No data removed for server {guild_id_as_number}')
 
         # ---------------------------------------------------------------------------------------------------------------
 
@@ -546,7 +537,8 @@ class AdminCommandsCog(Cog, name=COG_NAME_ADMIN_CMDS):
                 await connection.commit()
                 rows_deleted: int = result.rowcount
                 if rows_deleted > 0:
-                    await interaction.followup.send(f'Removed data for user {user_id_as_number} in {rows_deleted} servers')
+                    await interaction.followup.send(
+                        f'Removed data for user {user_id_as_number} in {rows_deleted} servers')
                 else:
                     await interaction.followup.send(f'No data to remove for user {user_id_as_number}')
 
@@ -587,7 +579,8 @@ class AdminCommandsCog(Cog, name=COG_NAME_ADMIN_CMDS):
                 rows_updated: int = result.rowcount
                 if rows_updated > 0:
                     self.cog.bot.server_configs[guild_id_as_number].is_banned = ban
-                    await interaction.followup.send(f'{'Banned' if ban else 'Unbanned'} server with ID {guild_id_as_number}')
+                    await interaction.followup.send(
+                        f'{'Banned' if ban else 'Unbanned'} server with ID {guild_id_as_number}')
                 else:
                     await interaction.followup.send(f'No server found with ID {guild_id_as_number}')
 
@@ -606,7 +599,9 @@ class AdminCommandsCog(Cog, name=COG_NAME_ADMIN_CMDS):
                 if not server_ids:
                     await interaction.followup.send('No servers are banned currently')
                 else:
-                    server_entries = [f'{server_id}: {self.cog.bot.get_guild(server_id).name if self.cog.bot.get_guild(server_id) is not None else '###'}' for server_id in server_ids]
+                    server_entries = [
+                        f'{server_id}: {self.cog.bot.get_guild(server_id).name if self.cog.bot.get_guild(server_id) is not None else '###'}'
+                        for server_id in server_ids]
                     await interaction.followup.send(f'''These servers are currently banned:
 * {'\n* '.join(server_entries)}''')
 
@@ -725,30 +720,38 @@ class AdminCommandsCog(Cog, name=COG_NAME_ADMIN_CMDS):
                 result = await connection.execute(stmt)
                 total_rows_changed += result.rowcount
 
+                config_exists: bool = True
+
                 # delete config
                 if guild_id_as_number in self.cog.bot.server_configs:
                     # just reset the data instead to make sure that every current guild has an existing config
-                    config = self.cog.bot.server_configs[guild_id_as_number]
-                    config.channel_id = None
-                    config.current_count = 0
-                    config.current_word = None
-                    config.high_score = 0
-                    config.used_high_score_emoji = False
-                    config.reliable_role_id = None
-                    config.failed_role_id = None
-                    config.last_member_id = None
-                    config.failed_member_id = None
-                    config.correct_inputs_by_failed_member = 0
+                    if config := self.cog.bot.server_configs.get(guild_id_as_number, None):
 
-                    total_rows_changed += await config.sync_to_db_with_connection(connection)
+                        new_config: ServerConfig = ServerConfig(server_id=guild_id_as_number,
+                                                                is_banned=config.is_banned)
+                        config = new_config
+                        # total_rows_changed += await config.sync_to_db_with_connection(connection)
+                    else:
+                        config_exists = False
                 else:
-                    new_config = ServerConfig(
-                        server_id=guild_id_as_number
-                    )
+                    config_exists = False
+
+                if not config_exists:
+                    new_config = ServerConfig(server_id=guild_id_as_number)
                     self.cog.bot.server_configs[guild_id_as_number] = new_config
+
+                try:
+                    stmt = delete(ServerConfigModel).where(ServerConfigModel.server_id == guild_id_as_number)
+                    await connection.execute(stmt)
+                except Exception as e:
+                    logger.warning(e)
+
+                try:
                     stmt = insert(ServerConfigModel).values(**new_config.to_sqlalchemy_dict())
                     result = await connection.execute(stmt)
                     total_rows_changed += result.rowcount
+                except Exception as e:
+                    logger.warning(e)
 
                 await connection.commit()
 
@@ -799,7 +802,8 @@ class AdminCommandsCog(Cog, name=COG_NAME_ADMIN_CMDS):
 
                 rows_updated: int = result.rowcount
                 if rows_updated > 0:
-                    await interaction.followup.send(f'{'Banned' if ban else 'Unbanned'} member with ID {member_id_as_number}')
+                    await interaction.followup.send(
+                        f'{'Banned' if ban else 'Unbanned'} member with ID {member_id_as_number}')
                 else:
                     await interaction.followup.send(f'No member found with ID {member_id_as_number}')
 
@@ -818,9 +822,12 @@ class AdminCommandsCog(Cog, name=COG_NAME_ADMIN_CMDS):
                 if not member_ids:
                     await interaction.followup.send('No members are banned currently')
                 else:
-                    member_entries = [f'{member_id}: {self.cog.bot.get_user(member_id).name if self.cog.bot.get_user(member_id) is not None else '###'}' for member_id in member_ids]
+                    member_entries = [
+                        f'{member_id}: {self.cog.bot.get_user(member_id).name if self.cog.bot.get_user(member_id) is not None else '###'}'
+                        for member_id in member_ids]
                     await interaction.followup.send(f'''These members are currently banned:
 * {'\n* '.join(member_entries)}''')
+
 
 # ====================================================================================================================
 

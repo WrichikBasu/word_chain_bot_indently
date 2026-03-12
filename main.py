@@ -189,8 +189,8 @@ class WordChainBot(AutoShardedBot):
                 await connection.commit()
                 self.server_configs[new_config.server_id] = new_config
                 self._servers_ready.add(guild.id)
-            except SQLAlchemyError:
-                pass
+            except Exception as e:
+                logger.error(e)
                 # we cannot insert on duplicate key, but we just want to make sure here that a config exists
 
     # ---------------------------------------------------------------------------------------------------------------
@@ -579,12 +579,18 @@ The chain has **not** been broken. Please enter another word.\n
     # ---------------------------------------------------------------------------------------------------------------
 
     async def on_message(self, message: discord.Message) -> None:
+
         if message.author == self.user:
             return
+
         if message.author.bot:
             return
+
         if not message.content:
             return
+
+        if not message.guild:
+            return 
 
         server_id = message.guild.id
 
