@@ -725,7 +725,7 @@ class AdminCommandsCog(Cog, name=COG_NAME_ADMIN_CMDS):
                 # delete config
                 if guild_id_as_number in self.cog.bot.server_configs:
                     # just reset the data instead to make sure that every current guild has an existing config
-                    if config := self.cog.bot.server_configs[guild_id_as_number]:
+                    if config := self.cog.bot.server_configs.get(guild_id_as_number, None):
 
                         new_config: ServerConfig = ServerConfig(server_id=guild_id_as_number,
                                                                 is_banned=config.is_banned)
