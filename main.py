@@ -143,8 +143,8 @@ class WordChainBot(AutoShardedBot):
                     try:
                         last_message = await channel.fetch_message(channel.last_message_id)
                         if (last_message and
-                            last_message.author.id == self.server_configs[guild.id].game_state[game_mode].last_member_id and
-                            last_message.content.lower() == self.server_configs[guild.id].game_state[game_mode].current_word):
+                            last_message.author.id == config.game_state[game_mode].last_member_id and
+                            last_message.content.lower() == config.game_state[game_mode].current_word):
                             logger.debug(f'Skipped restart message for {guild.name} ({guild.id}) in game mode {game_mode}')
                             continue
                     except discord.errors.HTTPException:
@@ -260,8 +260,9 @@ class WordChainBot(AutoShardedBot):
         try:
             if self.server_failed_roles[guild.id]:
                 handled_member = False
+                config = self.server_configs[guild.id]
                 for member in self.server_failed_roles[guild.id].members:
-                    if self.server_configs[guild.id].failed_member_id == member.id:
+                    if config.failed_member_id == member.id:
                         # Current failed member already has the failed role, so just continue
                         handled_member = True
                         continue
@@ -270,17 +271,17 @@ class WordChainBot(AutoShardedBot):
                         # In either case, we have to remove the role.
                         await member.remove_roles(self.server_failed_roles[guild.id])
 
-                if not handled_member and self.server_configs[guild.id].failed_member_id:
+                if not handled_member and config.failed_member_id:
                     # Current failed member does not yet have the failed role
                     try:
                         failed_member: discord.Member = await guild.fetch_member(
-                            self.server_configs[guild.id].failed_member_id)
+                            config.failed_member_id)
                         await failed_member.add_roles(self.server_failed_roles[guild.id])
                     except discord.NotFound:
                         # Member is no longer in the server
-                        self.server_configs[guild.id].failed_member_id = None
-                        self.server_configs[guild.id].correct_inputs_by_failed_member = 0
-                        await self.server_configs[guild.id].sync_to_db_with_connection(connection)
+                        config.failed_member_id = None
+                        config.correct_inputs_by_failed_member = 0
+                        await config.sync_to_db_with_connection(connection)
 
         except discord.Forbidden:
             pass
@@ -309,8 +310,9 @@ class WordChainBot(AutoShardedBot):
         call_id = ''.join(random.choices(string.ascii_letters + string.digits, k=6))
         timestamps = [time.monotonic()]  # t1
         server_id = message.guild.id
+        config: ServerConfig = self.server_configs[server_id]
         word: str = message.content.lower()
-        valid_languages: list[Language] = self.server_configs[server_id].languages
+        valid_languages: list[Language] = config.languages
 
         if not any(WordChainBot.word_matches_pattern(word, language.value) for language in valid_languages):
             if not any(c.isspace() for c in word):
@@ -399,14 +401,14 @@ The chain has **not** been broken. Please enter another word.''')
             futures: Optional[list[Future]]
 
             # First check the whitelist or the word cache
-            matched_language = await self.is_word_in_cache(word, connection, self.server_configs[server_id].languages)
+            matched_language = await self.is_word_in_cache(word, connection, config.languages)
             if word_whitelisted or matched_language:
                 # Word found in cache. No need to query API
                 futures = None
             else:
                 # Word neither whitelisted, nor found in cache.
                 # Start the API request, but deal with it later
-                futures = self.start_api_queries(word, self.server_configs[server_id].languages)
+                futures = self.start_api_queries(word, config.languages)
 
             # -----------------------------------
             # Check repetitions
@@ -429,12 +431,12 @@ Please enter another word.''')
             # -------------
             # Wrong member
             # -------------
-            if not SETTINGS.single_player and self.server_configs[server_id].game_state[game_mode].last_member_id == message.author.id:
+            if not SETTINGS.single_player and config.game_state[game_mode].last_member_id == message.author.id:
                 response: str = f'''{message.author.mention} messed up the count! \
 *You cannot send two words in a row!*
-{f'The chain length was {self.server_configs[server_id].game_state[game_mode].current_count} when it was broken. :sob:\n' if self.server_configs[server_id].game_state[game_mode].current_count > 0 else ''}\
-Restart with a word starting with **{self.server_configs[server_id].game_state[game_mode].current_word[-game_mode.value:]}** and \
-try to beat the current high score of **{self.server_configs[server_id].game_state[game_mode].high_score}**!'''
+{f'The chain length was {config.game_state[game_mode].current_count} when it was broken. :sob:\n' if config.game_state[game_mode].current_count > 0 else ''}\
+Restart with a word starting with **{config.game_state[game_mode].current_word[-game_mode.value:]}** and \
+try to beat the current high score of **{config.game_state[game_mode].high_score}**!'''
 
                 await self.handle_mistake(message, response, connection, game_mode)
                 await connection.commit()
@@ -443,14 +445,14 @@ try to beat the current high score of **{self.server_configs[server_id].game_sta
             # -------------------------
             # Wrong starting letter
             # -------------------------
-            if (self.server_configs[server_id].game_state[game_mode].current_word and word[:game_mode.value] !=
-                    self.server_configs[server_id].game_state[game_mode].current_word[-game_mode.value:]):
+            if (config.game_state[game_mode].current_word and word[:game_mode.value] !=
+                    config.game_state[game_mode].current_word[-game_mode.value:]):
 
                 response: str = f'''{message.author.mention} messed up the chain! \
-*The word you entered did not begin with the last letter of the previous word* (**{self.server_configs[server_id].game_state[game_mode].current_word[-game_mode.value:]}**).
-{f'The chain length was {self.server_configs[server_id].game_state[game_mode].current_count} when it was broken. :sob:\n' if self.server_configs[server_id].game_state[game_mode].current_count > 0 else ''}\
-Restart with a word starting with **{self.server_configs[server_id].game_state[game_mode].current_word[-game_mode.value:]}** and try to beat the \
-current high score of **{self.server_configs[server_id].game_state[game_mode].high_score}**!'''
+*The word you entered did not begin with the last letter of the previous word* (**{config.game_state[game_mode].current_word[-game_mode.value:]}**).
+{f'The chain length was {config.game_state[game_mode].current_count} when it was broken. :sob:\n' if config.game_state[game_mode].current_count > 0 else ''}\
+Restart with a word starting with **{config.game_state[game_mode].current_word[-game_mode.value:]}** and try to beat the \
+current high score of **{config.game_state[game_mode].high_score}**!'''
 
                 await self.handle_mistake(message, response, connection, game_mode)
                 await connection.commit()
@@ -483,13 +485,12 @@ current high score of **{self.server_configs[server_id].game_state[game_mode].hi
                 await WordChainBot.add_words_to_cache(futures, connection)
 
                 if query_result_code == WordChainBot.API_RESPONSE_WORD_DOESNT_EXIST:
-
-                    if self.server_configs[server_id].game_state[game_mode].current_word:
+                    if config.game_state[game_mode].current_word:
                         response: str = f'''{message.author.mention} messed up the chain! \
 *The word you entered does not exist.^*
-{f'The chain length was {self.server_configs[server_id].game_state[game_mode].current_count} when it was broken. :sob:\n' if self.server_configs[server_id].game_state[game_mode].current_count > 0 else ''}\
-Restart with a word starting with **{self.server_configs[server_id].game_state[game_mode].current_word[-game_mode.value:]}** and try to beat the \
-current high score of **{self.server_configs[server_id].game_state[game_mode].high_score}**!
+{f'The chain length was {config.game_state[game_mode].current_count} when it was broken. :sob:\n' if config.game_state[game_mode].current_count > 0 else ''}\
+Restart with a word starting with **{config.game_state[game_mode].current_word[-game_mode.value:]}** and try to beat the \
+current high score of **{config.game_state[game_mode].high_score}**!
 
 -# ^ The bot now supports multiple languages. When a word is invalid, it pertains to the language(s) \
 enabled in this server.\n-# To check enabled languages, use `/show_languages`.'''
@@ -497,7 +498,7 @@ enabled in this server.\n-# To check enabled languages, use `/show_languages`.''
                     else:
                         response: str = f'''{message.author.mention} messed up the chain! \
 *The word you entered does not exist.*
-Restart and try to beat the current high score of **{self.server_configs[server_id].game_state[game_mode].high_score}**!'''
+Restart and try to beat the current high score of **{config.game_state[game_mode].high_score}**!'''
 
                     await self.handle_mistake(message, response, connection, game_mode)
                     await connection.commit()
@@ -522,12 +523,12 @@ The chain has **not** been broken. Please enter another word.\n
             # --------------------
             # Everything is fine
             # --------------------
-            self.server_configs[server_id].update_current(game_mode=game_mode,
-                                                          member_id=message.author.id,
-                                                          current_word=word)
+            config.update_current(game_mode=game_mode,
+                               member_id=message.author.id,
+                               current_word=word)
 
             timestamps.append(time.monotonic())  # t2
-            await WordChainBot.add_reaction(message, self.server_configs[server_id].reaction_emoji(game_mode))
+            await WordChainBot.add_reaction(message, config.reaction_emoji(game_mode))
 
             last_words: deque[str] = self._server_histories[server_id][message.author.id][game_mode]
             # fallback to first configured language if matched_language is unavailable (e.g. matched by whitelist)
@@ -554,22 +555,22 @@ The chain has **not** been broken. Please enter another word.\n
             )
             await connection.execute(stmt)
 
-            current_count = self.server_configs[server_id].game_state[game_mode].current_count
+            current_count = config.game_state[game_mode].current_count
 
             timestamps.append(time.monotonic())  # t4
             if current_count > 0 and current_count % 100 == 0:
                 await WordChainBot.send_message_to_channel(message.channel, f'{current_count} words! Nice work, keep it up!')
 
             # Check and reset the server config.failed_member_id to None.
-            if self.server_failed_roles[server_id] and self.server_configs[server_id].failed_member_id == message.author.id:
-                self.server_configs[server_id].correct_inputs_by_failed_member += 1
-                if self.server_configs[server_id].correct_inputs_by_failed_member >= 30:
-                    self.server_configs[server_id].failed_member_id = None
-                    self.server_configs[server_id].correct_inputs_by_failed_member = 0
+            if self.server_failed_roles[server_id] and config.failed_member_id == message.author.id:
+                config.correct_inputs_by_failed_member += 1
+                if config.correct_inputs_by_failed_member >= 30:
+                    config.failed_member_id = None
+                    config.correct_inputs_by_failed_member = 0
                     await self.add_remove_failed_role(message.guild, connection)
 
             await self.add_remove_reliable_role(message.guild, connection)
-            await self.server_configs[server_id].sync_to_db_with_connection(connection)
+            await config.sync_to_db_with_connection(connection)
 
             timestamps.append(time.monotonic())  # t5
             await connection.commit()
@@ -598,9 +599,10 @@ The chain has **not** been broken. Please enter another word.\n
         if server_id not in self.server_configs or server_id not in self._servers_ready:
             return
 
-        if message.channel.id == self.server_configs[server_id].game_state[GameMode.NORMAL].channel_id:
+        config = self.server_configs[server_id]
+        if message.channel.id == config.game_state[GameMode.NORMAL].channel_id:
             await self.on_message_for_word_chain(message, GameMode.NORMAL)
-        elif message.channel.id == self.server_configs[server_id].game_state[GameMode.HARD].channel_id:
+        elif message.channel.id == config.game_state[GameMode.HARD].channel_id:
             await self.on_message_for_word_chain(message, GameMode.HARD)
 
     # ---------------------------------------------------------------------------------------------------------------
@@ -611,11 +613,12 @@ The chain has **not** been broken. Please enter another word.\n
 
         server_id = message.guild.id
         member_id = message.author.id
+        config = self.server_configs[server_id]
         if self.server_failed_roles[server_id]:
-            self.server_configs[server_id].failed_member_id = member_id  # Designate current user as failed member
+            config.failed_member_id = member_id  # Designate current user as failed member
             await self.add_remove_failed_role(message.guild, connection)
 
-        self.server_configs[server_id].fail_chain(game_mode, member_id)
+        config.fail_chain(game_mode, member_id)
 
         await WordChainBot.send_message_to_channel(message.channel, response)
         await WordChainBot.add_reaction(message, '❌')
@@ -636,7 +639,7 @@ The chain has **not** been broken. Please enter another word.\n
         )
         await connection.execute(stmt)
 
-        await self.server_configs[server_id].sync_to_db_with_connection(connection)
+        await config.sync_to_db_with_connection(connection)
 
     # ---------------------------------------------------------------------------------------------------------------
 
@@ -836,26 +839,27 @@ The chain has **not** been broken. Please enter another word.\n
         if message.author == self.user:
             return
 
+        config = self.server_configs[message.guild.id]
+
         # Check if the message is in the channel
-        if message.channel.id not in (self.server_configs[message.guild.id].game_state[GameMode.NORMAL].channel_id,
-                                      self.server_configs[message.guild.id].game_state[GameMode.HARD].channel_id):
+        if message.channel.id not in (config.game_state[GameMode.NORMAL].channel_id,
+                                      config.game_state[GameMode.HARD].channel_id):
             return
         if not message.reactions:
             return
-        if not any(WordChainBot.word_matches_pattern(message.content, language.value) for language in
-                   self.server_configs[message.guild.id].languages):
+        if not any(WordChainBot.word_matches_pattern(message.content, language.value) for language in config.languages):
             return
 
-        if message.channel.id == self.server_configs[message.guild.id].game_state[GameMode.NORMAL].channel_id:
-            if self.server_configs[message.guild.id].game_state[GameMode.NORMAL].current_word:
+        if message.channel.id == config.game_state[GameMode.NORMAL].channel_id:
+            if config.game_state[GameMode.NORMAL].current_word:
                 await WordChainBot.send_message_to_channel(message.channel, f'{message.author.mention} edited their word! '
-                                                                          f'The **last** word was **{self.server_configs[message.guild.id].game_state[GameMode.NORMAL].current_word}**.')
+                                                                          f'The **last** word was **{config.game_state[GameMode.NORMAL].current_word}**.')
             else:
                 await WordChainBot.send_message_to_channel(message.channel, f'{message.author.mention} edited their word!')
-        elif message.channel.id == self.server_configs[message.guild.id].game_state[GameMode.HARD].channel_id:
-            if self.server_configs[message.guild.id].game_state[GameMode.HARD].current_word:
+        elif message.channel.id == config.game_state[GameMode.HARD].channel_id:
+            if config.game_state[GameMode.HARD].current_word:
                 await WordChainBot.send_message_to_channel(message.channel, f'{message.author.mention} edited their word! '
-                                                                          f'The **last** word was **{self.server_configs[message.guild.id].game_state[GameMode.HARD].current_word}**.')
+                                                                          f'The **last** word was **{config.game_state[GameMode.HARD].current_word}**.')
             else:
                 await WordChainBot.send_message_to_channel(message.channel, f'{message.author.mention} edited their word!')
 
@@ -874,28 +878,29 @@ The chain has **not** been broken. Please enter another word.\n
         if before.author == self.user:
             return
 
+        config = self.server_configs[before.guild.id]
+
         # Check if the message is in the channel
-        if before.channel.id not in (self.server_configs[before.guild.id].game_state[GameMode.NORMAL].channel_id,
-                                     self.server_configs[before.guild.id].game_state[GameMode.HARD].channel_id):
+        if before.channel.id not in (config.game_state[GameMode.NORMAL].channel_id,
+                                     config.game_state[GameMode.HARD].channel_id):
             return
         if not before.reactions:
             return
-        if not any(WordChainBot.word_matches_pattern(before.content, language.value) for language in
-                   self.server_configs[before.guild.id].languages):
+        if not any(WordChainBot.word_matches_pattern(before.content, language.value) for language in config.languages):
             return
         if before.content.lower() == after.content.lower():
             return
 
-        if before.channel.id == self.server_configs[before.guild.id].game_state[GameMode.NORMAL].channel_id:
-            if self.server_configs[before.guild.id].game_state[GameMode.NORMAL].current_word:
+        if before.channel.id == config.game_state[GameMode.NORMAL].channel_id:
+            if config.game_state[GameMode.NORMAL].current_word:
                 await WordChainBot.send_message_to_channel(after.channel, f'{after.author.mention} edited their word! '
-                                                                          f'The **last** word was **{self.server_configs[before.guild.id].game_state[GameMode.NORMAL].current_word}**.')
+                                                                          f'The **last** word was **{config.game_state[GameMode.NORMAL].current_word}**.')
             else:
                 await WordChainBot.send_message_to_channel(after.channel, f'{after.author.mention} edited their word!')
-        elif before.channel.id == self.server_configs[before.guild.id].game_state[GameMode.HARD].channel_id:
-            if self.server_configs[before.guild.id].game_state[GameMode.HARD].current_word:
+        elif before.channel.id == config.game_state[GameMode.HARD].channel_id:
+            if config.game_state[GameMode.HARD].current_word:
                 await WordChainBot.send_message_to_channel(after.channel, f'{after.author.mention} edited their word! '
-                                                                          f'The **last** word was **{self.server_configs[before.guild.id].game_state[GameMode.HARD].current_word}**.')
+                                                                          f'The **last** word was **{config.game_state[GameMode.HARD].current_word}**.')
             else:
                 await WordChainBot.send_message_to_channel(after.channel, f'{after.author.mention} edited their word!')
 
