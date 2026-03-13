@@ -570,17 +570,16 @@ class AdminCommandsCog(Cog, name=COG_NAME_ADMIN_CMDS):
                 return
 
             async with self.cog.bot.db_connection() as connection:
-                stmt = update(ServerConfigModel).values(
-                    is_banned=ban
-                ).where(ServerConfigModel.server_id == guild_id_as_number)
-                result = await connection.execute(stmt)
-                await connection.commit()
+                if guild_id_as_number in self.cog.bot.server_configs:
+                    config = self.cog.bot.server_configs[guild_id_as_number]
+                    config.is_banned = ban
+                    rows_updated = await config.sync_to_db_with_connection(connection)
 
-                rows_updated: int = result.rowcount
-                if rows_updated > 0:
-                    self.cog.bot.server_configs[guild_id_as_number].is_banned = ban
-                    await interaction.followup.send(
-                        f'{'Banned' if ban else 'Unbanned'} server with ID {guild_id_as_number}')
+                    if rows_updated > 0:
+                        v = 'Banned' if ban else 'Unbanned'
+                        await interaction.followup.send(f'{v} server with ID {guild_id_as_number}')
+                    else:
+                        await interaction.followup.send(f'No changes for server with ID {guild_id_as_number}')
                 else:
                     await interaction.followup.send(f'No server found with ID {guild_id_as_number}')
 
