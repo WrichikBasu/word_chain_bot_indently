@@ -124,10 +124,11 @@ class ManagerCommandsCog(Cog, name=COG_NAME_MANAGER_CMDS):
                 return
 
             guild_id = interaction.guild.id
-            self.cog.bot.server_configs[guild_id].reliable_role_id = role.id
+            config = self.cog.bot.server_configs[guild_id]
+            config.reliable_role_id = role.id
 
             async with self.cog.bot.db_connection() as connection:
-                await self.cog.bot.server_configs[guild_id].sync_to_db_with_connection(connection)
+                await config.sync_to_db_with_connection(connection)
                 self.cog.bot.server_reliable_roles[
                     guild_id] = role  # Assign role directly if we already have it in this context
                 await self.cog.bot.add_remove_reliable_role(interaction.guild, connection)
@@ -148,18 +149,18 @@ class ManagerCommandsCog(Cog, name=COG_NAME_MANAGER_CMDS):
             await interaction.response.defer()
 
             other_game_mode = GameMode.HARD if game_mode == GameMode.NORMAL else GameMode.NORMAL
-            server_config = self.cog.bot.server_configs[interaction.guild.id]
+            config = self.cog.bot.server_configs[interaction.guild.id]
 
-            if server_config.game_state[other_game_mode].channel_id == channel.id:
+            if config.game_state[other_game_mode].channel_id == channel.id:
                 emb: Embed = Embed(title='Error', colour=Colour.red(),
                                    description=f'''You cannot use a channel for this game mode, that is assigned
 to the other game mode!''')
             else:
-                server_config.game_state[game_mode].channel_id = channel.id
-                await server_config.sync_to_db(self.cog.bot)
+                config.game_state[game_mode].channel_id = channel.id
+                await config.sync_to_db(self.cog.bot)
                 extra_information = 'Start there with any valid word you like.' \
-                    if server_config.game_state[game_mode].current_word is None else \
-                    f'The last valid word was `{server_config.game_state[game_mode].current_word}`.'
+                    if config.game_state[game_mode].current_word is None else \
+                    f'The last valid word was `{config.game_state[game_mode].current_word}`.'
                 emb: Embed = Embed(title='Success', colour=Colour.green(),
                                    description=f'''Word chain channel for {game_mode.name.lower()} game mode was set to 
 {channel.mention}. {extra_information}''')
@@ -192,10 +193,11 @@ to the other game mode!''')
                 return
 
             guild_id = interaction.guild.id
-            self.cog.bot.server_configs[guild_id].failed_role_id = role.id
+            config = self.cog.bot.server_configs[guild_id]
+            config.failed_role_id = role.id
 
             async with self.cog.bot.db_connection() as connection:
-                await self.cog.bot.server_configs[guild_id].sync_to_db_with_connection(connection)
+                await config.sync_to_db_with_connection(connection)
                 self.cog.bot.server_failed_roles[
                     guild_id] = role  # Assign role directly if we already have it in this context
                 await self.cog.bot.add_remove_failed_role(interaction.guild, connection)
@@ -220,10 +222,11 @@ to the other game mode!''')
             await interaction.response.defer()
 
             guild_id = interaction.guild.id
-            self.cog.bot.server_configs[guild_id].failed_role_id = None
-            self.cog.bot.server_configs[guild_id].failed_member_id = None
-            self.cog.bot.server_configs[guild_id].correct_inputs_by_failed_member = 0
-            await self.cog.bot.server_configs[guild_id].sync_to_db(self.cog.bot)
+            config = self.cog.bot.server_configs[guild_id]
+            config.failed_role_id = None
+            config.failed_member_id = None
+            config.correct_inputs_by_failed_member = 0
+            await config.sync_to_db(self.cog.bot)
 
             if self.cog.bot.server_failed_roles[guild_id]:
                 role = self.cog.bot.server_failed_roles[guild_id]
@@ -246,8 +249,9 @@ to the other game mode!''')
             await interaction.response.defer()
 
             guild_id = interaction.guild.id
-            self.cog.bot.server_configs[guild_id].reliable_role_id = None
-            await self.cog.bot.server_configs[guild_id].sync_to_db(self.cog.bot)
+            config = self.cog.bot.server_configs[guild_id]
+            config.reliable_role_id = None
+            await config.sync_to_db(self.cog.bot)
 
             if self.cog.bot.server_reliable_roles[guild_id]:
                 role = self.cog.bot.server_reliable_roles[guild_id]
@@ -299,11 +303,11 @@ to the other game mode!''')
 
         # ------------------------------------------------------------------------------------------------------------
 
-        async def _autocomplete_remove_from_blacklist(self, interaction: Interaction, input: str) -> list[Choice[str]]:
+        async def _autocomplete_remove_from_blacklist(self, interaction: Interaction, value: str) -> list[Choice[str]]:
             async with self.cog.bot.db_connection() as connection:
                 stmt = select(BlacklistModel.word).where(
                     BlacklistModel.server_id == interaction.guild.id,
-                    BlacklistModel.word.startswith(input.lower())
+                    BlacklistModel.word.startswith(value.lower())
                 ).limit(25)
                 result: CursorResult = await connection.execute(stmt)
                 words = [row[0] for row in result]
@@ -404,11 +408,11 @@ to the other game mode!''')
 
         # ------------------------------------------------------------------------------------------------------------
 
-        async def _autocomplete_remove_from_whitelist(self, interaction: Interaction, input: str) -> list[Choice[str]]:
+        async def _autocomplete_remove_from_whitelist(self, interaction: Interaction, value: str) -> list[Choice[str]]:
             async with self.cog.bot.db_connection() as connection:
                 stmt = select(WhitelistModel.word).where(
                     WhitelistModel.server_id == interaction.guild.id,
-                    WhitelistModel.word.startswith(input.lower())
+                    WhitelistModel.word.startswith(value.lower())
                 ).limit(25)
                 result: CursorResult = await connection.execute(stmt)
                 words = [row[0] for row in result]
@@ -505,9 +509,10 @@ to the other game mode!''')
             await interaction.response.defer(thinking=True)
 
             emb: Embed = Embed(colour=Colour.yellow(), title='Languages supported by the bot', description='')
+            config = self.cog.bot.server_configs[interaction.guild.id]
             emb.description += f'''The bot supports the following languages:
 {'\n'.join(f'- {language.display_name} (`{language.value.code}`) \
-{'✅' if language in self.cog.bot.server_configs[interaction.guild.id].languages else ''}' for language in Language)}
+{'✅' if language in config.languages else ''}' for language in Language)}
 
 **Use the code within brackets when enabling or disabling a language.**'''
 
@@ -515,9 +520,10 @@ to the other game mode!''')
 
         # ------------------------------------------------------------------------------------------------------------
 
-        async def _autocomplete_add_language(self, interaction: Interaction, input: str) -> list[Choice[str]]:
-            already_assigned_languages = self.cog.bot.server_configs[interaction.guild.id].languages
-            values = [l.value.code for l in Language if l.value.code.startswith(input.lower()) and l not in already_assigned_languages][:25]
+        async def _autocomplete_add_language(self, interaction: Interaction, value: str) -> list[Choice[str]]:
+            config = self.cog.bot.server_configs[interaction.guild.id]
+            already_assigned_languages = config.languages
+            values = [l.value.code for l in Language if l.value.code.startswith(value.lower()) and l not in already_assigned_languages][:25]
             return [Choice(name=v, value=v) for v in values]
 
         @app_commands.command(name='add', description="Add a new language")
@@ -537,8 +543,8 @@ to the other game mode!''')
                 await interaction.followup.send(embed=embed)
                 return
 
-            if language in self.cog.bot.server_configs[interaction.guild.id].languages:
-
+            config = self.cog.bot.server_configs[interaction.guild.id]
+            if language in config.languages:
                 embed.description = f'''✅ *{language.display_name}* is **already enabled** in this server.\n
 {ManagerCommandsCog.LanguageCmdGroup.get_current_languages(self.cog.bot, interaction.guild.id)}'''
                 embed.colour = Colour.green()
@@ -547,16 +553,16 @@ to the other game mode!''')
                 return
 
             # Limit to two languages per server
-            if len(self.cog.bot.server_configs[interaction.guild.id].languages) == 2:
+            if len(config.languages) == 2:
                 embed.description = '❌ You cannot enable more than two languages in a server.'
                 embed.colour = Colour.red()
 
                 await interaction.followup.send(embed=embed)
                 return
 
-            self.cog.bot.server_configs[interaction.guild.id].languages.append(language)
+            config.languages.append(language)
             async with self.cog.bot.db_connection() as connection:
-                await self.cog.bot.server_configs[interaction.guild.id].sync_to_db_with_connection(connection)
+                await config.sync_to_db_with_connection(connection)
                 await connection.commit()
 
             embed.description = f'''✅ *{language.display_name}* has been enabled for this server.\n
@@ -567,9 +573,10 @@ to the other game mode!''')
 
         # ------------------------------------------------------------------------------------------------------------
 
-        async def _autocomplete_remove_language(self, interaction: Interaction, input: str) -> list[Choice[str]]:
-            available_languages = self.cog.bot.server_configs[interaction.guild_id].languages
-            values = [l.value.code for l in available_languages if l.value.code.startswith(input.lower())][:25]
+        async def _autocomplete_remove_language(self, interaction: Interaction, value: str) -> list[Choice[str]]:
+            config = self.cog.bot.server_configs[interaction.guild_id]
+            available_languages = config.languages
+            values = [l.value.code for l in available_languages if l.value.code.startswith(value.lower())][:25]
             return [Choice(name=v, value=v) for v in values]
 
         @app_commands.command(name='remove', description="Remove a language")
@@ -589,8 +596,8 @@ to the other game mode!''')
                 await interaction.followup.send(embed=embed)
                 return
 
-            if len(self.cog.bot.server_configs[interaction.guild.id].languages) == 1:
-
+            config = self.cog.bot.server_configs[interaction.guild.id]
+            if len(config.languages) == 1:
                 embed.description = f'''❌ The server must have at least one language enabled.\n
 {ManagerCommandsCog.LanguageCmdGroup.get_current_languages(self.cog.bot, interaction.guild.id)}'''
                 embed.colour = Colour.red()
@@ -598,17 +605,17 @@ to the other game mode!''')
                 await interaction.followup.send(embed=embed)
                 return
 
-            if language not in self.cog.bot.server_configs[interaction.guild.id].languages:
+            if language not in config.languages:
                 embed.description = f'''✅ *{language.display_name}* is **not enabled** in this server.
 \n{ManagerCommandsCog.LanguageCmdGroup.get_current_languages(self.cog.bot, interaction.guild.id)}'''
                 embed.colour = Colour.green()
                 await interaction.followup.send(embed=embed)
                 return
 
-            self.cog.bot.server_configs[interaction.guild.id].languages.remove(language)
+            config.languages.remove(language)
 
             async with self.cog.bot.db_connection() as connection:
-                await self.cog.bot.server_configs[interaction.guild.id].sync_to_db_with_connection(connection)
+                await config.sync_to_db_with_connection(connection)
                 await connection.commit()
 
             embed.description = f'''✅ *{language.display_name}* has been disabled for this server.\n
