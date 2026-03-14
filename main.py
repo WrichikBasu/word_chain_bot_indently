@@ -103,6 +103,49 @@ class WordChainBot(AutoShardedBot):
 
     # ---------------------------------------------------------------------------------------------------------------
 
+    async def _rejoin(self, config: ServerConfig, guild: discord.Guild, main_description: str) -> None:
+        self.load_discord_roles(guild)
+
+        for game_mode in GameMode:
+            try:
+                channel: Optional[discord.TextChannel] = self.get_channel(config.game_state[game_mode].channel_id)
+            except discord.errors.HTTPException:
+                channel = None
+
+            if channel:
+                try:
+                    last_message = await channel.fetch_message(channel.last_message_id)
+                    if (last_message and
+                            last_message.author.id == config.game_state[game_mode].last_member_id and
+                            last_message.content.lower() == config.game_state[game_mode].current_word):
+                        logger.debug(f'Skipped rejoin message for {guild.name} ({guild.id}) in game mode {game_mode}')
+                        continue
+                except discord.errors.HTTPException:
+                    pass
+
+                emb: discord.Embed = discord.Embed(description=main_description,
+                                                   colour=discord.Color.brand_green())
+
+                if config.game_state[game_mode].high_score > 0:
+                    emb.description += f'\n\n:fire: Let\'s beat the high score of {config.game_state[game_mode].high_score}! :fire:\n'
+
+                if config.game_state[game_mode].current_word:
+                    emb.add_field(name='Last valid word', value=f'{config.game_state[game_mode].current_word}', inline=True)
+
+                    if config.game_state[game_mode].last_member_id:
+                        member: Optional[discord.Member] = channel.guild.get_member(config.game_state[game_mode].last_member_id)
+                        if member:
+                            emb.add_field(name='Last input by', value=f'{member.mention}', inline=True)
+
+                try:
+                    await channel.send(embed=emb)
+                except discord.errors.HTTPException:
+                    logger.info(f'Could not send ready message to {guild.name} ({guild.id}) due to missing permissions.')
+
+        self._servers_ready.add(guild.id)
+
+    # ---------------------------------------------------------------------------------------------------------------
+
     async def on_ready(self) -> None:
         """Override the on_ready method"""
         logger.info(f'Bot is ready as {self.user.name}#{self.user.discriminator}')
@@ -130,48 +173,7 @@ class WordChainBot(AutoShardedBot):
 
         for guild in self.guilds:
             config = self.server_configs[guild.id]
-
-            self.load_discord_roles(guild)
-
-            for game_mode in GameMode:
-                try:
-                    channel: Optional[discord.TextChannel] = self.get_channel(config.game_state[game_mode].channel_id)
-                except discord.errors.HTTPException:
-                    channel = None
-
-                if channel:
-                    try:
-                        last_message = await channel.fetch_message(channel.last_message_id)
-                        if (last_message and
-                            last_message.author.id == config.game_state[game_mode].last_member_id and
-                            last_message.content.lower() == config.game_state[game_mode].current_word):
-                            logger.debug(f'Skipped restart message for {guild.name} ({guild.id}) in game mode {game_mode}')
-                            continue
-                    except discord.errors.HTTPException:
-                        pass
-
-
-                    emb: discord.Embed = discord.Embed(description='**I\'m now online!**',
-                                                       colour=discord.Color.brand_green())
-
-                    if config.game_state[game_mode].high_score > 0:
-                        emb.description += f'\n\n:fire: Let\'s beat the high score of {config.game_state[game_mode].high_score}! :fire:\n'
-
-                    if config.game_state[game_mode].current_word:
-                        emb.add_field(name='Last valid word', value=f'{config.game_state[game_mode].current_word}', inline=True)
-
-                        if config.game_state[game_mode].last_member_id:
-
-                            member: Optional[discord.Member] = channel.guild.get_member(config.game_state[game_mode].last_member_id)
-                            if member:
-                                emb.add_field(name='Last input by', value=f'{member.mention}', inline=True)
-
-                    try:
-                        await channel.send(embed=emb)
-                    except discord.errors.HTTPException:
-                        logger.info(f'Could not send ready message to {guild.name} ({guild.id}) due to missing permissions.')
-
-            self._servers_ready.add(guild.id)
+            await self._rejoin(config, guild, '**I\'m now online!**')
 
         logger.info(f'Loaded {len(self.server_configs)} server configs, running on {len(self.guilds)} servers')
 
@@ -181,6 +183,10 @@ class WordChainBot(AutoShardedBot):
         """Override the on_guild_join method"""
         logger.info(f'Joined guild {guild.name} ({guild.id})')
 
+        if guild.id in self.server_configs:
+            await self._rejoin(self.server_configs[guild.id], guild, '**Welcome back!**')
+            return
+
         async with self.db_connection() as connection:
             try:
                 new_config = ServerConfig(server_id=guild.id)
@@ -189,9 +195,20 @@ class WordChainBot(AutoShardedBot):
                 await connection.commit()
                 self.server_configs[new_config.server_id] = new_config
                 self._servers_ready.add(guild.id)
-            except Exception as e:
-                logger.error(e)
-                # we cannot insert on duplicate key, but we just want to make sure here that a config exists
+            except SQLAlchemyError as e:
+                if "UNIQUE constraint failed" in str(e):
+                    stmt = select(ServerConfigModel).where(ServerConfigModel.server_id == guild.id)
+                    result: CursorResult = await connection.execute(stmt)
+                    configs = [ServerConfig.from_sqlalchemy_row(row) for row in result]
+                    if len(configs) == 1:
+                        config = configs[0]
+                        self.server_configs[config.server_id] = config
+                        await self._rejoin(config, guild, '**Welcome back!**')
+                    else:
+                        # this should actually never happen
+                        logger.critical(f'unable to insert new config, but DB returned {len(configs)} configs, expected exactly 1 config')
+                else:
+                    logger.exception('unexpected DB error')
 
     # ---------------------------------------------------------------------------------------------------------------
 
