@@ -194,6 +194,7 @@ class WordChainBot(AutoShardedBot):
 
         if guild.id in self.server_configs:
             await self._rejoin(self.server_configs[guild.id], guild, '**Welcome back!**')
+            logger.info(f'Config already present for {guild.name} ({guild.id})')
             return
 
         async with self.db_connection() as connection:
@@ -204,6 +205,7 @@ class WordChainBot(AutoShardedBot):
                 await connection.commit()
                 self.server_configs[new_config.server_id] = new_config
                 self._servers_ready.add(guild.id)
+                logger.info(f'Config created for guild {guild.name} ({guild.id})')
             except SQLAlchemyError as e:
                 if "UNIQUE constraint failed" in str(e):
                     stmt = select(ServerConfigModel).where(ServerConfigModel.server_id == guild.id)
@@ -213,6 +215,7 @@ class WordChainBot(AutoShardedBot):
                         config = configs[0]
                         self.server_configs[config.server_id] = config
                         await self._rejoin(config, guild, '**Welcome back!**')
+                        logger.info(f'Config loaded from DB for guild {guild.name} ({guild.id})')
                     else:
                         # this should actually never happen
                         logger.critical(f'unable to insert new config, but DB returned {len(configs)} configs, expected exactly 1 config')
@@ -300,8 +303,7 @@ class WordChainBot(AutoShardedBot):
                 if not handled_member and config.failed_member_id:
                     # Current failed member does not yet have the failed role
                     try:
-                        failed_member: discord.Member = await guild.fetch_member(
-                            config.failed_member_id)
+                        failed_member: discord.Member = await guild.fetch_member(config.failed_member_id)
                         await failed_member.add_roles(self.server_failed_roles[guild.id])
                     except discord.NotFound:
                         # Member is no longer in the server
