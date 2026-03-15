@@ -31,7 +31,6 @@ from consts import (COG_NAME_ADMIN_CMDS, COG_NAME_MANAGER_CMDS, COG_NAME_USER_CM
                     GLOBAL_BLACKLIST_2_LETTER_WORDS_EN, GLOBAL_BLACKLIST_N_LETTER_WORDS_EN, HISTORY_LENGTH,
                     LOGGER_NAME_MAIN, MISTAKE_PENALTY, RELIABLE_ROLE_ACCURACY_THRESHOLD, RELIABLE_ROLE_KARMA_THRESHOLD,
                     SETTINGS, GameMode)
-from decorator import log_execution_time
 from karma_calcs import calculate_total_karma
 from language import Language, LanguageInfo
 from model import (BannedMemberModel, BlacklistModel, MemberModel, ServerConfig, ServerConfigModel, UsedWordsModel,
@@ -76,30 +75,14 @@ class WordChainBot(AutoShardedBot):
     # ----------------------------------------------------------------------------------------------------------------
 
     @contextlib.asynccontextmanager
-    async def db_connection(self, locked=True, call_id: str | None = None) -> AsyncIterator[AsyncConnection]:
-        if call_id is None:
-            call_id = ''.join(random.choices(string.ascii_letters + string.digits, k=6))
-
-        caller_frame = inspect.currentframe().f_back.f_back
-        caller_function_name = caller_frame.f_code.co_name
-        caller_filename = caller_frame.f_code.co_filename.removeprefix(os.getcwd() + os.sep)
-        caller_lineno = caller_frame.f_lineno
-
-        logger.debug(f'{call_id}: {caller_function_name} at {caller_filename}:{caller_lineno} requests connection with {locked=}')
+    async def db_connection(self, locked=True) -> AsyncIterator[AsyncConnection]:
         if locked:
-            lock_start_time = time.monotonic()
             async with self.__LOCK:
-                lock_wait_time = time.monotonic() - lock_start_time
-                logger.debug(f'{call_id}: waited {lock_wait_time:.4f} seconds for DB lock')
-                connection_start_time = time.monotonic()
                 async with self.__SQL_ENGINE.begin() as connection:
                     yield connection
         else:
-            connection_start_time = time.monotonic()
             async with self.__SQL_ENGINE.begin() as connection:
                 yield connection
-        connection_wait_time = time.monotonic() - connection_start_time
-        logger.debug(f'{call_id}: connection done in {connection_wait_time:.4f}')
 
     # ---------------------------------------------------------------------------------------------------------------
 
@@ -159,6 +142,13 @@ class WordChainBot(AutoShardedBot):
         """
         Ensures that a config is present for given guild.
         """
+        caller_frame = inspect.currentframe().f_back
+        caller_function_name = caller_frame.f_code.co_name
+        caller_filename = caller_frame.f_code.co_filename.removeprefix(os.getcwd() + os.sep)
+        caller_lineno = caller_frame.f_lineno
+
+        logger.debug(f'{caller_function_name} at {caller_filename}:{caller_lineno} requests ensure_config for {guild.id} (shard {guild.shard_id})')
+
         if guild.id in self.server_configs:
             logger.debug(f'ensure_config for guild {guild.id} (shard {guild.shard_id}): config already in cache')
             return
@@ -357,7 +347,6 @@ class WordChainBot(AutoShardedBot):
 
     # ---------------------------------------------------------------------------------------------------------------
 
-    @log_execution_time(logger)
     async def on_message_for_word_chain(self, message: discord.Message, game_mode: GameMode) -> None:
         """
         Checks if the message is a valid word.
@@ -376,8 +365,6 @@ class WordChainBot(AutoShardedBot):
             9. Wrong member?
             10. Wrong starting letter?
         """
-        call_id = ''.join(random.choices(string.ascii_letters + string.digits, k=6))
-        timestamps = [time.monotonic()]  # t1
         server_id = message.guild.id
         # no ensure_config needed here, this is already done in the upper call frame
         config: ServerConfig = self.server_configs[server_id]
@@ -397,7 +384,7 @@ The chain has **not** been broken. Please enter another word.''')
         # -------------------------------
         # Check if member is banned
         # -------------------------------
-        async with self.db_connection(call_id=call_id) as connection:
+        async with self.db_connection() as connection:
             stmt = select(exists(BannedMemberModel).where(
                 BannedMemberModel.member_id == message.author.id
             ))
@@ -421,7 +408,7 @@ The chain has **not** been broken. Please enter another word.''')
         # We need to check whether the current user already
         # has an entry in the database. If not, we have to add an entry.
         # ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
-        async with self.db_connection(call_id=call_id) as connection:
+        async with self.db_connection() as connection:
 
             stmt = select(exists(MemberModel).where(
                 MemberModel.member_id == message.author.id,
@@ -447,7 +434,7 @@ The chain has **not** been broken. Please enter another word.''')
         # +++++++++++++++++++++
         # CHECK THE WORD
         # +++++++++++++++++++++
-        async with self.db_connection(call_id=call_id) as connection:
+        async with self.db_connection() as connection:
 
             # -------------------------------
             # Check if word is whitelisted
@@ -597,7 +584,6 @@ The chain has **not** been broken. Please enter another word.\n
                                member_id=message.author.id,
                                current_word=word)
 
-            timestamps.append(time.monotonic())  # t2
             await WordChainBot.add_reaction(message, config.reaction_emoji(game_mode))
 
             last_words: deque[str] = self._server_histories[server_id][message.author.id][game_mode]
@@ -607,7 +593,6 @@ The chain has **not** been broken. Please enter another word.\n
             logger.debug(f'member {message.author.id} got {karma} karma for "{word}"')
             self._server_histories[server_id][message.author.id][game_mode].append(word)
 
-            timestamps.append(time.monotonic())  # t3
             stmt = update(MemberModel).where(
                 MemberModel.server_id == message.guild.id,
                 MemberModel.member_id == message.author.id
@@ -627,7 +612,6 @@ The chain has **not** been broken. Please enter another word.\n
 
             current_count = config.game_state[game_mode].current_count
 
-            timestamps.append(time.monotonic())  # t4
             if current_count > 0 and current_count % 100 == 0:
                 await WordChainBot.send_message_to_channel(message.channel, f'{current_count} words! Nice work, keep it up!')
 
@@ -642,10 +626,7 @@ The chain has **not** been broken. Please enter another word.\n
             await self.add_remove_reliable_role(message.guild, connection)
             await config.sync_to_db_with_connection(connection)
 
-            timestamps.append(time.monotonic())  # t5
             await connection.commit()
-            timestamps.append(time.monotonic())  # t_end
-            logger.debug(f"{call_id}: time frames: {["{:.4f}".format(t2 - t1) for t1, t2 in zip(timestamps, timestamps[1:])]}")
 
     # ---------------------------------------------------------------------------------------------------------------
 
