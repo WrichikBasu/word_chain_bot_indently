@@ -104,6 +104,15 @@ class WordChainBot(AutoShardedBot):
     # ---------------------------------------------------------------------------------------------------------------
 
     async def _rejoin(self, config: ServerConfig, guild: discord.Guild, main_description: str) -> None:
+        """
+        Handles the complete workflow of making a guild ready.
+        This includes:
+        - loading discord roles
+        - sending a message with the last word
+          - if there were messages sent after the last word that were potentially not registered
+          - or if the last message is unavailable
+        - marking server as ready which is a precondition for further messages being processed
+        """
         self.load_discord_roles(guild)
 
         for game_mode in GameMode:
@@ -116,8 +125,8 @@ class WordChainBot(AutoShardedBot):
                 try:
                     last_message = await channel.fetch_message(channel.last_message_id)
                     if (last_message and
-                            last_message.author.id == config.game_state[game_mode].last_member_id and
-                            last_message.content.lower() == config.game_state[game_mode].current_word):
+                        last_message.author.id == config.game_state[game_mode].last_member_id and
+                        last_message.content.lower() == config.game_state[game_mode].current_word):
                         logger.debug(f'Skipped rejoin message for {guild.name} ({guild.id}) in game mode {game_mode}')
                         continue
                 except discord.errors.HTTPException:
