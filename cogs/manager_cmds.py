@@ -64,6 +64,7 @@ class ManagerCommandsCog(Cog, name=COG_NAME_MANAGER_CMDS):
 
         await interaction.response.defer()
 
+        await self.bot.ensure_config(interaction.guild)
         config = self.bot.server_configs[interaction.guild_id]
         config.game_state[GameMode.NORMAL] = GameModeState()
         config.game_state[GameMode.HARD] = GameModeState()
@@ -124,6 +125,7 @@ class ManagerCommandsCog(Cog, name=COG_NAME_MANAGER_CMDS):
                 return
 
             guild_id = interaction.guild.id
+            await self.cog.bot.ensure_config(interaction.guild)
             config = self.cog.bot.server_configs[guild_id]
             config.reliable_role_id = role.id
 
@@ -149,6 +151,7 @@ class ManagerCommandsCog(Cog, name=COG_NAME_MANAGER_CMDS):
             await interaction.response.defer()
 
             other_game_mode = GameMode.HARD if game_mode == GameMode.NORMAL else GameMode.NORMAL
+            await self.cog.bot.ensure_config(interaction.guild)
             config = self.cog.bot.server_configs[interaction.guild.id]
 
             if config.game_state[other_game_mode].channel_id == channel.id:
@@ -193,6 +196,7 @@ to the other game mode!''')
                 return
 
             guild_id = interaction.guild.id
+            await self.cog.bot.ensure_config(interaction.guild)
             config = self.cog.bot.server_configs[guild_id]
             config.failed_role_id = role.id
 
@@ -222,6 +226,7 @@ to the other game mode!''')
             await interaction.response.defer()
 
             guild_id = interaction.guild.id
+            await self.cog.bot.ensure_config(interaction.guild)
             config = self.cog.bot.server_configs[guild_id]
             config.failed_role_id = None
             config.failed_member_id = None
@@ -249,6 +254,7 @@ to the other game mode!''')
             await interaction.response.defer()
 
             guild_id = interaction.guild.id
+            await self.cog.bot.ensure_config(interaction.guild)
             config = self.cog.bot.server_configs[guild_id]
             config.reliable_role_id = None
             await config.sync_to_db(self.cog.bot)
@@ -509,6 +515,7 @@ to the other game mode!''')
             await interaction.response.defer(thinking=True)
 
             emb: Embed = Embed(colour=Colour.yellow(), title='Languages supported by the bot', description='')
+            await self.cog.bot.ensure_config(interaction.guild)
             config = self.cog.bot.server_configs[interaction.guild.id]
             emb.description += f'''The bot supports the following languages:
 {'\n'.join(f'- {language.display_name} (`{language.value.code}`) \
@@ -543,6 +550,7 @@ to the other game mode!''')
                 await interaction.followup.send(embed=embed)
                 return
 
+            await self.cog.bot.ensure_config(interaction.guild)
             config = self.cog.bot.server_configs[interaction.guild.id]
             if language in config.languages:
                 embed.description = f'''✅ *{language.display_name}* is **already enabled** in this server.\n
@@ -596,6 +604,7 @@ to the other game mode!''')
                 await interaction.followup.send(embed=embed)
                 return
 
+            await self.cog.bot.ensure_config(interaction.guild)
             config = self.cog.bot.server_configs[interaction.guild.id]
             if len(config.languages) == 1:
                 embed.description = f'''❌ The server must have at least one language enabled.\n

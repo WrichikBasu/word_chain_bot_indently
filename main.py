@@ -155,6 +155,44 @@ class WordChainBot(AutoShardedBot):
 
     # ---------------------------------------------------------------------------------------------------------------
 
+    async def ensure_config(self, guild: discord.Guild, connection: AsyncConnection | None = None) -> None:
+        """
+        Ensures that a config is present for given guild.
+        """
+        if guild.id in self.server_configs:
+            logger.debug(f'ensure_config for guild {guild.id} (shard {guild.shard_id}): config already in cache')
+            return
+
+        async def _ensure_config(_guild_id: int, _connection: AsyncConnection):
+            try:
+                new_config = ServerConfig(server_id=_guild_id)
+                stmt = insert(ServerConfigModel).values(**new_config.to_sqlalchemy_dict())
+                await _connection.execute(stmt)
+                self.server_configs[new_config.server_id] = new_config
+                logger.debug(f'ensure_config for guild {_guild_id}: new config created')
+            except SQLAlchemyError as e:
+                if "UNIQUE constraint failed" in str(e):
+                    stmt = select(ServerConfigModel).where(ServerConfigModel.server_id == _guild_id)
+                    result: CursorResult = await _connection.execute(stmt)
+                    configs = [ServerConfig.from_sqlalchemy_row(row) for row in result]
+                    if len(configs) == 1:
+                        config = configs[0]
+                        self.server_configs[config.server_id] = config
+                        logger.debug(f'ensure_config for guild {_guild_id} (shard {guild.shard_id}): config loaded from db')
+                    else:
+                        logger.critical(f'ensure_config for guild {_guild_id} (shard {guild.shard_id}): received {len(configs)} configs from DB')
+                else:
+                    logger.exception(f'ensure_config for guild {_guild_id} (shard {guild.shard_id}): unexpected DB error')
+
+        if connection is None:
+            async with self.db_connection() as managed_connection:
+                await _ensure_config(guild.id, managed_connection)
+                await managed_connection.commit()
+        else:
+            await _ensure_config(guild.id, connection)
+
+    # ---------------------------------------------------------------------------------------------------------------
+
     async def on_ready(self) -> None:
         """Override the on_ready method"""
         logger.info(f'Bot is ready as {self.user.name}#{self.user.discriminator}')
@@ -228,6 +266,7 @@ class WordChainBot(AutoShardedBot):
         """
         Sets the `self.server_failed_roles` and `self.server_reliable_roles` variables.
         """
+        # no ensure_config needed here, this is already done in the upper call frame
         config = self.server_configs[guild.id]
         if config.failed_role_id is not None:
             self.server_failed_roles[guild.id] = discord.utils.get(guild.roles, id=config.failed_role_id)
@@ -289,6 +328,7 @@ class WordChainBot(AutoShardedBot):
         try:
             if self.server_failed_roles[guild.id]:
                 handled_member = False
+                await self.ensure_config(guild, connection)
                 config = self.server_configs[guild.id]
                 for member in self.server_failed_roles[guild.id].members:
                     if config.failed_member_id == member.id:
@@ -310,9 +350,10 @@ class WordChainBot(AutoShardedBot):
                         config.failed_member_id = None
                         config.correct_inputs_by_failed_member = 0
                         await config.sync_to_db_with_connection(connection)
+                await connection.commit()
 
         except discord.Forbidden:
-            pass
+            await connection.commit()
 
     # ---------------------------------------------------------------------------------------------------------------
 
@@ -338,6 +379,7 @@ class WordChainBot(AutoShardedBot):
         call_id = ''.join(random.choices(string.ascii_letters + string.digits, k=6))
         timestamps = [time.monotonic()]  # t1
         server_id = message.guild.id
+        # no ensure_config needed here, this is already done in the upper call frame
         config: ServerConfig = self.server_configs[server_id]
         word: str = message.content.lower()
         valid_languages: list[Language] = config.languages
@@ -627,6 +669,7 @@ The chain has **not** been broken. Please enter another word.\n
         if server_id not in self.server_configs or server_id not in self._servers_ready:
             return
 
+        await self.ensure_config(message.guild)
         config = self.server_configs[server_id]
         if message.channel.id == config.game_state[GameMode.NORMAL].channel_id:
             await self.on_message_for_word_chain(message, GameMode.NORMAL)
@@ -641,6 +684,7 @@ The chain has **not** been broken. Please enter another word.\n
 
         server_id = message.guild.id
         member_id = message.author.id
+        await self.ensure_config(message.guild)
         config = self.server_configs[server_id]
         if self.server_failed_roles[server_id]:
             config.failed_member_id = member_id  # Designate current user as failed member
@@ -867,6 +911,7 @@ The chain has **not** been broken. Please enter another word.\n
         if message.author == self.user:
             return
 
+        await self.ensure_config(message.guild)
         config = self.server_configs[message.guild.id]
 
         # Check if the message is in the channel
@@ -906,6 +951,7 @@ The chain has **not** been broken. Please enter another word.\n
         if before.author == self.user:
             return
 
+        await self.ensure_config(before.guild)
         config = self.server_configs[before.guild.id]
 
         # Check if the message is in the channel

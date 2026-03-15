@@ -92,6 +92,7 @@ class UserCommandsCog(Cog, name=COG_NAME_USER_CMDS):
         6. Query API.
         """
         await interaction.response.defer(ephemeral=True)
+        await self.bot.ensure_config(interaction.guild)
         config = self.bot.server_configs[interaction.guild.id]
         valid_languages = config.languages
 
@@ -651,6 +652,7 @@ as it will allow more people discover it!
             """Command to show the stats of the server"""
             await interaction.response.defer()
 
+            await self.cog.bot.ensure_config(interaction.guild)
             config: ServerConfig = self.cog.bot.server_configs[interaction.guild.id]
 
             if config.game_state[game_mode].channel_id is None:  # channel not set yet
