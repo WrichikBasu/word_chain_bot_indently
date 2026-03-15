@@ -92,7 +92,9 @@ class UserCommandsCog(Cog, name=COG_NAME_USER_CMDS):
         6. Query API.
         """
         await interaction.response.defer(ephemeral=True)
-        valid_languages = self.bot.server_configs[interaction.guild.id].languages
+        await self.bot.ensure_config(interaction.guild)
+        config = self.bot.server_configs[interaction.guild.id]
+        valid_languages = config.languages
 
         emb = Embed(color=Colour.blurple())
 
@@ -121,16 +123,14 @@ Therefore, a word that is valid in this server may not be valid in another serve
                 await interaction.followup.send(embed=emb)
                 return
 
-            if await self.bot.is_word_in_cache(word, connection,
-                                               self.bot.server_configs[interaction.guild.id].languages):
+            if await self.bot.is_word_in_cache(word, connection, config.languages):
                 emb.description = f'''✅ The word **{word}** is valid.\n
 -# Please note that the validity of words is checked only for the languages that are enabled in the server. \
 Therefore, a word that is valid in this server may not be valid in another server.'''
                 await interaction.followup.send(embed=emb)
                 return
 
-            futures: list[Future] = self.bot.start_api_queries(word,
-                                                               self.bot.server_configs[interaction.guild.id].languages)
+            futures: list[Future] = self.bot.start_api_queries(word, config.languages)
 
             query_response_code: int
 
@@ -652,6 +652,7 @@ as it will allow more people discover it!
             """Command to show the stats of the server"""
             await interaction.response.defer()
 
+            await self.cog.bot.ensure_config(interaction.guild)
             config: ServerConfig = self.cog.bot.server_configs[interaction.guild.id]
 
             if config.game_state[game_mode].channel_id is None:  # channel not set yet
