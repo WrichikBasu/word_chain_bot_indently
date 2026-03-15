@@ -208,9 +208,11 @@ class WordChainBot(AutoShardedBot):
 
             await connection.commit()
 
-        for guild in self.guilds:
+        for (index, guild) in enumerate(self.guilds, start=1):
             config = self.server_configs[guild.id]
             await self._rejoin(config, guild, '**I\'m now online!**')
+            if index % 100 == 0 or index == len(self.guilds):
+                logger.info(f'{index}/{len(self.guilds)} guilds ready')
 
         logger.info(f'Loaded {len(self.server_configs)} server configs, running on {len(self.guilds)} servers')
 
@@ -235,7 +237,7 @@ class WordChainBot(AutoShardedBot):
                 self._servers_ready.add(guild.id)
                 logger.info(f'Config created for guild {guild.name} ({guild.id})')
             except SQLAlchemyError as e:
-                if "UNIQUE constraint failed" in str(e):
+                if 'UNIQUE constraint failed' in str(e):
                     stmt = select(ServerConfigModel).where(ServerConfigModel.server_id == guild.id)
                     result: CursorResult = await connection.execute(stmt)
                     configs = [ServerConfig.from_sqlalchemy_row(row) for row in result]
