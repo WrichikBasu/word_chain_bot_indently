@@ -663,7 +663,7 @@ The chain has **not** been broken. Please enter another word.\n
 
         server_id = message.guild.id
         member_id = message.author.id
-        await self.ensure_config(message.guild)
+        # no ensure_config needed here, this is already done in the upper call frame
         config = self.server_configs[server_id]
         if self.server_failed_roles[server_id]:
             config.failed_member_id = member_id  # Designate current user as failed member
