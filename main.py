@@ -339,7 +339,6 @@ class WordChainBot(AutoShardedBot):
                         config.failed_member_id = None
                         config.correct_inputs_by_failed_member = 0
                         await config.sync_to_db_with_connection(connection)
-                await connection.commit()
 
         except discord.Forbidden:
             await connection.commit()
