@@ -341,7 +341,7 @@ class WordChainBot(AutoShardedBot):
                         await config.sync_to_db_with_connection(connection)
 
         except discord.Forbidden:
-            await connection.commit()
+            pass
 
     # ---------------------------------------------------------------------------------------------------------------
 
