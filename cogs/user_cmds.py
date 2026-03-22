@@ -94,11 +94,12 @@ class UserCommandsCog(Cog, name=COG_NAME_USER_CMDS):
         await interaction.response.defer(ephemeral=True)
         await self.bot.ensure_config(interaction.guild)
         config = self.bot.server_configs[interaction.guild.id]
-        valid_languages = config.languages
+        server_languages = config.languages
+        valid_languages: list[Language] = [language for language in server_languages if self.bot.word_matches_pattern(word, language.value)]
 
         emb = Embed(color=Colour.blurple())
 
-        if not any(self.bot.word_matches_pattern(word, language.value) for language in valid_languages):
+        if not valid_languages:
             emb.description = f'❌ **{word}** is **not** a legal word.'
             await interaction.followup.send(embed=emb)
             return
@@ -123,28 +124,28 @@ Therefore, a word that is valid in this server may not be valid in another serve
                 await interaction.followup.send(embed=emb)
                 return
 
-            if await self.bot.is_word_in_cache(word, connection, config.languages):
+            if await self.bot.is_word_in_cache(word, connection, server_languages):
                 emb.description = f'''✅ The word **{word}** is valid.\n
 -# Please note that the validity of words is checked only for the languages that are enabled in the server. \
 Therefore, a word that is valid in this server may not be valid in another server.'''
                 await interaction.followup.send(embed=emb)
                 return
 
-            futures: list[Future] = self.bot.start_api_queries(word, config.languages)
+            futures: list[Future] = self.bot.start_api_queries(word, valid_languages)
 
             query_response_code: int
 
             for future in futures:
-                match query_response_code := self.bot.get_query_response(future):
+                query_response_code = self.bot.get_query_response(future)
 
-                    case self.bot.API_RESPONSE_WORD_EXISTS:
-                        emb.description = f'''✅ The word **{word}** is valid.\n
+                if query_response_code == self.bot.API_RESPONSE_WORD_EXISTS:
+                    emb.description = f'''✅ The word **{word}** is valid.\n
 -# Please note that the validity of words is checked only for the languages that are enabled in the server. \
 Therefore, a word that is valid in this server may not be valid in another server.'''
+                    break
 
-                        await self.bot.add_words_to_cache(futures,
-                                                          connection)  # Check and add to cache for all selected languages
-                        break
+            # Add the words to the cache for all languages
+            await self.bot.add_words_to_cache(futures, connection)
 
             if query_response_code == self.bot.API_RESPONSE_WORD_DOESNT_EXIST:
                 emb.description = emb.description = f'''❌ **{word}** is **NOT** a valid word.\n
