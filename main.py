@@ -156,7 +156,7 @@ class WordChainBot(AutoShardedBot):
                 stmt = insert(ServerConfigModel).values(**new_config.to_sqlalchemy_dict())
                 await _connection.execute(stmt)
                 self.server_configs[new_config.server_id] = new_config
-                logger.debug(f'ensure_config for guild {_guild_id}: new config created')
+                logger.warning(f'ensure_config for guild {_guild_id}: new config created')
             except SQLAlchemyError as e:
                 if "UNIQUE constraint failed" in str(e):
                     stmt = select(ServerConfigModel).where(ServerConfigModel.server_id == _guild_id)
@@ -165,7 +165,7 @@ class WordChainBot(AutoShardedBot):
                     if len(configs) == 1:
                         config = configs[0]
                         self.server_configs[config.server_id] = config
-                        logger.debug(f'ensure_config for guild {_guild_id} (shard {guild.shard_id}): config loaded from db')
+                        logger.warning(f'ensure_config for guild {_guild_id} (shard {guild.shard_id}): config loaded from db')
                     else:
                         logger.critical(f'ensure_config for guild {_guild_id} (shard {guild.shard_id}): received {len(configs)} configs from DB')
                 else:
