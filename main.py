@@ -156,7 +156,7 @@ class WordChainBot(AutoShardedBot):
                 stmt = insert(ServerConfigModel).values(**new_config.to_sqlalchemy_dict())
                 await _connection.execute(stmt)
                 self.server_configs[new_config.server_id] = new_config
-                logger.debug(f'ensure_config for guild {_guild_id}: new config created')
+                logger.warning(f'ensure_config for guild {_guild_id}: new config created')
             except SQLAlchemyError as e:
                 if "UNIQUE constraint failed" in str(e):
                     stmt = select(ServerConfigModel).where(ServerConfigModel.server_id == _guild_id)
@@ -165,7 +165,7 @@ class WordChainBot(AutoShardedBot):
                     if len(configs) == 1:
                         config = configs[0]
                         self.server_configs[config.server_id] = config
-                        logger.debug(f'ensure_config for guild {_guild_id} (shard {guild.shard_id}): config loaded from db')
+                        logger.warning(f'ensure_config for guild {_guild_id} (shard {guild.shard_id}): config loaded from db')
                     else:
                         logger.critical(f'ensure_config for guild {_guild_id} (shard {guild.shard_id}): received {len(configs)} configs from DB')
                 else:
@@ -367,9 +367,10 @@ class WordChainBot(AutoShardedBot):
         # no ensure_config needed here, this is already done in the upper call frame
         config: ServerConfig = self.server_configs[server_id]
         word: str = message.content.lower()
-        valid_languages: list[Language] = config.languages
+        server_languages: list[Language] = config.languages
+        valid_languages: list[Language] = [language for language in server_languages if WordChainBot.word_matches_pattern(word, language.value)]
 
-        if not any(WordChainBot.word_matches_pattern(word, language.value) for language in valid_languages):
+        if not valid_languages:
             if not any(c.isspace() for c in word):
                 # in this case, we have a single word, that did not match any of the configured language regex patterns
                 await WordChainBot.add_reaction(message, '⚠️')
@@ -456,14 +457,15 @@ The chain has **not** been broken. Please enter another word.''')
             futures: Optional[list[Future]]
 
             # First check the whitelist or the word cache
-            matched_language = await self.is_word_in_cache(word, connection, config.languages)
+            matched_language = await self.is_word_in_cache(word, connection, server_languages)
             if word_whitelisted or matched_language:
                 # Word found in cache. No need to query API
                 futures = None
             else:
                 # Word neither whitelisted, nor found in cache.
-                # Start the API request, but deal with it later
-                futures = self.start_api_queries(word, config.languages)
+                # Start the API request, but deal with it later.
+                # Query only languages where word would be valid.
+                futures = self.start_api_queries(word, valid_languages)
 
             # -----------------------------------
             # Check repetitions
@@ -532,7 +534,7 @@ current high score of **{config.game_state[game_mode].high_score}**!'''
 
                         # many foreign words can be found in a languages wiktionary, we accept a word only as existing
                         # if it does match the languages word regex
-                        if re.search(queried_language.value.allowed_word_regex, word):
+                        if WordChainBot.is_word_in_cache(word, connection, queried_language.value):
                             matched_language: Language = queried_language
                             break
 
@@ -568,7 +570,7 @@ The above entered word is **NOT** being taken into account.''')
             # --------------------
             # Check word score
             # --------------------
-            if all(language.value.score_threshold[game_mode] > self.calculate_word_score(word, game_mode, language) for language in valid_languages):
+            if all(language.value.score_threshold[game_mode] > self.calculate_word_score(word, game_mode, language) for language in server_languages):
                 await WordChainBot.add_reaction(message, '⚠️')
                 await WordChainBot.send_message_to_channel(message.channel, f'''Your word has no or just few words to continue with.
 The chain has **not** been broken. Please enter another word.\n
@@ -586,7 +588,7 @@ The chain has **not** been broken. Please enter another word.\n
 
             last_words: deque[str] = self._server_histories[server_id][message.author.id][game_mode]
             # fallback to first configured language if matched_language is unavailable (e.g. matched by whitelist)
-            matched_language = matched_language if matched_language else valid_languages[0]
+            matched_language = matched_language if matched_language else server_languages[0]
             karma: float = calculate_total_karma(word, last_words, matched_language.value, game_mode)
             logger.debug(f'member {message.author.id} got {karma} karma for "{word}"')
             self._server_histories[server_id][message.author.id][game_mode].append(word)
