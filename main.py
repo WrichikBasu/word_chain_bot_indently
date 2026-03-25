@@ -534,7 +534,7 @@ current high score of **{config.game_state[game_mode].high_score}**!'''
 
                         # many foreign words can be found in a languages wiktionary, we accept a word only as existing
                         # if it does match the languages word regex
-                        if WordChainBot.is_word_in_cache(word, connection, queried_language.value):
+                        if WordChainBot.word_matches_pattern(word, queried_language.value):
                             matched_language: Language = queried_language
                             break
 
