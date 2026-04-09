@@ -438,9 +438,9 @@ class AdminCommandsCog(Cog, name=COG_NAME_ADMIN_CMDS):
 
                 case _:
                     logger1: Optional[logging.Logger] = logging.root.manager.loggerDict.get(logger_name, None)
-                    emb.description += f'### `{logger1.name}`\n'
 
                     if logger1:
+                        emb.description += f'### `{logger1.name}`\n'
                         emb.description += f'''> **Status:** {'Disabled' if logger1.disabled else 'Enabled'}
 > **Level:** `{logging.getLevelName(logger1.level)}`'''
                     else:
