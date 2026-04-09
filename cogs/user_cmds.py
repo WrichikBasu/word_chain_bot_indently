@@ -530,7 +530,7 @@ as it will allow more people discover it!
     class LeaderboardCmdGroup(app_commands.Group):
 
         def __init__(self, parent_cog: UserCommandsCog):
-            super().__init__(name='leaderboard')
+            super().__init__(name='leaderboard', guild_only=True)
             self.cog: UserCommandsCog = parent_cog
 
         # ---------------------------------------------------------------------------------------------------------------
@@ -547,7 +547,6 @@ as it will allow more people discover it!
             app_commands.Choice(name='server', value='server'),
             app_commands.Choice(name='global', value='global')
         ])
-        @app_commands.guild_only()
         async def user(self, interaction: Interaction, metric: Optional[app_commands.Choice[str]],
                        scope: Optional[app_commands.Choice[str]]):
             """Command to show the top 10 users with the highest score/karma."""
@@ -625,7 +624,6 @@ as it will allow more people discover it!
         # ---------------------------------------------------------------------------------------------------------------
 
         @app_commands.command(description='Shows the first 10 servers with the highest highscore')
-        @app_commands.guild_only()
         async def server(self, interaction: Interaction, game_mode: GameMode = GameMode.NORMAL):
             """Command to show the top 10 servers with the highest highscore"""
             await interaction.response.defer()
@@ -676,13 +674,12 @@ as it will allow more people discover it!
     class StatsCmdGroup(app_commands.Group):
 
         def __init__(self, parent_cog: UserCommandsCog):
-            super().__init__(name='stats')
+            super().__init__(name='stats', guild_only=True)
             self.cog: UserCommandsCog = parent_cog
 
         # ---------------------------------------------------------------------------------------------------------------
 
         @app_commands.command(description='Show the server stats for the word chain game')
-        @app_commands.guild_only()
         async def server(self, interaction: Interaction, game_mode: GameMode = GameMode.NORMAL) -> None:
             """Command to show the stats of the server"""
             await interaction.response.defer()
@@ -715,7 +712,6 @@ Longest chain length: {config.game_state[game_mode].high_score}
 
         @app_commands.command(description='Show the user stats for the word chain game')
         @app_commands.describe(member="The user whose stats you want to see")
-        @app_commands.guild_only()
         async def user(self, interaction: Interaction, member: Optional[discord.Member]) -> None:
             """Command to show the stats of a specific user"""
             await interaction.response.defer()
