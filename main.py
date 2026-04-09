@@ -95,39 +95,42 @@ class WordChainBot(AutoShardedBot):
 
         for game_mode in GameMode:
             try:
-                channel: Optional[discord.TextChannel] = self.get_channel(config.game_state[game_mode].channel_id)
+                channel = self.get_channel(config.game_state[game_mode].channel_id)
+                # make sure we have a TextChannel that is not None and that has a last message id
+                if not isinstance(channel, discord.TextChannel) or channel.last_message_id is None:
+                    continue
             except discord.errors.HTTPException:
-                channel = None
+                continue
 
-            if channel:
-                try:
-                    last_message = await channel.fetch_message(channel.last_message_id)
-                    if (last_message and
+            try:
+                last_message = await channel.fetch_message(channel.last_message_id)
+                if (last_message and
                         last_message.author.id == config.game_state[game_mode].last_member_id and
                         last_message.content.lower() == config.game_state[game_mode].current_word):
-                        logger.debug(f'Skipped rejoin message for {guild.name} ({guild.id}) in game mode {game_mode}')
-                        continue
-                except discord.errors.HTTPException:
-                    pass
+                    logger.debug(f'Skipped rejoin message for {guild.name} ({guild.id}) in game mode {game_mode}')
+                    continue
+            except discord.errors.HTTPException:
+                pass
 
-                emb: discord.Embed = discord.Embed(description=main_description,
-                                                   colour=discord.Color.brand_green())
+            emb: discord.Embed = discord.Embed(description=main_description,
+                                               colour=discord.Color.brand_green())
 
-                if config.game_state[game_mode].high_score > 0:
-                    emb.description += f'\n\n:fire: Let\'s beat the high score of {config.game_state[game_mode].high_score}! :fire:\n'
+            if config.game_state[game_mode].high_score > 0:
+                emb.description += f'\n\n:fire: Let\'s beat the high score of {config.game_state[game_mode].high_score}! :fire:\n'
 
-                if config.game_state[game_mode].current_word:
-                    emb.add_field(name='Last valid word', value=f'{config.game_state[game_mode].current_word}', inline=True)
+            if config.game_state[game_mode].current_word:
+                emb.add_field(name='Last valid word', value=f'{config.game_state[game_mode].current_word}', inline=True)
 
-                    if config.game_state[game_mode].last_member_id:
-                        member: Optional[discord.Member] = channel.guild.get_member(config.game_state[game_mode].last_member_id)
-                        if member:
-                            emb.add_field(name='Last input by', value=f'{member.mention}', inline=True)
+                if config.game_state[game_mode].last_member_id:
+                    member: Optional[discord.Member] = channel.guild.get_member(config.game_state[game_mode].last_member_id)
+                    if member:
+                        emb.add_field(name='Last input by', value=f'{member.mention}', inline=True)
 
-                try:
-                    await channel.send(embed=emb)
-                except discord.errors.HTTPException:
-                    logger.info(f'Could not send ready message to {guild.name} ({guild.id}) due to missing permissions.')
+            try:
+                await channel.send(embed=emb)
+            except discord.errors.HTTPException:
+                logger.info(f'Could not send ready message to {guild.name} ({guild.id}) due to missing permissions.')
+
 
         self.servers_ready.add(guild.id)
 
