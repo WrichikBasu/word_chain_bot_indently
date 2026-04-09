@@ -5,6 +5,7 @@ import io
 import json
 import logging
 from logging import Logger
+from logging.config import fileConfig
 from typing import TYPE_CHECKING, Optional
 
 import discord
@@ -20,7 +21,7 @@ from model import (BannedMemberModel, BlacklistModel, MemberModel, ServerConfig,
 if TYPE_CHECKING:
     from main import WordChainBot
 
-logging.basicConfig(level=logging.INFO, format='[%(asctime)s] [%(levelname)s] %(name)s: %(message)s')
+fileConfig(fname='config.ini')
 logger = logging.getLogger(LOGGER_NAME_ADMIN_COG)
 
 

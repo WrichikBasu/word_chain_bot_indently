@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 from collections import defaultdict
 from concurrent.futures import Future
+from logging.config import fileConfig
 from typing import TYPE_CHECKING, Optional, Sequence
 
 import discord
@@ -22,7 +23,7 @@ from views.dropdown import Dropdown
 if TYPE_CHECKING:
     from main import WordChainBot
 
-logging.basicConfig(level=logging.INFO, format='[%(asctime)s] [%(levelname)s] %(name)s: %(message)s')
+fileConfig(fname='config.ini')
 logger: logging.Logger = logging.getLogger(LOGGER_NAME_USER_COG)
 
 

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+from logging.config import fileConfig
 from typing import TYPE_CHECKING
 
 import discord
@@ -18,7 +19,7 @@ from model import BlacklistModel, GameModeState, MemberModel, WhitelistModel
 if TYPE_CHECKING:
     from main import WordChainBot
 
-logging.basicConfig(level=logging.INFO, format='[%(asctime)s] [%(levelname)s] %(name)s: %(message)s')
+fileConfig(fname='config.ini')
 logger = logging.getLogger(LOGGER_NAME_MANAGER_COG)
 
 
