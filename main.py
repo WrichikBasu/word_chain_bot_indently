@@ -278,7 +278,8 @@ class WordChainBot(AutoShardedBot):
         2. Karma must be >= `RELIABLE_ROLE_KARMA_THRESHOLD`
         """
         try:
-            if self.server_reliable_roles[guild.id]:
+            role = self.server_reliable_roles[guild.id]
+            if role:
                 stmt = select(MemberModel.member_id).where(
                     MemberModel.server_id == guild.id,
                     MemberModel.karma > RELIABLE_ROLE_KARMA_THRESHOLD,
@@ -286,7 +287,7 @@ class WordChainBot(AutoShardedBot):
                 )
                 result: CursorResult = await connection.execute(stmt)
                 db_members: set[int] = {row[0] for row in result}
-                role_members: set[int] = {member.id for member in self.server_reliable_roles[guild.id].members}
+                role_members: set[int] = {member.id for member in role.members}
 
                 only_db_members = db_members - role_members  # those that should have the role but do not
                 only_role_members = role_members - db_members  # those that have the role but should not
@@ -294,12 +295,12 @@ class WordChainBot(AutoShardedBot):
                 for member_id in only_db_members:
                     member: Optional[discord.Member] = guild.get_member(member_id)
                     if member:
-                        await member.add_roles(self.server_reliable_roles[guild.id])
+                        await member.add_roles(role)
 
                 for member_id in only_role_members:
                     member: Optional[discord.Member] = guild.get_member(member_id)
                     if member:
-                        await member.remove_roles(self.server_reliable_roles[guild.id])
+                        await member.remove_roles(role)
 
         except discord.Forbidden:
             pass
@@ -315,7 +316,8 @@ class WordChainBot(AutoShardedBot):
         the failed role from all members who have it currently.
         """
         try:
-            if self.server_failed_roles[guild.id]:
+            role = self.server_failed_roles[guild.id]
+            if role:
                 handled_member = False
                 await self.ensure_config(guild, connection)
                 config = self.server_configs[guild.id]
@@ -327,13 +329,13 @@ class WordChainBot(AutoShardedBot):
                     else:
                         # Either failed_member_id is None, or this member is not the current failed member.
                         # In either case, we have to remove the role.
-                        await member.remove_roles(self.server_failed_roles[guild.id])
+                        await member.remove_roles(role)
 
                 if not handled_member and config.failed_member_id:
                     # Current failed member does not yet have the failed role
                     try:
                         failed_member: discord.Member = await guild.fetch_member(config.failed_member_id)
-                        await failed_member.add_roles(self.server_failed_roles[guild.id])
+                        await failed_member.add_roles(role)
                     except discord.NotFound:
                         # Member is no longer in the server
                         config.failed_member_id = None
@@ -1087,7 +1089,7 @@ The chain has **not** been broken. Please enter another word.\n
             BlacklistModel.word == word
         ))
         result: CursorResult = await connection.execute(stmt)
-        return result.scalar()
+        return bool(result.scalar())
 
     # ---------------------------------------------------------------------------------------------------------------
 
@@ -1118,7 +1120,7 @@ The chain has **not** been broken. Please enter another word.\n
             WhitelistModel.word == word
         ))
         result: CursorResult = await connection.execute(stmt)
-        return result.scalar()
+        return bool(result.scalar())
 
     # ---------------------------------------------------------------------------------------------------------------
 
@@ -1187,6 +1189,7 @@ def store_command_signature(global_commands: list[dict[str, Any]], admin_command
 
 @word_chain_bot.tree.command(name='reload', description='Unload and reload a cog')
 @app_commands.guilds(SETTINGS.admin_guild_id)
+@app_commands.guild_only()
 @app_commands.default_permissions(administrator=True)
 @app_commands.describe(cog_name='The cog to reload')
 @app_commands.choices(cog_name=[
