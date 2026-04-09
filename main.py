@@ -515,7 +515,7 @@ class WordChainBot(AutoShardedBot):
             and_(WordCacheModel.word == word, WordCacheModel.language.in_([language.value.code for language in languages]))
         )
         result: CursorResult = await connection.execute(stmt)
-        code: str = str(result.scalar())
+        code: str | None = result.scalar()
         return Language.from_language_code(code) if code else None
 
     # ---------------------------------------------------------------------------------------------------------------
