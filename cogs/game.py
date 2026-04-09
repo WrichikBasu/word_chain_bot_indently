@@ -199,6 +199,8 @@ class GameCog(Cog, name=COG_NAME_GAME):
             9. Wrong member?
             10. Wrong starting letter?
         """
+        if not message.guild:
+            return
         server_id = message.guild.id
         # no ensure_config needed here, this is already done in the upper call frame
         config: ServerConfig = self.bot.server_configs[server_id]
@@ -527,7 +529,7 @@ The chain has **not** been broken. Please enter another word.\n
     # ---------------------------------------------------------------------------------------------------------------
 
     @staticmethod
-    async def send_message_to_channel(channel: discord.TextChannel, content: str) -> None:
+    async def send_message_to_channel(channel: discord.abc.Messageable, content: str) -> None:
         """
         Sends a message to the given channel, with error handling for missing permissions.
 
