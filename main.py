@@ -28,7 +28,7 @@ from consts import (COG_NAME_ADMIN_CMDS, COG_NAME_MANAGER_CMDS, COG_NAME_USER_CM
                     GLOBAL_BLACKLIST_2_LETTER_WORDS_EN, GLOBAL_BLACKLIST_N_LETTER_WORDS_EN, HISTORY_LENGTH,
                     LOGGER_NAME_MAIN, MISTAKE_PENALTY, RELIABLE_ROLE_ACCURACY_THRESHOLD, RELIABLE_ROLE_KARMA_THRESHOLD,
                     SETTINGS, GameMode)
-from karma_calcs import calculate_total_karma
+from karma import calculate_total_karma
 from language import Language, LanguageInfo
 from model import (BannedMemberModel, BlacklistModel, MemberModel, ServerConfig, ServerConfigModel, UsedWordsModel,
                    WhitelistModel, WordCacheModel)
