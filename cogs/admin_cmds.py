@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING, Optional
 import discord
 from discord import Colour, Embed, File, Forbidden, Interaction, Object, Permissions, app_commands
 from discord.ext.commands import Cog
-from sqlalchemy import CursorResult, delete, insert, select, update
+from sqlalchemy import CursorResult, delete, insert, select
 
 from consts import (COG_NAME_ADMIN_CMDS, LOGGER_NAME_ADMIN_COG, LOGGER_NAME_MAIN, LOGGER_NAME_MANAGER_COG,
                     LOGGER_NAME_USER_COG, LOGGERS_LIST, SETTINGS, GameMode)
@@ -57,6 +57,7 @@ class AdminCommandsCog(Cog, name=COG_NAME_ADMIN_CMDS):
     @app_commands.command(name='health_check', description='Performs a health check on a server')
     @app_commands.default_permissions(administrator=True)
     @app_commands.guilds(SETTINGS.admin_guild_id)
+    @app_commands.guild_only()
     @app_commands.describe(guild_id='ID of the server to check')
     async def health_check(self, interaction: Interaction, guild_id: str):
 
@@ -158,6 +159,7 @@ class AdminCommandsCog(Cog, name=COG_NAME_ADMIN_CMDS):
     @app_commands.command(name='list_servers', description='Lists all servers with ID and name for administration')
     @app_commands.default_permissions(administrator=True)
     @app_commands.guilds(SETTINGS.admin_guild_id)
+    @app_commands.guild_only()
     async def list_servers(self, interaction: Interaction):
 
         await interaction.response.defer()
