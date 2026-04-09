@@ -164,5 +164,3 @@ database_word_chain.sqlite3*
 *.txt
 *.json
 scratch*.*
-
-uv.lock
