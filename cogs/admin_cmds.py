@@ -731,8 +731,6 @@ class AdminCommandsCog(Cog, name=COG_NAME_ADMIN_CMDS):
 
                         new_config: ServerConfig = ServerConfig(server_id=guild_id_as_number,
                                                                 is_banned=config.is_banned)
-                        config = new_config
-                        # total_rows_changed += await config.sync_to_db_with_connection(connection)
                     else:
                         config_exists = False
                 else:
