@@ -43,6 +43,18 @@ class GameCog(Cog, name=COG_NAME_GAME):
     # ----------------------------------------------------------------------------------------------------------------
 
     @commands.Cog.listener()
+    async def on_ready(self) -> None:
+        logger.info(f'game cog ready')
+
+    # ----------------------------------------------------------------------------------------------------------------
+    
+    @commands.Cog.listener()
+    async def on_guild_join(self) -> None:
+        pass
+
+    # ----------------------------------------------------------------------------------------------------------------
+
+    @commands.Cog.listener()
     async def on_message(self, message: discord.Message) -> None:
         pass
 
