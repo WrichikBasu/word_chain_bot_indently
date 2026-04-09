@@ -329,7 +329,7 @@ to the other game mode!''')
 
         # ------------------------------------------------------------------------------------------------------------
 
-        async def _autocomplete_remove_from_blacklist(self, interaction: Interaction, value: str) -> list[Choice]:
+        async def _autocomplete_remove_from_blacklist(self, interaction: Interaction, value: str) -> list[Choice[str]]:
             guild = interaction.guild
             if guild is None:
                 return []
@@ -341,7 +341,7 @@ to the other game mode!''')
                 ).limit(25)
                 result: CursorResult = await connection.execute(stmt)
                 words = [row[0] for row in result]
-                return [Choice(name=word, value=word) for word in words]
+                return [Choice[str](name=word, value=word) for word in words]
 
         @app_commands.command(description='Remove a word from the blacklist')
         @app_commands.describe(word='The word to be removed from the blacklist')
@@ -449,7 +449,7 @@ to the other game mode!''')
 
         # ------------------------------------------------------------------------------------------------------------
 
-        async def _autocomplete_remove_from_whitelist(self, interaction: Interaction, value: str) -> list[Choice]:
+        async def _autocomplete_remove_from_whitelist(self, interaction: Interaction, value: str) -> list[Choice[str]]:
             guild = interaction.guild
             if guild is None:
                 return []
@@ -461,7 +461,7 @@ to the other game mode!''')
                 ).limit(25)
                 result: CursorResult = await connection.execute(stmt)
                 words = [row[0] for row in result]
-                return [Choice(name=word, value=word) for word in words]
+                return [Choice[str](name=word, value=word) for word in words]
 
         @app_commands.command(description='Remove a word from the whitelist')
         @app_commands.describe(word='The word to be removed')
@@ -578,14 +578,14 @@ to the other game mode!''')
 
         # ------------------------------------------------------------------------------------------------------------
 
-        async def _autocomplete_add_language(self, interaction: Interaction, value: str) -> list[Choice]:
+        async def _autocomplete_add_language(self, interaction: Interaction, value: str) -> list[Choice[str]]:
             guild = interaction.guild
             if guild is None:
                 return []
             config = self.cog.bot.server_configs[guild.id]
             already_assigned_languages = config.languages
             values = [l.value.code for l in Language if l.value.code.startswith(value.lower()) and l not in already_assigned_languages][:25]
-            return [Choice(name=v, value=v) for v in values]
+            return [Choice[str](name=v, value=v) for v in values]
 
         @app_commands.command(name='add', description="Add a new language")
         @app_commands.describe(language_code="The language code")
@@ -639,14 +639,14 @@ to the other game mode!''')
 
         # ------------------------------------------------------------------------------------------------------------
 
-        async def _autocomplete_remove_language(self, interaction: Interaction, value: str) -> list[Choice]:
+        async def _autocomplete_remove_language(self, interaction: Interaction, value: str) -> list[Choice[str]]:
             guild = interaction.guild
             if guild is None:
                 return []
             config = self.cog.bot.server_configs[guild.id]
             available_languages = config.languages
             values = [l.value.code for l in available_languages if l.value.code.startswith(value.lower())][:25]
-            return [Choice(name=v, value=v) for v in values]
+            return [Choice[str](name=v, value=v) for v in values]
 
         @app_commands.command(name='remove', description="Remove a language")
         @app_commands.describe(language_code="The language code")
