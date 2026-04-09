@@ -13,8 +13,8 @@ from discord import Colour, Embed, File, Forbidden, Interaction, Object, Permiss
 from discord.ext.commands import Cog
 from sqlalchemy import CursorResult, delete, insert, select
 
-from consts import (COG_NAME_ADMIN_CMDS, LOGGER_NAME_ADMIN_COG, LOGGER_NAME_MAIN, LOGGER_NAME_MANAGER_COG,
-                    LOGGER_NAME_USER_COG, LOGGERS_LIST, SETTINGS, GameMode)
+from consts import (COG_NAME_ADMIN_CMDS, LOGGER_NAME_ADMIN_COG, LOGGER_NAME_GAME_COG, LOGGER_NAME_MAIN,
+                    LOGGER_NAME_MANAGER_COG, LOGGER_NAME_USER_COG, LOGGERS_LIST, SETTINGS, GameMode)
 from model import (BannedMemberModel, BlacklistModel, MemberModel, ServerConfig, ServerConfigModel, UsedWordsModel,
                    WhitelistModel)
 
@@ -198,6 +198,7 @@ class AdminCommandsCog(Cog, name=COG_NAME_ADMIN_CMDS):
             app_commands.Choice(name='Admin Commands', value=LOGGER_NAME_ADMIN_COG),
             app_commands.Choice(name='Manager Commands', value=LOGGER_NAME_MANAGER_COG),
             app_commands.Choice(name='User Commands', value=LOGGER_NAME_USER_COG),
+            app_commands.Choice(name='Game', value=LOGGER_NAME_GAME_COG),
             app_commands.Choice(name='All', value='all')
         ])
         async def set_log_level(self, interaction: Interaction, logger_name: str, level: int):
@@ -301,7 +302,8 @@ class AdminCommandsCog(Cog, name=COG_NAME_ADMIN_CMDS):
             app_commands.Choice(name='Main', value=LOGGER_NAME_MAIN),
             app_commands.Choice(name='Admin Commands', value=LOGGER_NAME_ADMIN_COG),
             app_commands.Choice(name='Manager Commands', value=LOGGER_NAME_MANAGER_COG),
-            app_commands.Choice(name='User Commands', value=LOGGER_NAME_USER_COG)
+            app_commands.Choice(name='User Commands', value=LOGGER_NAME_USER_COG),
+            app_commands.Choice(name='Game', value=LOGGER_NAME_GAME_COG)
         ])
         async def disable_specific_logger(self, interaction: Interaction, logger_name: str):
 
@@ -332,7 +334,8 @@ class AdminCommandsCog(Cog, name=COG_NAME_ADMIN_CMDS):
             app_commands.Choice(name='Main', value=LOGGER_NAME_MAIN),
             app_commands.Choice(name='Admin Commands', value=LOGGER_NAME_ADMIN_COG),
             app_commands.Choice(name='Manager Commands', value=LOGGER_NAME_MANAGER_COG),
-            app_commands.Choice(name='User Commands', value=LOGGER_NAME_USER_COG)
+            app_commands.Choice(name='User Commands', value=LOGGER_NAME_USER_COG),
+            app_commands.Choice(name='Game', value=LOGGER_NAME_GAME_COG)
         ])
         async def enable_specific_logger(self, interaction: Interaction, logger_name: str, reset_level: bool = True):
 
@@ -369,7 +372,8 @@ class AdminCommandsCog(Cog, name=COG_NAME_ADMIN_CMDS):
             app_commands.Choice(name='Main', value=LOGGER_NAME_MAIN),
             app_commands.Choice(name='Admin Commands', value=LOGGER_NAME_ADMIN_COG),
             app_commands.Choice(name='Manager Commands', value=LOGGER_NAME_MANAGER_COG),
-            app_commands.Choice(name='User Commands', value=LOGGER_NAME_USER_COG)
+            app_commands.Choice(name='User Commands', value=LOGGER_NAME_USER_COG),
+            app_commands.Choice(name='Game', value=LOGGER_NAME_GAME_COG)
         ])
         @app_commands.choices(level=[
             app_commands.Choice(name='Debug', value=logging.DEBUG),
@@ -416,6 +420,7 @@ class AdminCommandsCog(Cog, name=COG_NAME_ADMIN_CMDS):
             app_commands.Choice(name='Admin Commands', value=LOGGER_NAME_ADMIN_COG),
             app_commands.Choice(name='Manager Commands', value=LOGGER_NAME_MANAGER_COG),
             app_commands.Choice(name='User Commands', value=LOGGER_NAME_USER_COG),
+            app_commands.Choice(name='Game', value=LOGGER_NAME_GAME_COG),
             app_commands.Choice(name='All', value='all')
         ])
         async def logger_status(self, interaction: Interaction, logger_name: str = 'all'):

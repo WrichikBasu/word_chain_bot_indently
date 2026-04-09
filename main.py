@@ -24,7 +24,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, create_async_engine
 
 import character_frequency as cf
-from consts import (COG_NAME_ADMIN_CMDS, COG_NAME_MANAGER_CMDS, COG_NAME_USER_CMDS, COGS_LIST,
+from consts import (COG_NAME_ADMIN_CMDS, COG_NAME_GAME, COG_NAME_MANAGER_CMDS, COG_NAME_USER_CMDS, COGS_LIST,
                     GLOBAL_BLACKLIST_2_LETTER_WORDS_EN, GLOBAL_BLACKLIST_N_LETTER_WORDS_EN, HISTORY_LENGTH,
                     LOGGER_NAME_MAIN, MISTAKE_PENALTY, RELIABLE_ROLE_ACCURACY_THRESHOLD, RELIABLE_ROLE_KARMA_THRESHOLD,
                     SETTINGS, GameMode)
@@ -1197,6 +1197,7 @@ def store_command_signature(global_commands: list[dict[str, Any]], admin_command
     app_commands.Choice(name='Admin Commands', value=COG_NAME_ADMIN_CMDS),
     app_commands.Choice(name='Manager Commands', value=COG_NAME_MANAGER_CMDS),
     app_commands.Choice(name='User Commands', value=COG_NAME_USER_CMDS),
+    app_commands.Choice(name='Game', value=COG_NAME_GAME),
     app_commands.Choice(name='All cogs', value='all')
 ])
 async def reload(interaction: Interaction, cog_name: str, force_sync: bool = False):
