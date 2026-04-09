@@ -54,6 +54,7 @@ class UserCommandsCog(Cog, name=COG_NAME_USER_CMDS):
     # ---------------------------------------------------------------------------------------------------------------
 
     @app_commands.command(name='support', description='Join our support server!')
+    @app_commands.guild_only()
     async def support(self, interaction: Interaction) -> None:
         await interaction.response.defer(ephemeral=True)
         await interaction.followup.send(embed=self.HelpCommand.get_support_server_embed())
@@ -61,6 +62,7 @@ class UserCommandsCog(Cog, name=COG_NAME_USER_CMDS):
     # ---------------------------------------------------------------------------------------------------------------
 
     @app_commands.command(name='vote', description='Vote for the bot!')
+    @app_commands.guild_only()
     async def vote(self, interaction: Interaction) -> None:
         await interaction.response.defer(ephemeral=True)
         await interaction.followup.send(embed=self.HelpCommand.get_vote_embed())
@@ -68,12 +70,13 @@ class UserCommandsCog(Cog, name=COG_NAME_USER_CMDS):
     # ---------------------------------------------------------------------------------------------------------------
 
     @app_commands.command(name='show_languages', description='Lists the languages enabled in this server')
+    @app_commands.guild_only()
     async def show_languages(self, interaction: Interaction) -> None:
         await interaction.response.defer(ephemeral=True)
 
         guild = interaction.guild
         if guild is None:
-            raise ValueError('guild is None')
+            return
 
         emb: Embed = Embed(colour=Colour.gold(), title='Languages enabled in this server', description='')
         emb.description = ManagerCommandsCog.LanguageCmdGroup.get_current_languages(self.bot, guild.id)
@@ -84,6 +87,7 @@ class UserCommandsCog(Cog, name=COG_NAME_USER_CMDS):
 
     @app_commands.command(name='check_word', description='Check if a word is correct')
     @app_commands.describe(word='The word to check')
+    @app_commands.guild_only()
     async def check_word(self, interaction: Interaction, word: str):
         """
         Checks if a word is valid.
@@ -100,7 +104,7 @@ class UserCommandsCog(Cog, name=COG_NAME_USER_CMDS):
 
         guild = interaction.guild
         if guild is None:
-            raise ValueError('guild is None')
+            return
 
         await self.bot.ensure_config(guild)
         config = self.bot.server_configs[guild.id]
@@ -171,6 +175,7 @@ Therefore, a word that is valid in this server may not be valid in another serve
     # ---------------------------------------------------------------------------------------------------------------
 
     @app_commands.command(name='help', description='Shows the help menu')
+    @app_commands.guild_only()
     async def help(self, interaction: Interaction) -> None:
 
         await interaction.response.defer(ephemeral=True, thinking=True)
@@ -418,15 +423,6 @@ https://discord.gg/yhbzVGBNw3''', colour=Colour.pink())
 
         @staticmethod
         def get_cmd_list_embed(interaction: Interaction) -> Embed:
-
-            guild = interaction.guild
-            if guild is None:
-                raise ValueError('guild is None')
-
-            member = interaction.user
-            if not isinstance(member, discord.Member):
-                raise ValueError('member is not of type Member')
-
             emb = Embed(title='Slash Commands', color=Colour.blue(),
                         description='''\
 `/stats user` - Shows the stats of a specific user.
@@ -435,6 +431,10 @@ https://discord.gg/yhbzVGBNw3''', colour=Colour.pink())
 `/leaderboard` - Shows the leaderboard of the server.
 `/list_commands` - Lists all the slash commands.
 `/show_languages` - Lists all the supported and currently enabled languages.''')
+
+            member = interaction.user
+            if not isinstance(member, discord.Member):
+                return emb
 
             if member.guild_permissions.manage_guild:
                 emb.description += '''\n
@@ -458,6 +458,10 @@ https://discord.gg/yhbzVGBNw3''', colour=Colour.pink())
 `/whitelist add` - Add a word to the whitelist for this server.
 `/whitelist remove` - Remove a word from the whitelist of this server.
 `/whitelist show` - Show the whitelist words for this server.'''
+
+            guild = interaction.guild
+            if guild is None:
+                return emb
 
             if member.guild_permissions.administrator and guild.id == SETTINGS.admin_guild_id:
                 emb.description += '''\n
@@ -543,6 +547,7 @@ as it will allow more people discover it!
             app_commands.Choice(name='server', value='server'),
             app_commands.Choice(name='global', value='global')
         ])
+        @app_commands.guild_only()
         async def user(self, interaction: Interaction, metric: Optional[app_commands.Choice[str]],
                        scope: Optional[app_commands.Choice[str]]):
             """Command to show the top 10 users with the highest score/karma."""
@@ -550,7 +555,7 @@ as it will allow more people discover it!
 
             guild = interaction.guild
             if guild is None:
-                raise ValueError('guild is None')
+                return
 
             board_metric: str = 'score' if metric is None else metric.value
             board_scope: str = 'server' if scope is None else scope.value
@@ -620,13 +625,14 @@ as it will allow more people discover it!
         # ---------------------------------------------------------------------------------------------------------------
 
         @app_commands.command(description='Shows the first 10 servers with the highest highscore')
+        @app_commands.guild_only()
         async def server(self, interaction: Interaction, game_mode: GameMode = GameMode.NORMAL):
             """Command to show the top 10 servers with the highest highscore"""
             await interaction.response.defer()
 
             guild = interaction.guild
             if guild is None:
-                raise ValueError('guild is None')
+                return
 
             async with self.cog.bot.db_connection(locked=False) as connection:
                 limit = 10
@@ -676,13 +682,14 @@ as it will allow more people discover it!
         # ---------------------------------------------------------------------------------------------------------------
 
         @app_commands.command(description='Show the server stats for the word chain game')
+        @app_commands.guild_only()
         async def server(self, interaction: Interaction, game_mode: GameMode = GameMode.NORMAL) -> None:
             """Command to show the stats of the server"""
             await interaction.response.defer()
 
             guild = interaction.guild
             if guild is None:
-                raise ValueError('guild is None')
+                return
 
             await self.cog.bot.ensure_config(guild)
             config: ServerConfig = self.cog.bot.server_configs[guild.id]
@@ -708,6 +715,7 @@ Longest chain length: {config.game_state[game_mode].high_score}
 
         @app_commands.command(description='Show the user stats for the word chain game')
         @app_commands.describe(member="The user whose stats you want to see")
+        @app_commands.guild_only()
         async def user(self, interaction: Interaction, member: Optional[discord.Member]) -> None:
             """Command to show the stats of a specific user"""
             await interaction.response.defer()
@@ -717,7 +725,7 @@ Longest chain length: {config.game_state[game_mode].high_score}
             elif isinstance(interaction.user, discord.Member):
                 scope_member = interaction.user
             else:
-                raise ValueError(f'member is None or not of type Member')
+                return
 
             def get_member_avatar() -> Optional[discord.Asset]:
                 if scope_member.avatar:
