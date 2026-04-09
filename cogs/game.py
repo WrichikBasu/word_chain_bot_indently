@@ -16,7 +16,7 @@ from sqlalchemy import CursorResult, delete, exists, func, insert, select, updat
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from consts import COG_NAME_GAME, LOGGER_NAME_GAME_COG, MISTAKE_PENALTY, SETTINGS, GameMode
-from karma_calcs import calculate_total_karma
+from karma import calculate_total_karma
 from language import Language
 from model import BannedMemberModel, MemberModel, ServerConfig, UsedWordsModel
 
