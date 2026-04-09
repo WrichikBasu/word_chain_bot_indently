@@ -875,7 +875,7 @@ The chain has **not** been broken. Please enter another word.\n
                 lang_code: str = (data[3][0]).split('//')[1].split('.')[0]
                 language: Language = Language.from_language_code(lang_code)
 
-                await word_chain_bot.add_to_cache(word, language, connection)
+                await WordChainBot.add_word_to_cache(word, language, connection)
 
             except (IndexError, TimeoutError, CancelledError, JSONDecodeError, StopIteration):
                 continue
@@ -994,7 +994,8 @@ The chain has **not** been broken. Please enter another word.\n
 
     # ---------------------------------------------------------------------------------------------------------------
 
-    async def add_to_cache(self, word: str, language: Language, connection: AsyncConnection) -> None:
+    @staticmethod
+    async def add_word_to_cache(word: str, language: Language, connection: AsyncConnection) -> None:
         """
         Adds a word to the word cache schema.
 
@@ -1007,7 +1008,7 @@ The chain has **not** been broken. Please enter another word.\n
         connection : AsyncConnection
             The connection to access the schema.
         """
-        if not await self.is_word_blacklisted(word):  # Do NOT insert globally blacklisted words into the cache
+        if not await WordChainBot.is_word_blacklisted(word):  # Do NOT insert globally blacklisted words into the cache
             if not re.search(language.value.allowed_word_regex, word):
                 logger.warning(f'The word "{word}" is not a legal word in {language.display_name}, but was tried '
                                f'to be added to the cache for words in that language.')
