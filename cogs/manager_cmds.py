@@ -12,7 +12,7 @@ from discord.ext.commands import Cog
 from sqlalchemy import CursorResult, delete, insert, select
 from sqlalchemy.exc import SQLAlchemyError
 
-from consts import COG_NAME_MANAGER_CMDS, LOGGER_NAME_MANAGER_COG, GameMode, COG_NAME_COMMON
+from consts import COG_NAME_COMMON, COG_NAME_MANAGER_CMDS, LOGGER_NAME_MANAGER_COG, GameMode
 from language import Language
 from model import BlacklistModel, GameModeState, MemberModel, WhitelistModel
 
@@ -38,9 +38,9 @@ class ManagerCommandsCog(Cog, name=COG_NAME_MANAGER_CMDS):
     # ----------------------------------------------------------------------------------------------------------------
 
     @staticmethod
-    def is_generally_illegal_word(bot: WordChainBot, word: str, server_id: int):
-        valid_languages = bot.server_configs[server_id].languages
-        return not any(bot.word_matches_pattern(word.lower(), language.value) for language in valid_languages)
+    def is_generally_illegal_word(common: CommonCog, word: str, server_id: int):
+        valid_languages = common.server_configs[server_id].languages
+        return not any(common.word_matches_pattern(word.lower(), language.value) for language in valid_languages)
 
     # ----------------------------------------------------------------------------------------------------------------
 
@@ -71,8 +71,8 @@ class ManagerCommandsCog(Cog, name=COG_NAME_MANAGER_CMDS):
         if guild is None:
             return
 
-        await self.bot.ensure_config(guild)
-        config = self.bot.server_configs[guild.id]
+        await self.common.ensure_config(guild)
+        config = self.common.server_configs[guild.id]
         config.game_state[GameMode.NORMAL] = GameModeState()
         config.game_state[GameMode.HARD] = GameModeState()
         config.failed_member_id = None
@@ -134,14 +134,14 @@ class ManagerCommandsCog(Cog, name=COG_NAME_MANAGER_CMDS):
                 await interaction.followup.send(embed=emb)
                 return
 
-            await self.cog.bot.ensure_config(guild)
-            config = self.cog.bot.server_configs[guild.id]
+            await self.cog.common.ensure_config(guild)
+            config = self.cog.common.server_configs[guild.id]
             config.reliable_role_id = role.id
 
             async with self.cog.bot.db_connection() as connection:
                 await config.sync_to_db_with_connection(connection)
-                self.cog.bot.server_reliable_roles[guild.id] = role  # Assign role directly if we already have it in this context
-                await self.cog.bot.add_remove_reliable_role(guild, connection)
+                self.cog.common.server_reliable_roles[guild.id] = role  # Assign role directly if we already have it in this context
+                await self.cog.common.add_remove_reliable_role(guild, connection)
                 await connection.commit()
 
                 emb: Embed = Embed(title='Success', colour=Colour.green(),
@@ -162,8 +162,8 @@ class ManagerCommandsCog(Cog, name=COG_NAME_MANAGER_CMDS):
                 return
 
             other_game_mode = GameMode.HARD if game_mode == GameMode.NORMAL else GameMode.NORMAL
-            await self.cog.bot.ensure_config(guild)
-            config = self.cog.bot.server_configs[guild.id]
+            await self.cog.common.ensure_config(guild)
+            config = self.cog.common.server_configs[guild.id]
 
             if config.game_state[other_game_mode].channel_id == channel.id:
                 emb: Embed = Embed(title='Error', colour=Colour.red(),
@@ -210,15 +210,15 @@ to the other game mode!''')
                 return
 
             guild_id = guild.id
-            await self.cog.bot.ensure_config(guild)
-            config = self.cog.bot.server_configs[guild_id]
+            await self.cog.common.ensure_config(guild)
+            config = self.cog.common.server_configs[guild_id]
             config.failed_role_id = role.id
 
             async with self.cog.bot.db_connection() as connection:
                 await config.sync_to_db_with_connection(connection)
-                self.cog.bot.server_failed_roles[
+                self.cog.common.server_failed_roles[
                     guild_id] = role  # Assign role directly if we already have it in this context
-                await self.cog.bot.add_remove_failed_role(guild, connection)
+                await self.cog.common.add_remove_failed_role(guild, connection)
                 await connection.commit()
 
                 emb: Embed = Embed(title='Success', colour=Colour.green(),
@@ -242,18 +242,18 @@ to the other game mode!''')
             if guild is None:
                 return
 
-            await self.cog.bot.ensure_config(guild)
-            config = self.cog.bot.server_configs[guild.id]
+            await self.cog.common.ensure_config(guild)
+            config = self.cog.common.server_configs[guild.id]
             config.failed_role_id = None
             config.failed_member_id = None
             config.correct_inputs_by_failed_member = 0
             await config.sync_to_db(self.cog.bot)
 
-            role = self.cog.bot.server_failed_roles[guild.id]
+            role = self.cog.common.server_failed_roles[guild.id]
             if role:
                 for member in role.members:
                     await member.remove_roles(role)
-                self.cog.bot.server_failed_roles[guild.id] = None
+                self.cog.common.server_failed_roles[guild.id] = None
                 emb: Embed = Embed(title='Success', colour=Colour.green(),
                                    description=f'''Failed role has been removed.''')
                 await interaction.followup.send(embed=emb)
@@ -272,16 +272,16 @@ to the other game mode!''')
             if guild is None:
                 return
 
-            await self.cog.bot.ensure_config(guild)
-            config = self.cog.bot.server_configs[guild.id]
+            await self.cog.common.ensure_config(guild)
+            config = self.cog.common.server_configs[guild.id]
             config.reliable_role_id = None
             await config.sync_to_db(self.cog.bot)
 
-            role = self.cog.bot.server_reliable_roles[guild.id]
+            role = self.cog.common.server_reliable_roles[guild.id]
             if role:
                 for member in role.members:
                     await member.remove_roles(role)
-                self.cog.bot.server_reliable_roles[guild.id] = None
+                self.cog.common.server_reliable_roles[guild.id] = None
                 emb: Embed = Embed(title='Success', colour=Colour.green(),
                                    description=f'''Reliable role has been removed.''')
                 await interaction.followup.send(embed=emb)
@@ -313,7 +313,7 @@ to the other game mode!''')
 
             emb: Embed = Embed(colour=Colour.blurple())
 
-            if self.cog.is_generally_illegal_word(self.cog.bot, word, guild.id):
+            if self.cog.is_generally_illegal_word(self.cog.common, word, guild.id):
                 emb.description = f'⚠️ The word *{word.lower()}* is not a legal word.'
                 await interaction.followup.send(embed=emb)
                 return
@@ -357,7 +357,7 @@ to the other game mode!''')
 
             emb: Embed = Embed(colour=Colour.blurple())
 
-            if self.cog.is_generally_illegal_word(self.cog.bot, word, guild.id):
+            if self.cog.is_generally_illegal_word(self.cog.common, word, guild.id):
                 emb.description = f'⚠️ The word *{word.lower()}* is not a legal word.'
                 await interaction.followup.send(embed=emb)
                 return
@@ -433,7 +433,7 @@ to the other game mode!''')
 
             emb: Embed = Embed(colour=Colour.blurple())
 
-            if self.cog.is_generally_illegal_word(self.cog.bot, word, guild.id):
+            if self.cog.is_generally_illegal_word(self.cog.common, word, guild.id):
                 emb.description = f'⚠️ The word *{word.lower()}* is not a legal word.'
                 await interaction.followup.send(embed=emb)
                 return
@@ -477,7 +477,7 @@ to the other game mode!''')
 
             emb: Embed = Embed(colour=Colour.blurple())
 
-            if self.cog.is_generally_illegal_word(self.cog.bot, word, guild.id):
+            if self.cog.is_generally_illegal_word(self.cog.common, word, guild.id):
                 emb.description = f'⚠️ The word *{word.lower()}* is not a legal word.'
                 await interaction.followup.send(embed=emb)
                 return
@@ -535,30 +535,6 @@ to the other game mode!''')
 
         # ------------------------------------------------------------------------------------------------------------
 
-        @staticmethod
-        def get_current_languages(bot: WordChainBot, server_id: int) -> str:
-            """
-            Returns the currently enabled languages for a server.
-
-            Parameters
-            ----------
-            bot : WordChainBot
-                The bot instance.
-            server_id : int
-                The ID of the server.
-
-            Returns
-            -------
-            str
-                A formatted string containing the currently enabled languages. This can be directly used in
-                Embed descriptions.
-            """
-            return f'''Currently enabled languages:
-{'\n'.join(f'- {language.display_name} (`{language.value.code}`)'
-           for language in bot.server_configs[server_id].languages)}'''
-
-        # ------------------------------------------------------------------------------------------------------------
-
         @app_commands.command(name='show-all', description="Shows all available languages")
         async def show_all(self, interaction: Interaction) -> None:
             await interaction.response.defer(thinking=True)
@@ -568,8 +544,8 @@ to the other game mode!''')
                 return
 
             emb: Embed = Embed(colour=Colour.yellow(), title='Languages supported by the bot', description='')
-            await self.cog.bot.ensure_config(guild)
-            config = self.cog.bot.server_configs[guild.id]
+            await self.cog.common.ensure_config(guild)
+            config = self.cog.common.server_configs[guild.id]
             emb.description += f'''The bot supports the following languages:
 {'\n'.join(f'- {language.display_name} (`{language.value.code}`) \
 {'✅' if language in config.languages else ''}' for language in Language)}
@@ -584,7 +560,7 @@ to the other game mode!''')
             guild = interaction.guild
             if guild is None:
                 return []
-            config = self.cog.bot.server_configs[guild.id]
+            config = self.cog.common.server_configs[guild.id]
             already_assigned_languages = config.languages
             values = [l.value.code for l in Language if l.value.code.startswith(value.lower()) and l not in already_assigned_languages][:25]
             return [Choice[str](name=v, value=v) for v in values]
@@ -610,11 +586,11 @@ to the other game mode!''')
                 await interaction.followup.send(embed=embed)
                 return
 
-            await self.cog.bot.ensure_config(guild)
-            config = self.cog.bot.server_configs[guild.id]
+            await self.cog.common.ensure_config(guild)
+            config = self.cog.common.server_configs[guild.id]
             if language in config.languages:
                 embed.description = f'''✅ *{language.display_name}* is **already enabled** in this server.\n
-{ManagerCommandsCog.LanguageCmdGroup.get_current_languages(self.cog.bot, guild.id)}'''
+{self.cog.common.get_current_languages_string(self.cog.common, guild.id)}'''
                 embed.colour = Colour.green()
 
                 await interaction.followup.send(embed=embed)
@@ -634,7 +610,7 @@ to the other game mode!''')
                 await connection.commit()
 
             embed.description = f'''✅ *{language.display_name}* has been enabled for this server.\n
-{ManagerCommandsCog.LanguageCmdGroup.get_current_languages(self.cog.bot, guild.id)}'''
+{self.cog.common.get_current_languages_string(self.cog.common, guild.id)}'''
             embed.colour = Colour.green()
 
             await interaction.followup.send(embed=embed)
@@ -645,7 +621,7 @@ to the other game mode!''')
             guild = interaction.guild
             if guild is None:
                 return []
-            config = self.cog.bot.server_configs[guild.id]
+            config = self.cog.common.server_configs[guild.id]
             available_languages = config.languages
             values = [l.value.code for l in available_languages if l.value.code.startswith(value.lower())][:25]
             return [Choice[str](name=v, value=v) for v in values]
@@ -671,11 +647,11 @@ to the other game mode!''')
                 await interaction.followup.send(embed=embed)
                 return
 
-            await self.cog.bot.ensure_config(guild)
-            config = self.cog.bot.server_configs[guild.id]
+            await self.cog.common.ensure_config(guild)
+            config = self.cog.common.server_configs[guild.id]
             if len(config.languages) == 1:
                 embed.description = f'''❌ The server must have at least one language enabled.\n
-{ManagerCommandsCog.LanguageCmdGroup.get_current_languages(self.cog.bot, guild.id)}'''
+{self.cog.common.get_current_languages_string(self.cog.common, guild.id)}'''
                 embed.colour = Colour.red()
 
                 await interaction.followup.send(embed=embed)
@@ -683,7 +659,7 @@ to the other game mode!''')
 
             if language not in config.languages:
                 embed.description = f'''✅ *{language.display_name}* is **not enabled** in this server.
-\n{ManagerCommandsCog.LanguageCmdGroup.get_current_languages(self.cog.bot, guild.id)}'''
+\n{self.cog.common.get_current_languages_string(self.cog.common, guild.id)}'''
                 embed.colour = Colour.green()
                 await interaction.followup.send(embed=embed)
                 return
@@ -695,7 +671,7 @@ to the other game mode!''')
                 await connection.commit()
 
             embed.description = f'''✅ *{language.display_name}* has been disabled for this server.\n
-{self.get_current_languages(self.cog.bot, guild.id)}'''
+{self.cog.common.get_current_languages_string(self.cog.common, guild.id)}'''
             embed.colour = Colour.green()
 
             await interaction.followup.send(embed=embed)

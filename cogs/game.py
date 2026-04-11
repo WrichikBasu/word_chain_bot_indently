@@ -15,7 +15,7 @@ from discord.ext.commands import Cog
 from sqlalchemy import CursorResult, delete, exists, func, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from consts import COG_NAME_GAME, LOGGER_NAME_GAME_COG, MISTAKE_PENALTY, SETTINGS, GameMode, COG_NAME_COMMON
+from consts import COG_NAME_COMMON, COG_NAME_GAME, LOGGER_NAME_GAME_COG, MISTAKE_PENALTY, SETTINGS, GameMode
 from karma import calculate_total_karma
 from language import Language
 from model import BannedMemberModel, MemberModel, ServerConfig, UsedWordsModel
@@ -54,18 +54,6 @@ class GameCog(Cog, name=COG_NAME_GAME):
     # ----------------------------------------------------------------------------------------------------------------
 
     @commands.Cog.listener()
-    async def on_ready(self) -> None:
-        logger.info(f'game cog ready')
-
-    # ----------------------------------------------------------------------------------------------------------------
-    
-    @commands.Cog.listener()
-    async def on_guild_join(self) -> None:
-        pass
-
-    # ----------------------------------------------------------------------------------------------------------------
-
-    @commands.Cog.listener()
     async def on_message(self, message: discord.Message) -> None:
         if message.author == self.bot.user:
             return
@@ -82,11 +70,11 @@ class GameCog(Cog, name=COG_NAME_GAME):
         server_id = message.guild.id
 
         # Check if we have a config ready for this server, and the server has been marked as ready
-        if server_id not in self.bot.server_configs or server_id not in self.bot.servers_ready:
+        if server_id not in self.common.server_configs or server_id not in self.common.servers_ready:
             return
 
-        await self.bot.ensure_config(message.guild)
-        config = self.bot.server_configs[server_id]
+        await self.common.ensure_config(message.guild)
+        config = self.common.server_configs[server_id]
         if message.channel.id == config.game_state[GameMode.NORMAL].channel_id:
             await self.on_message_for_word_chain(message, GameMode.NORMAL)
         elif message.channel.id == config.game_state[GameMode.HARD].channel_id:
@@ -110,8 +98,8 @@ class GameCog(Cog, name=COG_NAME_GAME):
         if not message.guild:
             return
 
-        await self.bot.ensure_config(message.guild)
-        config = self.bot.server_configs[message.guild.id]
+        await self.common.ensure_config(message.guild)
+        config = self.common.server_configs[message.guild.id]
 
         # Check if the message is in the channel
         if message.channel.id not in (config.game_state[GameMode.NORMAL].channel_id,
@@ -119,7 +107,7 @@ class GameCog(Cog, name=COG_NAME_GAME):
             return
         if not message.reactions:
             return
-        if not any(self.bot.word_matches_pattern(message.content, language.value) for language in config.languages):
+        if not any(self.common.word_matches_pattern(message.content, language.value) for language in config.languages):
             return
 
         if message.channel.id == config.game_state[GameMode.NORMAL].channel_id:
@@ -154,8 +142,8 @@ class GameCog(Cog, name=COG_NAME_GAME):
         if not before.guild:
             return
 
-        await self.bot.ensure_config(before.guild)
-        config = self.bot.server_configs[before.guild.id]
+        await self.common.ensure_config(before.guild)
+        config = self.common.server_configs[before.guild.id]
 
         # Check if the message is in the channel
         if before.channel.id not in (config.game_state[GameMode.NORMAL].channel_id,
@@ -163,7 +151,7 @@ class GameCog(Cog, name=COG_NAME_GAME):
             return
         if not before.reactions:
             return
-        if not any(self.bot.word_matches_pattern(before.content, language.value) for language in config.languages):
+        if not any(self.common.word_matches_pattern(before.content, language.value) for language in config.languages):
             return
         if before.content.lower() == after.content.lower():
             return
@@ -205,10 +193,10 @@ class GameCog(Cog, name=COG_NAME_GAME):
             return
         server_id = message.guild.id
         # no ensure_config needed here, this is already done in the upper call frame
-        config: ServerConfig = self.bot.server_configs[server_id]
+        config: ServerConfig = self.common.server_configs[server_id]
         word: str = message.content.lower()
         server_languages: list[Language] = config.languages
-        valid_languages: list[Language] = [language for language in server_languages if self.bot.word_matches_pattern(word, language.value)]
+        valid_languages: list[Language] = [language for language in server_languages if self.common.word_matches_pattern(word, language.value)]
 
         if not valid_languages:
             if not any(c.isspace() for c in word):
@@ -278,13 +266,13 @@ The chain has **not** been broken. Please enter another word.''')
             # -------------------------------
             # Check if word is whitelisted
             # -------------------------------
-            word_whitelisted: bool = await self.bot.is_word_whitelisted(word, message.guild.id, connection)
+            word_whitelisted: bool = await self.common.is_word_whitelisted(word, message.guild.id, connection)
 
             # -----------------------------------
             # Check if word is blacklisted
             # (if and only if not whitelisted)
             # -----------------------------------
-            if not word_whitelisted and await self.bot.is_word_blacklisted(word, message.guild.id, connection):
+            if not word_whitelisted and await self.common.is_word_blacklisted(word, message.guild.id, connection):
                 await self.add_reaction(message, '⚠️')
                 await self.send_message_to_channel(message.channel, f'''This word has been **blacklisted**. Please do not use it.
 The chain has **not** been broken. Please enter another word.''')
@@ -297,7 +285,7 @@ The chain has **not** been broken. Please enter another word.''')
             futures: Optional[list[Future]]
 
             # First check the whitelist or the word cache
-            matched_language = await self.bot.is_word_in_cache(word, connection, server_languages)
+            matched_language = await self.common.is_word_in_cache(word, connection, server_languages)
             if word_whitelisted or matched_language:
                 # Word found in cache. No need to query API
                 futures = None
@@ -305,7 +293,7 @@ The chain has **not** been broken. Please enter another word.''')
                 # Word neither whitelisted, nor found in cache.
                 # Start the API request, but deal with it later.
                 # Query only languages where word would be valid.
-                futures = self.bot.start_api_queries(word, valid_languages)
+                futures = self.common.start_api_queries(word, valid_languages)
 
             # -----------------------------------
             # Check repetitions
@@ -362,9 +350,9 @@ current high score of **{config.game_state[game_mode].high_score}**!'''
 
             if futures:
                 for future in futures:
-                    query_result_code = self.bot.get_query_response(future)
+                    query_result_code = self.common.get_query_response(future)
 
-                    if query_result_code == self.bot.API_RESPONSE_WORD_EXISTS:
+                    if query_result_code == self.common.API_RESPONSE_WORD_EXISTS:
                         # The word exists in at least one of the languages the server is configured for.
                         # We don't need to loop over the other Future objects.
                         response = future.result(timeout=5)
@@ -374,14 +362,14 @@ current high score of **{config.game_state[game_mode].high_score}**!'''
 
                         # many foreign words can be found in a languages wiktionary, we accept a word only as existing
                         # if it does match the languages word regex
-                        if self.bot.word_matches_pattern(word, queried_language.value):
+                        if self.common.word_matches_pattern(word, queried_language.value):
                             matched_language: Language = queried_language
                             break
 
                 # Add the words to the cache for all languages
-                await self.bot.add_words_to_cache(futures, connection)
+                await self.common.add_words_to_cache(futures, connection)
 
-                if query_result_code == self.bot.API_RESPONSE_WORD_DOESNT_EXIST:
+                if query_result_code == self.common.API_RESPONSE_WORD_DOESNT_EXIST:
                     if config.game_state[game_mode].current_word:
                         response: str = f'''{message.author.mention} messed up the chain! \
 *The word you entered does not exist.^*
@@ -401,7 +389,7 @@ Restart and try to beat the current high score of **{config.game_state[game_mode
                     await connection.commit()
                     return
 
-                elif query_result_code == self.bot.API_RESPONSE_ERROR:
+                elif query_result_code == self.common.API_RESPONSE_ERROR:
                     await self.add_reaction(message, '⚠️')
                     await self.send_message_to_channel(message.channel, ''':octagonal_sign: There was an issue in the backend.
 The above entered word is **NOT** being taken into account.''')
@@ -426,12 +414,12 @@ The chain has **not** been broken. Please enter another word.\n
 
             await self.add_reaction(message, config.reaction_emoji(game_mode))
 
-            last_words: deque[str] = self.bot.server_histories[server_id][message.author.id][game_mode]
+            last_words: deque[str] = self.common.server_histories[server_id][message.author.id][game_mode]
             # fallback to first configured language if matched_language is unavailable (e.g. matched by whitelist)
             matched_language = matched_language if matched_language else server_languages[0]
             karma: float = calculate_total_karma(word, last_words, matched_language.value, game_mode)
             logger.debug(f'member {message.author.id} got {karma} karma for "{word}"')
-            self.bot.server_histories[server_id][message.author.id][game_mode].append(word)
+            self.common.server_histories[server_id][message.author.id][game_mode].append(word)
 
             stmt = update(MemberModel).where(
                 MemberModel.server_id == message.guild.id,
@@ -456,14 +444,14 @@ The chain has **not** been broken. Please enter another word.\n
                 await self.send_message_to_channel(message.channel, f'{current_count} words! Nice work, keep it up!')
 
             # Check and reset the server config.failed_member_id to None.
-            if self.bot.server_failed_roles[server_id] and config.failed_member_id == message.author.id:
+            if self.common.server_failed_roles[server_id] and config.failed_member_id == message.author.id:
                 config.correct_inputs_by_failed_member += 1
                 if config.correct_inputs_by_failed_member >= 30:
                     config.failed_member_id = None
                     config.correct_inputs_by_failed_member = 0
-                    await self.bot.add_remove_failed_role(message.guild, connection)
+                    await self.common.add_remove_failed_role(message.guild, connection)
 
-            await self.bot.add_remove_reliable_role(message.guild, connection)
+            await self.common.add_remove_reliable_role(message.guild, connection)
             await config.sync_to_db_with_connection(connection)
 
             await connection.commit()
@@ -479,10 +467,10 @@ The chain has **not** been broken. Please enter another word.\n
         server_id = message.guild.id
         member_id = message.author.id
         # no ensure_config needed here, this is already done in the upper call frame
-        config = self.bot.server_configs[server_id]
-        if self.bot.server_failed_roles[server_id]:
+        config = self.common.server_configs[server_id]
+        if self.common.server_failed_roles[server_id]:
             config.failed_member_id = member_id  # Designate current user as failed member
-            await self.bot.add_remove_failed_role(message.guild, connection)
+            await self.common.add_remove_failed_role(message.guild, connection)
 
         config.fail_chain(game_mode, member_id)
 

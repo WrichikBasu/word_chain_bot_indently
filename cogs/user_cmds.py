@@ -14,8 +14,7 @@ from sqlalchemy import CursorResult, func, or_, select
 from sqlalchemy.engine.row import Row
 from sqlalchemy.sql.functions import count
 
-from cogs.manager_cmds import ManagerCommandsCog
-from consts import COG_NAME_USER_CMDS, LOGGER_NAME_USER_COG, SETTINGS, GameMode, COG_NAME_COMMON
+from consts import COG_NAME_COMMON, COG_NAME_USER_CMDS, LOGGER_NAME_USER_COG, SETTINGS, GameMode
 from language import Language
 from model import BannedMemberModel, Member, MemberModel, ServerConfig, ServerConfigModel
 from views.dropdown import Dropdown
@@ -81,7 +80,7 @@ class UserCommandsCog(Cog, name=COG_NAME_USER_CMDS):
             return
 
         emb: Embed = Embed(colour=Colour.gold(), title='Languages enabled in this server', description='')
-        emb.description = ManagerCommandsCog.LanguageCmdGroup.get_current_languages(self.bot, guild.id)
+        emb.description = self.common.get_current_languages_string(self.common, guild.id)
 
         await interaction.followup.send(embed=emb)
 
@@ -108,11 +107,11 @@ class UserCommandsCog(Cog, name=COG_NAME_USER_CMDS):
         if guild is None:
             return
 
-        await self.bot.ensure_config(guild)
-        config = self.bot.server_configs[guild.id]
+        await self.common.ensure_config(guild)
+        config = self.common.server_configs[guild.id]
 
         server_languages = config.languages
-        valid_languages: list[Language] = [language for language in server_languages if self.bot.word_matches_pattern(word, language.value)]
+        valid_languages: list[Language] = [language for language in server_languages if self.common.word_matches_pattern(word, language.value)]
 
         emb = Embed(color=Colour.blurple())
 
@@ -129,47 +128,47 @@ class UserCommandsCog(Cog, name=COG_NAME_USER_CMDS):
         word = word.lower()
 
         async with self.bot.db_connection() as connection:
-            if await self.bot.is_word_whitelisted(word, guild.id, connection):
+            if await self.common.is_word_whitelisted(word, guild.id, connection):
                 emb.description = f'''✅ The word **{word}** is valid.\n
 -# Please note that the validity of words is checked only for the languages that are enabled in the server. \
 Therefore, a word that is valid in this server may not be valid in another server.'''
                 await interaction.followup.send(embed=emb)
                 return
 
-            if await self.bot.is_word_blacklisted(word, guild.id, connection):
+            if await self.common.is_word_blacklisted(word, guild.id, connection):
                 emb.description = f'❌ The word **{word}** is **blacklisted** and hence, **not** valid.'
                 await interaction.followup.send(embed=emb)
                 return
 
-            if await self.bot.is_word_in_cache(word, connection, server_languages):
+            if await self.common.is_word_in_cache(word, connection, server_languages):
                 emb.description = f'''✅ The word **{word}** is valid.\n
 -# Please note that the validity of words is checked only for the languages that are enabled in the server. \
 Therefore, a word that is valid in this server may not be valid in another server.'''
                 await interaction.followup.send(embed=emb)
                 return
 
-            futures: list[Future] = self.bot.start_api_queries(word, valid_languages)
+            futures: list[Future] = self.common.start_api_queries(word, valid_languages)
 
             query_response_code: int
 
             for future in futures:
-                query_response_code = self.bot.get_query_response(future)
+                query_response_code = self.common.get_query_response(future)
 
-                if query_response_code == self.bot.API_RESPONSE_WORD_EXISTS:
+                if query_response_code == self.common.API_RESPONSE_WORD_EXISTS:
                     emb.description = f'''✅ The word **{word}** is valid.\n
 -# Please note that the validity of words is checked only for the languages that are enabled in the server. \
 Therefore, a word that is valid in this server may not be valid in another server.'''
                     break
 
             # Add the words to the cache for all languages
-            await self.bot.add_words_to_cache(futures, connection)
+            await self.common.add_words_to_cache(futures, connection)
 
-            if query_response_code == self.bot.API_RESPONSE_WORD_DOESNT_EXIST:
+            if query_response_code == self.common.API_RESPONSE_WORD_DOESNT_EXIST:
                 emb.description = emb.description = f'''❌ **{word}** is **NOT** a valid word.\n
 -# Please note that the validity of words is checked only for the languages that are enabled in the server. \
 Therefore, a word that is valid in this server may not be valid in another server.'''
 
-            elif query_response_code == self.bot.API_RESPONSE_ERROR:
+            elif query_response_code == self.common.API_RESPONSE_ERROR:
                 emb.description = f'⚠️ There was an issue in fetching the result.'
 
             await interaction.followup.send(embed=emb)
@@ -690,8 +689,8 @@ as it will allow more people discover it!
             if guild is None:
                 return
 
-            await self.cog.bot.ensure_config(guild)
-            config: ServerConfig = self.cog.bot.server_configs[guild.id]
+            await self.cog.common.ensure_config(guild)
+            config: ServerConfig = self.cog.common.server_configs[guild.id]
 
             if config.game_state[game_mode].channel_id is None:  # channel not set yet
                 await interaction.followup.send("Word Chain channel not set yet!")

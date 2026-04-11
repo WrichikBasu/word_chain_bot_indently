@@ -13,9 +13,9 @@ from discord import Colour, Embed, File, Forbidden, Interaction, Object, Permiss
 from discord.ext.commands import Cog
 from sqlalchemy import CursorResult, delete, insert, select
 
-from consts import (COG_NAME_ADMIN_CMDS, LOGGER_NAME_ADMIN_COG, LOGGER_NAME_GAME_COG, LOGGER_NAME_MAIN,
-                    LOGGER_NAME_MANAGER_COG, LOGGER_NAME_USER_COG, LOGGERS_LIST, SETTINGS, GameMode,
-                    LOGGER_NAME_COMMON_COG, COG_NAME_COMMON)
+from consts import (COG_NAME_ADMIN_CMDS, COG_NAME_COMMON, LOGGER_NAME_ADMIN_COG, LOGGER_NAME_COMMON_COG,
+                    LOGGER_NAME_GAME_COG, LOGGER_NAME_MAIN, LOGGER_NAME_MANAGER_COG, LOGGER_NAME_USER_COG, LOGGERS_LIST,
+                    SETTINGS, GameMode)
 from model import (BannedMemberModel, BlacklistModel, MemberModel, ServerConfig, ServerConfigModel, UsedWordsModel,
                    WhitelistModel)
 
@@ -88,7 +88,7 @@ class AdminCommandsCog(Cog, name=COG_NAME_ADMIN_CMDS):
         ]
 
         try:
-            cache_config = self.bot.server_configs[guild_id_as_number]
+            cache_config = self.common.server_configs[guild_id_as_number]
         except KeyError:
             items.append('Server config not present in cache!\n')
 
@@ -514,7 +514,7 @@ class AdminCommandsCog(Cog, name=COG_NAME_ADMIN_CMDS):
                 total_rows_changed += result.rowcount
 
                 # delete config
-                self.cog.bot.server_configs.pop(guild_id_as_number, None)
+                self.cog.common.server_configs.pop(guild_id_as_number, None)
 
                 # Delete data from DB
                 try:
@@ -586,8 +586,8 @@ class AdminCommandsCog(Cog, name=COG_NAME_ADMIN_CMDS):
                 return
 
             async with self.cog.bot.db_connection() as connection:
-                if guild_id_as_number in self.cog.bot.server_configs:
-                    config = self.cog.bot.server_configs[guild_id_as_number]
+                if guild_id_as_number in self.cog.common.server_configs:
+                    config = self.cog.common.server_configs[guild_id_as_number]
                     config.is_banned = ban
                     rows_updated = await config.sync_to_db_with_connection(connection)
 
@@ -639,7 +639,7 @@ class AdminCommandsCog(Cog, name=COG_NAME_ADMIN_CMDS):
             count_failed: int = 0
             for guild in self.cog.bot.guilds:
 
-                config: ServerConfig = self.cog.bot.server_configs[guild.id]
+                config: ServerConfig = self.cog.common.server_configs[guild.id]
 
                 for game_mode in GameMode:
                     if channel := self.cog.bot.get_channel(config.game_state[game_mode].channel_id):
@@ -738,9 +738,9 @@ class AdminCommandsCog(Cog, name=COG_NAME_ADMIN_CMDS):
                 config_exists: bool = True
 
                 # delete config
-                if guild_id_as_number in self.cog.bot.server_configs:
+                if guild_id_as_number in self.cog.common.server_configs:
                     # just reset the data instead to make sure that every current guild has an existing config
-                    if config := self.cog.bot.server_configs.get(guild_id_as_number, None):
+                    if config := self.cog.common.server_configs.get(guild_id_as_number, None):
 
                         new_config: ServerConfig = ServerConfig(server_id=guild_id_as_number,
                                                                 is_banned=config.is_banned)
@@ -751,7 +751,7 @@ class AdminCommandsCog(Cog, name=COG_NAME_ADMIN_CMDS):
 
                 if not config_exists:
                     new_config = ServerConfig(server_id=guild_id_as_number)
-                    self.cog.bot.server_configs[guild_id_as_number] = new_config
+                    self.cog.common.server_configs[guild_id_as_number] = new_config
 
                 try:
                     stmt = delete(ServerConfigModel).where(ServerConfigModel.server_id == guild_id_as_number)
