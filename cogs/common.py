@@ -1,7 +1,6 @@
 """Cog that contains common logic and infrastructure."""
 from __future__ import annotations
 
-import asyncio
 import concurrent.futures
 import inspect
 import logging
@@ -62,7 +61,7 @@ class CommonCog(Cog, name=COG_NAME_COMMON):
         logger.info(f'Cog {self.qualified_name} loaded.')
         if self.bot.is_ready():
             logger.info('Bot is ready, proceeding with preparation of configs.')
-            await self.prepare_configs()
+            await self.prepare_configs(perform_rejoin=False)
         else:
             logger.info('Bot is not ready yet, delaying preparation of configs.')
 
@@ -179,7 +178,7 @@ class CommonCog(Cog, name=COG_NAME_COMMON):
 
     # ---------------------------------------------------------------------------------------------------------------
 
-    async def prepare_configs(self):
+    async def prepare_configs(self, /, *, perform_rejoin: bool):
         logger.info('Preparing configs...')
 
         await self.bot.change_presence(status=discord.Status.idle)
@@ -204,11 +203,14 @@ class CommonCog(Cog, name=COG_NAME_COMMON):
 
             await connection.commit()
 
-        for (index, guild) in enumerate(self.bot.guilds, start=1):
-            config = self.server_configs[guild.id]
-            await self._rejoin(config, guild, '**I\'m now online!**')
-            if index % 100 == 0 or index == len(self.bot.guilds):
-                logger.info(f'{index}/{len(self.bot.guilds)} guilds ready')
+        if perform_rejoin:
+            for (index, guild) in enumerate(self.bot.guilds, start=1):
+                config = self.server_configs[guild.id]
+                await self._rejoin(config, guild, '**I\'m now online!**')
+                if index % 100 == 0 or index == len(self.bot.guilds):
+                    logger.info(f'{index}/{len(self.bot.guilds)} guilds ready')
+        else:
+            self.servers_ready = {g.id for g in self.bot.guilds}
 
         await self.bot.change_presence(status=discord.Status.online)
         logger.info(f'Loaded {len(self.server_configs)} server configs, running on {len(self.bot.guilds)} servers')
@@ -218,7 +220,7 @@ class CommonCog(Cog, name=COG_NAME_COMMON):
     @commands.Cog.listener()
     async def on_ready(self):
         logger.info('Bot is ready now, proceeding with preparation of configs.')
-        await self.prepare_configs()
+        await self.prepare_configs(perform_rejoin=True)
 
     # ---------------------------------------------------------------------------------------------------------------
 
