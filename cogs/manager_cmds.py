@@ -26,14 +26,17 @@ logger = logging.getLogger(LOGGER_NAME_MANAGER_COG)
 
 class ManagerCommandsCog(Cog, name=COG_NAME_MANAGER_CMDS):
 
-    def __init__(self, bot: WordChainBot, common: CommonCog):
+    def __init__(self, bot: WordChainBot):
         self.bot: WordChainBot = bot
-        self.common: CommonCog = common
         self.bot.tree.add_command(ManagerCommandsCog.SetupCommandsGroup(self))
         self.bot.tree.add_command(ManagerCommandsCog.UnsetCommandsGroup(self))
         self.bot.tree.add_command(ManagerCommandsCog.BlacklistCmdGroup(self))
         self.bot.tree.add_command(ManagerCommandsCog.WhitelistCmdGroup(self))
         self.bot.tree.add_command(ManagerCommandsCog.LanguageCmdGroup(self))
+
+    @property
+    def common(self) -> CommonCog:
+        return self.bot.get_cog(COG_NAME_COMMON)
 
     # ----------------------------------------------------------------------------------------------------------------
 
@@ -680,5 +683,4 @@ to the other game mode!''')
 
 
 async def setup(bot: WordChainBot):
-    common = bot.get_cog(COG_NAME_COMMON)
-    await bot.add_cog(ManagerCommandsCog(bot, common))
+    await bot.add_cog(ManagerCommandsCog(bot))

@@ -30,10 +30,13 @@ logger = logging.getLogger(LOGGER_NAME_GAME_COG)
 
 class GameCog(Cog, name=COG_NAME_GAME):
 
-    def __init__(self, bot: WordChainBot, common: CommonCog):
+    def __init__(self, bot: WordChainBot):
         self.bot: WordChainBot = bot
-        self.common: CommonCog = common
         super().__init__()
+    
+    @property
+    def common(self) -> CommonCog:
+        return self.bot.get_cog(COG_NAME_COMMON)
 
     # ----------------------------------------------------------------------------------------------------------------
 
@@ -548,5 +551,4 @@ The chain has **not** been broken. Please enter another word.\n
 
 
 async def setup(bot: WordChainBot):
-    common = bot.get_cog(COG_NAME_COMMON)
-    await bot.add_cog(GameCog(bot, common))
+    await bot.add_cog(GameCog(bot))

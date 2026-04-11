@@ -29,15 +29,18 @@ logger = logging.getLogger(LOGGER_NAME_ADMIN_COG)
 
 class AdminCommandsCog(Cog, name=COG_NAME_ADMIN_CMDS):
 
-    def __init__(self, bot: WordChainBot, common: CommonCog) -> None:
+    def __init__(self, bot: WordChainBot) -> None:
         self.bot: WordChainBot = bot
-        self.common: CommonCog = common
         self.bot.tree.add_command(AdminCommandsCog.AnnounceCmdGroup(self))
         self.bot.tree.add_command(AdminCommandsCog.PurgeCmdGroup(self))
         self.bot.tree.add_command(AdminCommandsCog.LoggingControlCmdGroup(self))
         self.bot.tree.add_command(AdminCommandsCog.BanServerCmdGroup(self))
         self.bot.tree.add_command(AdminCommandsCog.BanMemberCmdGroup(self))
         self.bot.tree.add_command(AdminCommandsCog.ResetCmdGroup(self))
+
+    @property
+    def common(self) -> CommonCog:
+        return self.bot.get_cog(COG_NAME_COMMON)
 
     # -----------------------------------------------------------------------------------------------------------------
 
@@ -846,5 +849,4 @@ class AdminCommandsCog(Cog, name=COG_NAME_ADMIN_CMDS):
 
 
 async def setup(bot: WordChainBot):
-    common = bot.get_cog(COG_NAME_COMMON)
-    await bot.add_cog(AdminCommandsCog(bot, common), guild=Object(id=SETTINGS.admin_guild_id))
+    await bot.add_cog(AdminCommandsCog(bot), guild=Object(id=SETTINGS.admin_guild_id))

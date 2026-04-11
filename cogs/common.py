@@ -1,6 +1,7 @@
 """Cog that contains common logic and infrastructure."""
 from __future__ import annotations
 
+import asyncio
 import concurrent.futures
 import inspect
 import logging
@@ -180,6 +181,8 @@ class CommonCog(Cog, name=COG_NAME_COMMON):
 
     async def prepare_configs(self):
         logger.info('Preparing configs...')
+
+        await self.bot.change_presence(status=discord.Status.idle)
         # load all configs and make sure each guild has one entry
         async with self.bot.db_connection() as connection:
             stmt = select(ServerConfigModel)
@@ -207,6 +210,7 @@ class CommonCog(Cog, name=COG_NAME_COMMON):
             if index % 100 == 0 or index == len(self.bot.guilds):
                 logger.info(f'{index}/{len(self.bot.guilds)} guilds ready')
 
+        await self.bot.change_presence(status=discord.Status.online)
         logger.info(f'Loaded {len(self.server_configs)} server configs, running on {len(self.bot.guilds)} servers')
 
     # ---------------------------------------------------------------------------------------------------------------

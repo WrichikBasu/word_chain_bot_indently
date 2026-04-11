@@ -29,11 +29,14 @@ logger: logging.Logger = logging.getLogger(LOGGER_NAME_USER_COG)
 
 class UserCommandsCog(Cog, name=COG_NAME_USER_CMDS):
 
-    def __init__(self, bot: WordChainBot, common: CommonCog) -> None:
+    def __init__(self, bot: WordChainBot) -> None:
         self.bot: WordChainBot = bot
-        self.common: CommonCog = common
         self.bot.tree.add_command(UserCommandsCog.StatsCmdGroup(self))
         self.bot.tree.add_command(UserCommandsCog.LeaderboardCmdGroup(self))
+
+    @property
+    def common(self) -> CommonCog:
+        return self.bot.get_cog(COG_NAME_COMMON)
 
     # ---------------------------------------------------------------------------------------------------------------
 
@@ -776,5 +779,4 @@ Longest chain length: {config.game_state[game_mode].high_score}
 
 
 async def setup(bot: WordChainBot):
-    common = bot.get_cog(COG_NAME_COMMON)
-    await bot.add_cog(UserCommandsCog(bot, common))
+    await bot.add_cog(UserCommandsCog(bot))
