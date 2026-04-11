@@ -15,12 +15,13 @@ from sqlalchemy.engine.row import Row
 from sqlalchemy.sql.functions import count
 
 from cogs.manager_cmds import ManagerCommandsCog
-from consts import COG_NAME_USER_CMDS, LOGGER_NAME_USER_COG, SETTINGS, GameMode
+from consts import COG_NAME_USER_CMDS, LOGGER_NAME_USER_COG, SETTINGS, GameMode, COG_NAME_COMMON
 from language import Language
 from model import BannedMemberModel, Member, MemberModel, ServerConfig, ServerConfigModel
 from views.dropdown import Dropdown
 
 if TYPE_CHECKING:
+    from cogs.common import CommonCog
     from main import WordChainBot
 
 fileConfig(fname='config.ini')
@@ -29,8 +30,9 @@ logger: logging.Logger = logging.getLogger(LOGGER_NAME_USER_COG)
 
 class UserCommandsCog(Cog, name=COG_NAME_USER_CMDS):
 
-    def __init__(self, bot: WordChainBot) -> None:
-        self.bot = bot
+    def __init__(self, bot: WordChainBot, common: CommonCog) -> None:
+        self.bot: WordChainBot = bot
+        self.common: CommonCog = common
         self.bot.tree.add_command(UserCommandsCog.StatsCmdGroup(self))
         self.bot.tree.add_command(UserCommandsCog.LeaderboardCmdGroup(self))
 
@@ -775,4 +777,5 @@ Longest chain length: {config.game_state[game_mode].high_score}
 
 
 async def setup(bot: WordChainBot):
-    await bot.add_cog(UserCommandsCog(bot))
+    common = bot.get_cog(COG_NAME_COMMON)
+    await bot.add_cog(UserCommandsCog(bot, common))

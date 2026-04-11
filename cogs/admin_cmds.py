@@ -14,11 +14,13 @@ from discord.ext.commands import Cog
 from sqlalchemy import CursorResult, delete, insert, select
 
 from consts import (COG_NAME_ADMIN_CMDS, LOGGER_NAME_ADMIN_COG, LOGGER_NAME_GAME_COG, LOGGER_NAME_MAIN,
-                    LOGGER_NAME_MANAGER_COG, LOGGER_NAME_USER_COG, LOGGERS_LIST, SETTINGS, GameMode)
+                    LOGGER_NAME_MANAGER_COG, LOGGER_NAME_USER_COG, LOGGERS_LIST, SETTINGS, GameMode,
+                    LOGGER_NAME_COMMON_COG, COG_NAME_COMMON)
 from model import (BannedMemberModel, BlacklistModel, MemberModel, ServerConfig, ServerConfigModel, UsedWordsModel,
                    WhitelistModel)
 
 if TYPE_CHECKING:
+    from cogs.common import CommonCog
     from main import WordChainBot
 
 fileConfig(fname='config.ini')
@@ -27,8 +29,9 @@ logger = logging.getLogger(LOGGER_NAME_ADMIN_COG)
 
 class AdminCommandsCog(Cog, name=COG_NAME_ADMIN_CMDS):
 
-    def __init__(self, bot: WordChainBot) -> None:
+    def __init__(self, bot: WordChainBot, common: CommonCog) -> None:
         self.bot: WordChainBot = bot
+        self.common: CommonCog = common
         self.bot.tree.add_command(AdminCommandsCog.AnnounceCmdGroup(self))
         self.bot.tree.add_command(AdminCommandsCog.PurgeCmdGroup(self))
         self.bot.tree.add_command(AdminCommandsCog.LoggingControlCmdGroup(self))
@@ -199,6 +202,7 @@ class AdminCommandsCog(Cog, name=COG_NAME_ADMIN_CMDS):
             app_commands.Choice(name='Manager Commands', value=LOGGER_NAME_MANAGER_COG),
             app_commands.Choice(name='User Commands', value=LOGGER_NAME_USER_COG),
             app_commands.Choice(name='Game', value=LOGGER_NAME_GAME_COG),
+            app_commands.Choice(name='Common', value=LOGGER_NAME_COMMON_COG),
             app_commands.Choice(name='All', value='all')
         ])
         async def set_log_level(self, interaction: Interaction, logger_name: str, level: int):
@@ -303,7 +307,8 @@ class AdminCommandsCog(Cog, name=COG_NAME_ADMIN_CMDS):
             app_commands.Choice(name='Admin Commands', value=LOGGER_NAME_ADMIN_COG),
             app_commands.Choice(name='Manager Commands', value=LOGGER_NAME_MANAGER_COG),
             app_commands.Choice(name='User Commands', value=LOGGER_NAME_USER_COG),
-            app_commands.Choice(name='Game', value=LOGGER_NAME_GAME_COG)
+            app_commands.Choice(name='Game', value=LOGGER_NAME_GAME_COG),
+            app_commands.Choice(name='Common', value=LOGGER_NAME_COMMON_COG)
         ])
         async def disable_specific_logger(self, interaction: Interaction, logger_name: str):
 
@@ -335,7 +340,8 @@ class AdminCommandsCog(Cog, name=COG_NAME_ADMIN_CMDS):
             app_commands.Choice(name='Admin Commands', value=LOGGER_NAME_ADMIN_COG),
             app_commands.Choice(name='Manager Commands', value=LOGGER_NAME_MANAGER_COG),
             app_commands.Choice(name='User Commands', value=LOGGER_NAME_USER_COG),
-            app_commands.Choice(name='Game', value=LOGGER_NAME_GAME_COG)
+            app_commands.Choice(name='Game', value=LOGGER_NAME_GAME_COG),
+            app_commands.Choice(name='Common', value=LOGGER_NAME_COMMON_COG)
         ])
         async def enable_specific_logger(self, interaction: Interaction, logger_name: str, reset_level: bool = True):
 
@@ -373,7 +379,8 @@ class AdminCommandsCog(Cog, name=COG_NAME_ADMIN_CMDS):
             app_commands.Choice(name='Admin Commands', value=LOGGER_NAME_ADMIN_COG),
             app_commands.Choice(name='Manager Commands', value=LOGGER_NAME_MANAGER_COG),
             app_commands.Choice(name='User Commands', value=LOGGER_NAME_USER_COG),
-            app_commands.Choice(name='Game', value=LOGGER_NAME_GAME_COG)
+            app_commands.Choice(name='Game', value=LOGGER_NAME_GAME_COG),
+            app_commands.Choice(name='Common', value=LOGGER_NAME_COMMON_COG)
         ])
         @app_commands.choices(level=[
             app_commands.Choice(name='Debug', value=logging.DEBUG),
@@ -421,6 +428,7 @@ class AdminCommandsCog(Cog, name=COG_NAME_ADMIN_CMDS):
             app_commands.Choice(name='Manager Commands', value=LOGGER_NAME_MANAGER_COG),
             app_commands.Choice(name='User Commands', value=LOGGER_NAME_USER_COG),
             app_commands.Choice(name='Game', value=LOGGER_NAME_GAME_COG),
+            app_commands.Choice(name='Common', value=LOGGER_NAME_COMMON_COG),
             app_commands.Choice(name='All', value='all')
         ])
         async def logger_status(self, interaction: Interaction, logger_name: str = 'all'):
@@ -838,4 +846,5 @@ class AdminCommandsCog(Cog, name=COG_NAME_ADMIN_CMDS):
 
 
 async def setup(bot: WordChainBot):
-    await bot.add_cog(AdminCommandsCog(bot), guild=Object(id=SETTINGS.admin_guild_id))
+    common = bot.get_cog(COG_NAME_COMMON)
+    await bot.add_cog(AdminCommandsCog(bot, common), guild=Object(id=SETTINGS.admin_guild_id))

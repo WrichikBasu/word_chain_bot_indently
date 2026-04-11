@@ -12,11 +12,12 @@ from discord.ext.commands import Cog
 from sqlalchemy import CursorResult, delete, insert, select
 from sqlalchemy.exc import SQLAlchemyError
 
-from consts import COG_NAME_MANAGER_CMDS, LOGGER_NAME_MANAGER_COG, GameMode
+from consts import COG_NAME_MANAGER_CMDS, LOGGER_NAME_MANAGER_COG, GameMode, COG_NAME_COMMON
 from language import Language
 from model import BlacklistModel, GameModeState, MemberModel, WhitelistModel
 
 if TYPE_CHECKING:
+    from cogs.common import CommonCog
     from main import WordChainBot
 
 fileConfig(fname='config.ini')
@@ -25,8 +26,9 @@ logger = logging.getLogger(LOGGER_NAME_MANAGER_COG)
 
 class ManagerCommandsCog(Cog, name=COG_NAME_MANAGER_CMDS):
 
-    def __init__(self, bot: WordChainBot):
+    def __init__(self, bot: WordChainBot, common: CommonCog):
         self.bot: WordChainBot = bot
+        self.common: CommonCog = common
         self.bot.tree.add_command(ManagerCommandsCog.SetupCommandsGroup(self))
         self.bot.tree.add_command(ManagerCommandsCog.UnsetCommandsGroup(self))
         self.bot.tree.add_command(ManagerCommandsCog.BlacklistCmdGroup(self))
@@ -702,4 +704,5 @@ to the other game mode!''')
 
 
 async def setup(bot: WordChainBot):
-    await bot.add_cog(ManagerCommandsCog(bot))
+    common = bot.get_cog(COG_NAME_COMMON)
+    await bot.add_cog(ManagerCommandsCog(bot, common))
