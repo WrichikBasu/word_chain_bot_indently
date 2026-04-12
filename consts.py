@@ -15,7 +15,8 @@ class GameMode(Enum):
 
 # settings class exists here directly and not in model.py to avoid cyclic imports
 class Settings(BaseSettings):
-    single_player: bool | None = Field(default=False)
+    single_player: bool = Field(default=False)
+    bots_allowed: bool = Field(default=False)
     admin_guild_id: int = Field(default=None, validate_default=True)
     token: str = Field(default=None, validate_default=True)
     command_signature_file: str | Path = Field(default="command_signature.json")

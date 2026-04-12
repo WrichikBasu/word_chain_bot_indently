@@ -33,7 +33,7 @@ class GameCog(Cog, name=COG_NAME_GAME):
     def __init__(self, bot: WordChainBot):
         self.bot: WordChainBot = bot
         super().__init__()
-    
+
     @property
     def common(self) -> CommonCog:
         return self.bot.get_cog(COG_NAME_COMMON)
@@ -61,7 +61,7 @@ class GameCog(Cog, name=COG_NAME_GAME):
         if message.author == self.bot.user:
             return
 
-        if message.author.bot:
+        if not SETTINGS.bots_allowed and message.author.bot:
             return
 
         if not message.content:
@@ -134,7 +134,6 @@ class GameCog(Cog, name=COG_NAME_GAME):
         if before.type != MessageType.default:
             # return early if it was not caused by a normal user message, e.g. use of commands
             return
-
 
         if not self.bot.is_ready():
             return
