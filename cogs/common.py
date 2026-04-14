@@ -155,6 +155,7 @@ class CommonCog(Cog, name=COG_NAME_COMMON):
                 await _connection.execute(stmt)
                 self.server_configs[new_config.server_id] = new_config
                 logger.warning(f'ensure_config for guild {_guild_id}: new config created')
+                logger.warning(f'trace: {caller_function_name} at {caller_filename}:{caller_lineno} for {guild.id} (shard {guild.shard_id})')
             except SQLAlchemyError as e:
                 if "UNIQUE constraint failed" in str(e):
                     stmt = select(ServerConfigModel).where(ServerConfigModel.server_id == _guild_id)
@@ -164,6 +165,7 @@ class CommonCog(Cog, name=COG_NAME_COMMON):
                         config = configs[0]
                         self.server_configs[config.server_id] = config
                         logger.warning(f'ensure_config for guild {_guild_id} (shard {guild.shard_id}): config loaded from db')
+                        logger.warning(f'trace: {caller_function_name} at {caller_filename}:{caller_lineno} for {guild.id} (shard {guild.shard_id})')
                     else:
                         logger.critical(f'ensure_config for guild {_guild_id} (shard {guild.shard_id}): received {len(configs)} configs from DB')
                 else:
