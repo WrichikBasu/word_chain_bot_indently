@@ -744,7 +744,10 @@ Longest chain length: {config.game_state[game_mode].high_score}
                 row = result.fetchone()
 
                 if row is None:
-                    await interaction.followup.send('You have never played in this server!')
+                    if member is None:
+                        await interaction.followup.send('You have never played in this server!')
+                    else:
+                        await interaction.followup.send(f'{member} has never played in this server!')
                     return
 
                 db_member = Member.model_validate(row)
