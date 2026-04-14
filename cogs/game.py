@@ -58,6 +58,13 @@ class GameCog(Cog, name=COG_NAME_GAME):
 
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message) -> None:
+        if message.type != MessageType.default:
+            # return early if it was not caused by a normal user message, e.g. use of commands
+            return
+
+        if not self.bot.is_ready():
+            return
+
         if message.author == self.bot.user:
             return
 
@@ -72,8 +79,16 @@ class GameCog(Cog, name=COG_NAME_GAME):
 
         server_id = message.guild.id
 
-        # Check if we have a config ready for this server, and the server has been marked as ready
-        if server_id not in self.common.server_configs or server_id not in self.common.servers_ready:
+        # Send a warning if the common cog and thus the config cache is unavailable when it is reloading, because we do
+        # not send the rejoin message on cog reload, but only on start up
+        if not self.common:
+            await self.add_reaction(message, '⚠️')
+            await self.send_message_to_channel(message.channel, '''The bot performs some maintenance and will be available soon.
+Try again in a minute.''')
+            return
+
+        # Do not respond until the bot has been marked as ready
+        if server_id not in self.common.servers_ready:
             return
 
         await self.common.ensure_config(message.guild)
