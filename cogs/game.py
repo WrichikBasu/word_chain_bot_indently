@@ -79,12 +79,9 @@ class GameCog(Cog, name=COG_NAME_GAME):
 
         server_id = message.guild.id
 
-        # Send a warning if the common cog and thus the config cache is unavailable when it is reloading, because we do
-        # not send the rejoin message on cog reload, but only on start up
+        # The common cog may be None if it is reloading, which should take only a short time, but we cannot send a
+        #  warning here either, because we don't know if it is in one of our game channels or not
         if not self.common:
-            await self.add_reaction(message, '⚠️')
-            await self.send_message_to_channel(message.channel, '''The bot performs some maintenance and will be available soon.
-Try again in a minute.''')
             return
 
         # Do not respond until the bot has been marked as ready
