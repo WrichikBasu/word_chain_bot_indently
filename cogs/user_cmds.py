@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 from collections import defaultdict
 from concurrent.futures import Future
+from logging.config import fileConfig
 from typing import TYPE_CHECKING, Optional, Sequence
 
 import discord
@@ -13,25 +14,29 @@ from sqlalchemy import CursorResult, func, or_, select
 from sqlalchemy.engine.row import Row
 from sqlalchemy.sql.functions import count
 
-from cogs.manager_cmds import ManagerCommandsCog
-from consts import COG_NAME_USER_CMDS, LOGGER_NAME_USER_COG, SETTINGS, GameMode
+from consts import COG_NAME_COMMON, COG_NAME_USER_CMDS, LOGGER_NAME_USER_COG, SETTINGS, GameMode
 from language import Language
 from model import BannedMemberModel, Member, MemberModel, ServerConfig, ServerConfigModel
 from views.dropdown import Dropdown
 
 if TYPE_CHECKING:
+    from cogs.common import CommonCog
     from main import WordChainBot
 
-logging.basicConfig(level=logging.INFO, format='[%(asctime)s] [%(levelname)s] %(name)s: %(message)s')
+fileConfig(fname='config.ini')
 logger: logging.Logger = logging.getLogger(LOGGER_NAME_USER_COG)
 
 
 class UserCommandsCog(Cog, name=COG_NAME_USER_CMDS):
 
     def __init__(self, bot: WordChainBot) -> None:
-        self.bot = bot
+        self.bot: WordChainBot = bot
         self.bot.tree.add_command(UserCommandsCog.StatsCmdGroup(self))
         self.bot.tree.add_command(UserCommandsCog.LeaderboardCmdGroup(self))
+
+    @property
+    def common(self) -> CommonCog:
+        return self.bot.get_cog(COG_NAME_COMMON)
 
     # ---------------------------------------------------------------------------------------------------------------
 
@@ -53,6 +58,7 @@ class UserCommandsCog(Cog, name=COG_NAME_USER_CMDS):
     # ---------------------------------------------------------------------------------------------------------------
 
     @app_commands.command(name='support', description='Join our support server!')
+    @app_commands.guild_only()
     async def support(self, interaction: Interaction) -> None:
         await interaction.response.defer(ephemeral=True)
         await interaction.followup.send(embed=self.HelpCommand.get_support_server_embed())
@@ -60,6 +66,7 @@ class UserCommandsCog(Cog, name=COG_NAME_USER_CMDS):
     # ---------------------------------------------------------------------------------------------------------------
 
     @app_commands.command(name='vote', description='Vote for the bot!')
+    @app_commands.guild_only()
     async def vote(self, interaction: Interaction) -> None:
         await interaction.response.defer(ephemeral=True)
         await interaction.followup.send(embed=self.HelpCommand.get_vote_embed())
@@ -67,11 +74,16 @@ class UserCommandsCog(Cog, name=COG_NAME_USER_CMDS):
     # ---------------------------------------------------------------------------------------------------------------
 
     @app_commands.command(name='show_languages', description='Lists the languages enabled in this server')
+    @app_commands.guild_only()
     async def show_languages(self, interaction: Interaction) -> None:
         await interaction.response.defer(ephemeral=True)
 
+        guild = interaction.guild
+        if guild is None:
+            return
+
         emb: Embed = Embed(colour=Colour.gold(), title='Languages enabled in this server', description='')
-        emb.description = ManagerCommandsCog.LanguageCmdGroup.get_current_languages(self.bot, interaction.guild.id)
+        emb.description = self.common.get_current_languages_string(self.common, guild.id)
 
         await interaction.followup.send(embed=emb)
 
@@ -79,6 +91,7 @@ class UserCommandsCog(Cog, name=COG_NAME_USER_CMDS):
 
     @app_commands.command(name='check_word', description='Check if a word is correct')
     @app_commands.describe(word='The word to check')
+    @app_commands.guild_only()
     async def check_word(self, interaction: Interaction, word: str):
         """
         Checks if a word is valid.
@@ -92,10 +105,16 @@ class UserCommandsCog(Cog, name=COG_NAME_USER_CMDS):
         6. Query API.
         """
         await interaction.response.defer(ephemeral=True)
-        await self.bot.ensure_config(interaction.guild)
-        config = self.bot.server_configs[interaction.guild.id]
+
+        guild = interaction.guild
+        if guild is None:
+            return
+
+        await self.common.ensure_config(guild)
+        config = self.common.server_configs[guild.id]
+
         server_languages = config.languages
-        valid_languages: list[Language] = [language for language in server_languages if self.bot.word_matches_pattern(word, language.value)]
+        valid_languages: list[Language] = [language for language in server_languages if self.common.word_matches_pattern(word, language.value)]
 
         emb = Embed(color=Colour.blurple())
 
@@ -112,47 +131,47 @@ class UserCommandsCog(Cog, name=COG_NAME_USER_CMDS):
         word = word.lower()
 
         async with self.bot.db_connection() as connection:
-            if await self.bot.is_word_whitelisted(word, interaction.guild.id, connection):
+            if await self.common.is_word_whitelisted(word, guild.id, connection):
                 emb.description = f'''✅ The word **{word}** is valid.\n
 -# Please note that the validity of words is checked only for the languages that are enabled in the server. \
 Therefore, a word that is valid in this server may not be valid in another server.'''
                 await interaction.followup.send(embed=emb)
                 return
 
-            if await self.bot.is_word_blacklisted(word, interaction.guild.id, connection):
+            if await self.common.is_word_blacklisted(word, guild.id, connection):
                 emb.description = f'❌ The word **{word}** is **blacklisted** and hence, **not** valid.'
                 await interaction.followup.send(embed=emb)
                 return
 
-            if await self.bot.is_word_in_cache(word, connection, server_languages):
+            if await self.common.is_word_in_cache(word, connection, server_languages):
                 emb.description = f'''✅ The word **{word}** is valid.\n
 -# Please note that the validity of words is checked only for the languages that are enabled in the server. \
 Therefore, a word that is valid in this server may not be valid in another server.'''
                 await interaction.followup.send(embed=emb)
                 return
 
-            futures: list[Future] = self.bot.start_api_queries(word, valid_languages)
+            futures: list[Future] = self.common.start_api_queries(word, valid_languages)
 
             query_response_code: int
 
             for future in futures:
-                query_response_code = self.bot.get_query_response(future)
+                query_response_code = self.common.get_query_response(future)
 
-                if query_response_code == self.bot.API_RESPONSE_WORD_EXISTS:
+                if query_response_code == self.common.API_RESPONSE_WORD_EXISTS:
                     emb.description = f'''✅ The word **{word}** is valid.\n
 -# Please note that the validity of words is checked only for the languages that are enabled in the server. \
 Therefore, a word that is valid in this server may not be valid in another server.'''
                     break
 
             # Add the words to the cache for all languages
-            await self.bot.add_words_to_cache(futures, connection)
+            await self.common.add_words_to_cache(futures, connection)
 
-            if query_response_code == self.bot.API_RESPONSE_WORD_DOESNT_EXIST:
+            if query_response_code == self.common.API_RESPONSE_WORD_DOESNT_EXIST:
                 emb.description = emb.description = f'''❌ **{word}** is **NOT** a valid word.\n
 -# Please note that the validity of words is checked only for the languages that are enabled in the server. \
 Therefore, a word that is valid in this server may not be valid in another server.'''
 
-            elif query_response_code == self.bot.API_RESPONSE_ERROR:
+            elif query_response_code == self.common.API_RESPONSE_ERROR:
                 emb.description = f'⚠️ There was an issue in fetching the result.'
 
             await interaction.followup.send(embed=emb)
@@ -160,6 +179,7 @@ Therefore, a word that is valid in this server may not be valid in another serve
     # ---------------------------------------------------------------------------------------------------------------
 
     @app_commands.command(name='help', description='Shows the help menu')
+    @app_commands.guild_only()
     async def help(self, interaction: Interaction) -> None:
 
         await interaction.response.defer(ephemeral=True, thinking=True)
@@ -407,7 +427,6 @@ https://discord.gg/yhbzVGBNw3''', colour=Colour.pink())
 
         @staticmethod
         def get_cmd_list_embed(interaction: Interaction) -> Embed:
-
             emb = Embed(title='Slash Commands', color=Colour.blue(),
                         description='''\
 `/stats user` - Shows the stats of a specific user.
@@ -417,7 +436,11 @@ https://discord.gg/yhbzVGBNw3''', colour=Colour.pink())
 `/list_commands` - Lists all the slash commands.
 `/show_languages` - Lists all the supported and currently enabled languages.''')
 
-            if interaction.user.guild_permissions.manage_guild:
+            member = interaction.user
+            if not isinstance(member, discord.Member):
+                return emb
+
+            if member.guild_permissions.manage_guild:
                 emb.description += '''\n
 **Restricted commands — Server Managers only**
 `/set channel` - Sets the channel to chain words.
@@ -440,7 +463,11 @@ https://discord.gg/yhbzVGBNw3''', colour=Colour.pink())
 `/whitelist remove` - Remove a word from the whitelist of this server.
 `/whitelist show` - Show the whitelist words for this server.'''
 
-            if interaction.user.guild_permissions.administrator and interaction.guild.id == SETTINGS.admin_guild_id:
+            guild = interaction.guild
+            if guild is None:
+                return emb
+
+            if member.guild_permissions.administrator and guild.id == SETTINGS.admin_guild_id:
                 emb.description += '''\n
 **Restricted commands — Bot Admins only**
 `/reload` - Reload a specific Cog (or all Cogs).
@@ -507,7 +534,7 @@ as it will allow more people discover it!
     class LeaderboardCmdGroup(app_commands.Group):
 
         def __init__(self, parent_cog: UserCommandsCog):
-            super().__init__(name='leaderboard')
+            super().__init__(name='leaderboard', guild_only=True)
             self.cog: UserCommandsCog = parent_cog
 
         # ---------------------------------------------------------------------------------------------------------------
@@ -529,6 +556,10 @@ as it will allow more people discover it!
             """Command to show the top 10 users with the highest score/karma."""
             await interaction.response.defer()
 
+            guild = interaction.guild
+            if guild is None:
+                return
+
             board_metric: str = 'score' if metric is None else metric.value
             board_scope: str = 'server' if scope is None else scope.value
 
@@ -540,8 +571,8 @@ as it will allow more people discover it!
 
             match board_scope:
                 case 'server':
-                    emb.set_author(name=interaction.guild.name,
-                                   icon_url=interaction.guild.icon.url if interaction.guild.icon else None)
+                    emb.set_author(name=guild.name,
+                                   icon_url=guild.icon.url if guild.icon else None)
                 case 'global':
                     emb.set_author(name='Global')
 
@@ -559,7 +590,7 @@ as it will allow more people discover it!
                 match board_scope:
                     case 'server':
                         stmt = (select(MemberModel.member_id, field)
-                                .where(MemberModel.server_id == interaction.guild.id)
+                                .where(MemberModel.server_id == guild.id)
                                 .where(~MemberModel.member_id.in_(select(BannedMemberModel.member_id)))
                                 .where(field > 0)
                                 .order_by(field.desc())
@@ -601,6 +632,10 @@ as it will allow more people discover it!
             """Command to show the top 10 servers with the highest highscore"""
             await interaction.response.defer()
 
+            guild = interaction.guild
+            if guild is None:
+                return
+
             async with self.cog.bot.db_connection(locked=False) as connection:
                 limit = 10
 
@@ -608,7 +643,7 @@ as it will allow more people discover it!
                     case GameMode.NORMAL:
                         stmt = (select(ServerConfigModel.server_id, ServerConfigModel.high_score)
                                 .where(
-                            or_(ServerConfigModel.is_banned == 0, ServerConfigModel.server_id == interaction.guild.id))
+                            or_(ServerConfigModel.is_banned == 0, ServerConfigModel.server_id == guild.id))
                                 .where(ServerConfigModel.high_score > 0)
                                 .order_by(ServerConfigModel.high_score.desc())
                                 .limit(limit))
@@ -616,7 +651,7 @@ as it will allow more people discover it!
                     case GameMode.HARD:
                         stmt = (select(ServerConfigModel.server_id, ServerConfigModel.hard_mode_high_score)
                                 .where(
-                            or_(ServerConfigModel.is_banned == 0, ServerConfigModel.server_id == interaction.guild.id))
+                            or_(ServerConfigModel.is_banned == 0, ServerConfigModel.server_id == guild.id))
                                 .where(ServerConfigModel.high_score > 0)
                                 .order_by(ServerConfigModel.hard_mode_high_score.desc())
                                 .limit(limit))
@@ -643,7 +678,7 @@ as it will allow more people discover it!
     class StatsCmdGroup(app_commands.Group):
 
         def __init__(self, parent_cog: UserCommandsCog):
-            super().__init__(name='stats')
+            super().__init__(name='stats', guild_only=True)
             self.cog: UserCommandsCog = parent_cog
 
         # ---------------------------------------------------------------------------------------------------------------
@@ -653,8 +688,12 @@ as it will allow more people discover it!
             """Command to show the stats of the server"""
             await interaction.response.defer()
 
-            await self.cog.bot.ensure_config(interaction.guild)
-            config: ServerConfig = self.cog.bot.server_configs[interaction.guild.id]
+            guild = interaction.guild
+            if guild is None:
+                return
+
+            await self.cog.common.ensure_config(guild)
+            config: ServerConfig = self.cog.common.server_configs[guild.id]
 
             if config.game_state[game_mode].channel_id is None:  # channel not set yet
                 await interaction.followup.send("Word Chain channel not set yet!")
@@ -668,8 +707,8 @@ Longest chain length: {config.game_state[game_mode].high_score}
 {f"Last word by: <@{config.game_state[game_mode].last_member_id}>" if config.game_state[game_mode].last_member_id else ""}''',
                 colour=Colour.blurple()
             )
-            server_stats_embed.set_author(name=interaction.guild,
-                                          icon_url=interaction.guild.icon if interaction.guild.icon else None)
+            server_stats_embed.set_author(name=guild,
+                                          icon_url=guild.icon if guild.icon else None)
 
             await interaction.followup.send(embed=server_stats_embed)
 
@@ -681,40 +720,47 @@ Longest chain length: {config.game_state[game_mode].high_score}
             """Command to show the stats of a specific user"""
             await interaction.response.defer()
 
-            if member is None:
-                member = interaction.user
+            if member is not None:
+                scope_member = member
+            elif isinstance(interaction.user, discord.Member):
+                scope_member = interaction.user
+            else:
+                return
 
             def get_member_avatar() -> Optional[discord.Asset]:
-                if member.avatar:
-                    return member.avatar
-                elif member.display_avatar:
-                    return member.display_avatar
+                if scope_member.avatar:
+                    return scope_member.avatar
+                elif scope_member.display_avatar:
+                    return scope_member.display_avatar
                 else:
                     return None
 
             async with self.cog.bot.db_connection(locked=False) as connection:
                 stmt = select(MemberModel).where(
-                    MemberModel.server_id == member.guild.id,
-                    MemberModel.member_id == member.id
+                    MemberModel.server_id == scope_member.guild.id,
+                    MemberModel.member_id == scope_member.id
                 )
                 result: CursorResult = await connection.execute(stmt)
                 row = result.fetchone()
 
                 if row is None:
-                    await interaction.followup.send('You have never played in this server!')
+                    if member is None:
+                        await interaction.followup.send('You have never played in this server!')
+                    else:
+                        await interaction.followup.send(f'{member} has never played in this server!')
                     return
 
                 db_member = Member.model_validate(row)
 
                 stmt = select(count(MemberModel.member_id)).where(
-                    MemberModel.server_id == member.guild.id,
+                    MemberModel.server_id == scope_member.guild.id,
                     MemberModel.score >= db_member.score
                 )
                 result: CursorResult = await connection.execute(stmt)
                 pos_by_score = result.scalar()
 
                 stmt = select(count(MemberModel.member_id)).where(
-                    MemberModel.server_id == member.guild.id,
+                    MemberModel.server_id == scope_member.guild.id,
                     MemberModel.karma >= db_member.karma
                 )
                 result: CursorResult = await connection.execute(stmt)

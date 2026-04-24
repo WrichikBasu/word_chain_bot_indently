@@ -15,7 +15,8 @@ class GameMode(Enum):
 
 # settings class exists here directly and not in model.py to avoid cyclic imports
 class Settings(BaseSettings):
-    single_player: bool | None = Field(default=False)
+    single_player: bool = Field(default=False)
+    bots_allowed: bool = Field(default=False)
     admin_guild_id: int = Field(default=None, validate_default=True)
     token: str = Field(default=None, validate_default=True)
     command_signature_file: str | Path = Field(default="command_signature.json")
@@ -28,20 +29,24 @@ SETTINGS = Settings()
 """Application wide settings object."""
 
 # Names of individual cogs
+COG_NAME_COMMON: str = "common"
 COG_NAME_ADMIN_CMDS: str = "admin_cmds"
 COG_NAME_MANAGER_CMDS: str = "manager_cmds"
 COG_NAME_USER_CMDS: str = "user_cmds"
+COG_NAME_GAME: str = "game"
 
-COGS_LIST: list[str] = [COG_NAME_ADMIN_CMDS, COG_NAME_MANAGER_CMDS, COG_NAME_USER_CMDS]
+COGS_LIST: list[str] = [COG_NAME_COMMON, COG_NAME_ADMIN_CMDS, COG_NAME_MANAGER_CMDS, COG_NAME_USER_CMDS, COG_NAME_GAME]
 """List of all cogs."""
 
 # Names of individual loggers
 LOGGER_NAME_MAIN: str = "__main__"
+LOGGER_NAME_COMMON_COG: str = f"__{COG_NAME_COMMON}__"
 LOGGER_NAME_ADMIN_COG: str = f"__{COG_NAME_ADMIN_CMDS}__"
 LOGGER_NAME_MANAGER_COG: str = f"__{COG_NAME_MANAGER_CMDS}__"
 LOGGER_NAME_USER_COG: str = f"__{COG_NAME_USER_CMDS}__"
+LOGGER_NAME_GAME_COG: str = f"__{COG_NAME_GAME}__"
 
-LOGGERS_LIST: list[str] = [LOGGER_NAME_MAIN, LOGGER_NAME_ADMIN_COG, LOGGER_NAME_MANAGER_COG, LOGGER_NAME_USER_COG]
+LOGGERS_LIST: list[str] = [LOGGER_NAME_MAIN, LOGGER_NAME_COMMON_COG, LOGGER_NAME_ADMIN_COG, LOGGER_NAME_MANAGER_COG, LOGGER_NAME_USER_COG, LOGGER_NAME_GAME_COG]
 """List of all loggers."""
 
 HISTORY_LENGTH: int = 5

@@ -148,19 +148,20 @@ class ServerConfig(BaseModel):
         }
         if self.game_state[game_mode].current_count == self.game_state[game_mode].high_score:
             if not self.game_state[game_mode].used_high_score_emoji:
-                emoji = "🎉"
                 self.game_state[game_mode].used_high_score_emoji = True
+                return "🎉"
             else:
-                emoji = SPECIAL_REACTION_EMOJIS.get(
-                    self.game_state[game_mode].current_word,
-                    special_count_emojis.get(self.game_state[game_mode].current_count, '☑️')
-                )
+                word = self.game_state[game_mode].current_word
+                default = special_count_emojis.get(self.game_state[game_mode].current_count, '☑️')
+                if not word:
+                    return default
+                return SPECIAL_REACTION_EMOJIS.get(word, default)
         else:
-            emoji = SPECIAL_REACTION_EMOJIS.get(
-                self.game_state[game_mode].current_word,
-                special_count_emojis.get(self.game_state[game_mode].current_count, '✅')
-            )
-        return emoji
+            word = self.game_state[game_mode].current_word
+            default = special_count_emojis.get(self.game_state[game_mode].current_count, '✅')
+            if not word:
+                return default
+            return SPECIAL_REACTION_EMOJIS.get(word, default)
 
     def __update_statement(self):
         stmt = update(ServerConfigModel).values(

@@ -5,22 +5,25 @@ import io
 import json
 import logging
 from logging import Logger
+from logging.config import fileConfig
 from typing import TYPE_CHECKING, Optional
 
 import discord
 from discord import Colour, Embed, File, Forbidden, Interaction, Object, Permissions, app_commands
 from discord.ext.commands import Cog
-from sqlalchemy import CursorResult, delete, insert, select, update
+from sqlalchemy import CursorResult, delete, insert, select
 
-from consts import (COG_NAME_ADMIN_CMDS, LOGGER_NAME_ADMIN_COG, LOGGER_NAME_MAIN, LOGGER_NAME_MANAGER_COG,
-                    LOGGER_NAME_USER_COG, LOGGERS_LIST, SETTINGS, GameMode)
+from consts import (COG_NAME_ADMIN_CMDS, COG_NAME_COMMON, LOGGER_NAME_ADMIN_COG, LOGGER_NAME_COMMON_COG,
+                    LOGGER_NAME_GAME_COG, LOGGER_NAME_MAIN, LOGGER_NAME_MANAGER_COG, LOGGER_NAME_USER_COG, LOGGERS_LIST,
+                    SETTINGS, GameMode)
 from model import (BannedMemberModel, BlacklistModel, MemberModel, ServerConfig, ServerConfigModel, UsedWordsModel,
                    WhitelistModel)
 
 if TYPE_CHECKING:
+    from cogs.common import CommonCog
     from main import WordChainBot
 
-logging.basicConfig(level=logging.INFO, format='[%(asctime)s] [%(levelname)s] %(name)s: %(message)s')
+fileConfig(fname='config.ini')
 logger = logging.getLogger(LOGGER_NAME_ADMIN_COG)
 
 
@@ -34,6 +37,10 @@ class AdminCommandsCog(Cog, name=COG_NAME_ADMIN_CMDS):
         self.bot.tree.add_command(AdminCommandsCog.BanServerCmdGroup(self))
         self.bot.tree.add_command(AdminCommandsCog.BanMemberCmdGroup(self))
         self.bot.tree.add_command(AdminCommandsCog.ResetCmdGroup(self))
+
+    @property
+    def common(self) -> CommonCog:
+        return self.bot.get_cog(COG_NAME_COMMON)
 
     # -----------------------------------------------------------------------------------------------------------------
 
@@ -56,6 +63,7 @@ class AdminCommandsCog(Cog, name=COG_NAME_ADMIN_CMDS):
     @app_commands.command(name='health_check', description='Performs a health check on a server')
     @app_commands.default_permissions(administrator=True)
     @app_commands.guilds(SETTINGS.admin_guild_id)
+    @app_commands.guild_only()
     @app_commands.describe(guild_id='ID of the server to check')
     async def health_check(self, interaction: Interaction, guild_id: str):
 
@@ -83,7 +91,7 @@ class AdminCommandsCog(Cog, name=COG_NAME_ADMIN_CMDS):
         ]
 
         try:
-            cache_config = self.bot.server_configs[guild_id_as_number]
+            cache_config = self.common.server_configs[guild_id_as_number]
         except KeyError:
             items.append('Server config not present in cache!\n')
 
@@ -157,6 +165,7 @@ class AdminCommandsCog(Cog, name=COG_NAME_ADMIN_CMDS):
     @app_commands.command(name='list_servers', description='Lists all servers with ID and name for administration')
     @app_commands.default_permissions(administrator=True)
     @app_commands.guilds(SETTINGS.admin_guild_id)
+    @app_commands.guild_only()
     async def list_servers(self, interaction: Interaction):
 
         await interaction.response.defer()
@@ -195,6 +204,8 @@ class AdminCommandsCog(Cog, name=COG_NAME_ADMIN_CMDS):
             app_commands.Choice(name='Admin Commands', value=LOGGER_NAME_ADMIN_COG),
             app_commands.Choice(name='Manager Commands', value=LOGGER_NAME_MANAGER_COG),
             app_commands.Choice(name='User Commands', value=LOGGER_NAME_USER_COG),
+            app_commands.Choice(name='Game', value=LOGGER_NAME_GAME_COG),
+            app_commands.Choice(name='Common', value=LOGGER_NAME_COMMON_COG),
             app_commands.Choice(name='All', value='all')
         ])
         async def set_log_level(self, interaction: Interaction, logger_name: str, level: int):
@@ -298,7 +309,9 @@ class AdminCommandsCog(Cog, name=COG_NAME_ADMIN_CMDS):
             app_commands.Choice(name='Main', value=LOGGER_NAME_MAIN),
             app_commands.Choice(name='Admin Commands', value=LOGGER_NAME_ADMIN_COG),
             app_commands.Choice(name='Manager Commands', value=LOGGER_NAME_MANAGER_COG),
-            app_commands.Choice(name='User Commands', value=LOGGER_NAME_USER_COG)
+            app_commands.Choice(name='User Commands', value=LOGGER_NAME_USER_COG),
+            app_commands.Choice(name='Game', value=LOGGER_NAME_GAME_COG),
+            app_commands.Choice(name='Common', value=LOGGER_NAME_COMMON_COG)
         ])
         async def disable_specific_logger(self, interaction: Interaction, logger_name: str):
 
@@ -329,7 +342,9 @@ class AdminCommandsCog(Cog, name=COG_NAME_ADMIN_CMDS):
             app_commands.Choice(name='Main', value=LOGGER_NAME_MAIN),
             app_commands.Choice(name='Admin Commands', value=LOGGER_NAME_ADMIN_COG),
             app_commands.Choice(name='Manager Commands', value=LOGGER_NAME_MANAGER_COG),
-            app_commands.Choice(name='User Commands', value=LOGGER_NAME_USER_COG)
+            app_commands.Choice(name='User Commands', value=LOGGER_NAME_USER_COG),
+            app_commands.Choice(name='Game', value=LOGGER_NAME_GAME_COG),
+            app_commands.Choice(name='Common', value=LOGGER_NAME_COMMON_COG)
         ])
         async def enable_specific_logger(self, interaction: Interaction, logger_name: str, reset_level: bool = True):
 
@@ -366,7 +381,9 @@ class AdminCommandsCog(Cog, name=COG_NAME_ADMIN_CMDS):
             app_commands.Choice(name='Main', value=LOGGER_NAME_MAIN),
             app_commands.Choice(name='Admin Commands', value=LOGGER_NAME_ADMIN_COG),
             app_commands.Choice(name='Manager Commands', value=LOGGER_NAME_MANAGER_COG),
-            app_commands.Choice(name='User Commands', value=LOGGER_NAME_USER_COG)
+            app_commands.Choice(name='User Commands', value=LOGGER_NAME_USER_COG),
+            app_commands.Choice(name='Game', value=LOGGER_NAME_GAME_COG),
+            app_commands.Choice(name='Common', value=LOGGER_NAME_COMMON_COG)
         ])
         @app_commands.choices(level=[
             app_commands.Choice(name='Debug', value=logging.DEBUG),
@@ -413,6 +430,8 @@ class AdminCommandsCog(Cog, name=COG_NAME_ADMIN_CMDS):
             app_commands.Choice(name='Admin Commands', value=LOGGER_NAME_ADMIN_COG),
             app_commands.Choice(name='Manager Commands', value=LOGGER_NAME_MANAGER_COG),
             app_commands.Choice(name='User Commands', value=LOGGER_NAME_USER_COG),
+            app_commands.Choice(name='Game', value=LOGGER_NAME_GAME_COG),
+            app_commands.Choice(name='Common', value=LOGGER_NAME_COMMON_COG),
             app_commands.Choice(name='All', value='all')
         ])
         async def logger_status(self, interaction: Interaction, logger_name: str = 'all'):
@@ -435,9 +454,9 @@ class AdminCommandsCog(Cog, name=COG_NAME_ADMIN_CMDS):
 
                 case _:
                     logger1: Optional[logging.Logger] = logging.root.manager.loggerDict.get(logger_name, None)
-                    emb.description += f'### `{logger1.name}`\n'
 
                     if logger1:
+                        emb.description += f'### `{logger1.name}`\n'
                         emb.description += f'''> **Status:** {'Disabled' if logger1.disabled else 'Enabled'}
 > **Level:** `{logging.getLevelName(logger1.level)}`'''
                     else:
@@ -498,7 +517,7 @@ class AdminCommandsCog(Cog, name=COG_NAME_ADMIN_CMDS):
                 total_rows_changed += result.rowcount
 
                 # delete config
-                self.cog.bot.server_configs.pop(guild_id_as_number, None)
+                self.cog.common.server_configs.pop(guild_id_as_number, None)
 
                 # Delete data from DB
                 try:
@@ -570,8 +589,8 @@ class AdminCommandsCog(Cog, name=COG_NAME_ADMIN_CMDS):
                 return
 
             async with self.cog.bot.db_connection() as connection:
-                if guild_id_as_number in self.cog.bot.server_configs:
-                    config = self.cog.bot.server_configs[guild_id_as_number]
+                if guild_id_as_number in self.cog.common.server_configs:
+                    config = self.cog.common.server_configs[guild_id_as_number]
                     config.is_banned = ban
                     rows_updated = await config.sync_to_db_with_connection(connection)
 
@@ -623,7 +642,7 @@ class AdminCommandsCog(Cog, name=COG_NAME_ADMIN_CMDS):
             count_failed: int = 0
             for guild in self.cog.bot.guilds:
 
-                config: ServerConfig = self.cog.bot.server_configs[guild.id]
+                config: ServerConfig = self.cog.common.server_configs[guild.id]
 
                 for game_mode in GameMode:
                     if channel := self.cog.bot.get_channel(config.game_state[game_mode].channel_id):
@@ -722,14 +741,12 @@ class AdminCommandsCog(Cog, name=COG_NAME_ADMIN_CMDS):
                 config_exists: bool = True
 
                 # delete config
-                if guild_id_as_number in self.cog.bot.server_configs:
+                if guild_id_as_number in self.cog.common.server_configs:
                     # just reset the data instead to make sure that every current guild has an existing config
-                    if config := self.cog.bot.server_configs.get(guild_id_as_number, None):
+                    if config := self.cog.common.server_configs.get(guild_id_as_number, None):
 
                         new_config: ServerConfig = ServerConfig(server_id=guild_id_as_number,
                                                                 is_banned=config.is_banned)
-                        config = new_config
-                        # total_rows_changed += await config.sync_to_db_with_connection(connection)
                     else:
                         config_exists = False
                 else:
@@ -737,7 +754,7 @@ class AdminCommandsCog(Cog, name=COG_NAME_ADMIN_CMDS):
 
                 if not config_exists:
                     new_config = ServerConfig(server_id=guild_id_as_number)
-                    self.cog.bot.server_configs[guild_id_as_number] = new_config
+                    self.cog.common.server_configs[guild_id_as_number] = new_config
 
                 try:
                     stmt = delete(ServerConfigModel).where(ServerConfigModel.server_id == guild_id_as_number)
