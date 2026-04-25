@@ -78,6 +78,13 @@ class CommonCog(Cog, name=COG_NAME_COMMON):
 
     # ---------------------------------------------------------------------------------------------------------------
 
+    @commands.Cog.listener()
+    async def on_command_error(self, ctx: commands.Context, error: commands.CommandError) -> None:
+        if isinstance(error, commands.CommandNotFound):
+            return
+
+    # ---------------------------------------------------------------------------------------------------------------
+
     async def _rejoin(self, config: ServerConfig, guild: discord.Guild, main_description: str) -> None:
         """
         Handles the complete workflow of making a guild ready.
@@ -260,7 +267,7 @@ class CommonCog(Cog, name=COG_NAME_COMMON):
                 else:
                     logger.exception('unexpected DB error')
 
-        # ---------------------------------------------------------------------------------------------------------------
+    # ---------------------------------------------------------------------------------------------------------------
 
     def load_discord_roles(self, guild: discord.Guild):
         """
