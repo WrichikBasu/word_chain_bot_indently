@@ -14,8 +14,11 @@ from logging.config import fileConfig
 from typing import TYPE_CHECKING, List, Optional
 
 import discord
+from bs4 import BeautifulSoup
 from discord.ext import commands
 from discord.ext.commands import Cog
+from pydantic import BaseModel, ConfigDict, RootModel, field_validator
+from pydantic.alias_generators import to_camel
 from requests_futures.sessions import FuturesSession
 from sqlalchemy import CursorResult, and_, exists, insert, select
 from sqlalchemy.exc import SQLAlchemyError
@@ -394,10 +397,10 @@ class CommonCog(Cog, name=COG_NAME_COMMON):
 
         Parameters
         ----------
-        languages : list[Language]
-             A list of languages to search in.
         word : str
              The word to be searched for.
+        languages : list[Language]
+             A list of languages to search in.
 
         Returns
         -------
@@ -469,6 +472,71 @@ class CommonCog(Cog, name=COG_NAME_COMMON):
             logger.error(f'An exception was raised while getting the query result:\n{ex}')
 
         return CommonCog.API_RESPONSE_ERROR
+
+    # ---------------------------------------------------------------------------------------------------------------
+
+    @staticmethod
+    def query_wiktionary_definitions(word: str, languages: List[Language]) -> dict[Language, list[Definition]] | None:
+        """
+        Queries the wiktionary API to find the definition of a given word for given languages.
+
+        Parameters
+        ----------
+        word : str
+             The word to be searched for.
+        languages : list[Language]
+             A list of languages to search in.
+
+        Returns
+        -------
+        list[concurrent.futures.Future]
+              A list of Future objects for the API query, one for each language.
+        """
+        # Create common variations because wiktionary is case-sensitive
+        variations = set()
+        variations.add(word)
+        variations.add(word.lower())
+        variations.add(word.upper())
+        variations.add(word.capitalize())
+
+        result: dict[Language, list[Definition]] = {}
+        failed = 0
+
+        for variation in sorted(variations, reverse=True):
+            url: str = f"https://en.wiktionary.org/api/rest_v1/page/definition/{variation}?redirect=true"
+            headers: dict = {
+                "User-Agent": "word-chain-bot"
+            }
+
+            session: FuturesSession = FuturesSession()
+            future: Future = session.get(url=url, headers=headers)
+
+            try:
+                response = future.result(5)
+
+                if response.status_code == 200:
+                    data = response.json()
+                    converted = DefinitionResult.model_validate(data)
+
+                    for language in languages:
+                        if language.value.code in converted.root:
+                            if language in result:
+                                result[language].extend(converted.root[language.value.code])
+                            else:
+                                result[language] = converted.root[language.value.code]
+
+            except TimeoutError:
+                logger.error('Timeout error raised when trying to get the definition query result.')
+                failed += 1
+            except Exception as ex:
+                logger.error(f'An exception was raised while getting the definition query result:\n{ex}')
+                failed += 1
+
+        if len(variations) == failed:
+            # if all failed, there must be an issue, thus we return None here
+            return None
+        else:
+            return result
 
     # ---------------------------------------------------------------------------------------------------------------
 
@@ -685,6 +753,28 @@ class CommonCog(Cog, name=COG_NAME_COMMON):
         for language in common.server_configs[server_id].languages)}'''
 
 # ====================================================================================================================
+
+class DefinitionEntry(BaseModel):
+    definition: str
+
+    @field_validator('definition')
+    def sanitize_html(cls, value: str) -> str: # noqa
+        return BeautifulSoup(value, 'html.parser').get_text().strip().split('\n')[0]
+
+class Definition(BaseModel):
+    definitions: list[DefinitionEntry]
+    language: str
+    part_of_speech: str
+
+    @field_validator('definitions')
+    def filter_empty_definitions(cls, v: list[DefinitionEntry]) -> list[DefinitionEntry]: # noqa
+        return [de for de in v if de.definition is not None and len(de.definition) > 0]
+
+    model_config = ConfigDict(
+        alias_generator=to_camel
+    )
+
+DefinitionResult = RootModel[dict[str, list[Definition]]]
 
 
 async def setup(bot: WordChainBot):

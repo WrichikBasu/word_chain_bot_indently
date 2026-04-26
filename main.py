@@ -10,7 +10,7 @@ import discord
 from alembic import command as alembic_command
 from alembic.config import Config as AlembicConfig
 from discord import Colour, Embed, Interaction, Object, app_commands
-from discord.ext.commands import AutoShardedBot, ExtensionNotLoaded, ExtensionError
+from discord.ext.commands import AutoShardedBot, ExtensionError, ExtensionNotLoaded
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, create_async_engine
 
 import character_frequency as cf

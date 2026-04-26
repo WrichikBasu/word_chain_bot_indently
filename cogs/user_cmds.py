@@ -183,6 +183,39 @@ Therefore, a word that is valid in this server may not be valid in another serve
 
     # ---------------------------------------------------------------------------------------------------------------
 
+    @app_commands.command(name='definition', description='Check the definition of a word')
+    @app_commands.describe(word='The word to check')
+    @app_commands.guild_only()
+    async def definition(self, interaction: Interaction, word: str):
+        await interaction.response.defer(ephemeral=True)
+
+        guild = interaction.guild
+        if guild is None:
+            return
+
+        await self.common.ensure_config(guild)
+        config = self.common.server_configs[guild.id]
+
+        data = self.common.query_wiktionary_definitions(word, config.languages)
+
+        emb: Embed = Embed(colour=Colour.orange())
+
+        if data is None:
+            emb.description = f'⚠️ There was an issue in fetching the result.'
+        elif len(data) == 0:
+            emb.description = f'No definition was found for *{word}* in any of your used languages.'
+        else:
+            emb.description = "\n".join(
+                f"**{language.display_name} {d.part_of_speech.lower()}**: {d.definitions[0].definition}"
+                for language, definitions in data.items()
+                for d in definitions
+                if d.definitions and d.definitions[0].definition
+            )
+
+        await interaction.followup.send(embed=emb)
+
+    # ---------------------------------------------------------------------------------------------------------------
+
     @app_commands.command(name='help', description='Shows the help menu')
     @app_commands.guild_only()
     async def help(self, interaction: Interaction) -> None:
