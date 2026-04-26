@@ -70,6 +70,7 @@ SPECIAL_REACTION_EMOJIS: dict[str, str] = {
     'anguilla': '🇦🇮',
     'antarctica': '🇦🇶',
     'antigua': '🇦🇬',
+    'ascension': '🇦🇨',
     'barbuda': '🇦🇬',
     'argentina': '🇦🇷',
     'armenia': '🇦🇲',
@@ -275,8 +276,7 @@ SPECIAL_REACTION_EMOJIS: dict[str, str] = {
     'yemen': '🇾🇪',
     'zambia': '🇿🇲',
     'zimbabwe': '🇿🇼',
-    'russia': '🇷🇺',
-    'indently': '<:python:1041232509628850247>'
+    'russia': '🇷🇺'
 }
 """
 A dictionary mapping the words to the corresponding special emojis.
