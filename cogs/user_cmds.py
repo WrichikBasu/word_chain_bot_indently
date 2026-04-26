@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import time
 from collections import defaultdict
 from concurrent.futures import Future
 from logging.config import fileConfig
@@ -36,7 +37,11 @@ class UserCommandsCog(Cog, name=COG_NAME_USER_CMDS):
 
     @property
     def common(self) -> CommonCog:
-        return self.bot.get_cog(COG_NAME_COMMON)
+        for _ in range(5):
+            if (cog := self.bot.get_cog(COG_NAME_COMMON)) is not None:
+                return cog # noqa
+            time.sleep(.2)
+        raise ValueError(f'Cog {COG_NAME_COMMON} not found')
 
     # ---------------------------------------------------------------------------------------------------------------
 
