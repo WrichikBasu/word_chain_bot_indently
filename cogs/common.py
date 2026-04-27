@@ -9,12 +9,14 @@ import re
 from asyncio import CancelledError
 from collections import defaultdict, deque
 from concurrent.futures import Future
+from enum import Enum
 from json import JSONDecodeError
 from logging.config import fileConfig
 from typing import TYPE_CHECKING, List, Optional
 
 import discord
 from bs4 import BeautifulSoup
+from discord import Guild
 from discord.ext import commands
 from discord.ext.commands import Cog
 from pydantic import BaseModel, ConfigDict, RootModel, field_validator
@@ -680,7 +682,7 @@ class CommonCog(Cog, name=COG_NAME_COMMON):
 
         # +++++++++++++ Global Blacklist and whitelist checking complete ++++++++++++++++++++
 
-        # If the control is here, it means that the word  has neither been globally
+        # If the control is here, it means that the word has neither been globally
         # blacklisted nor whitelisted, or is not an English word.
 
         # Now, if `server` and `connection` are both not `None`, we proceed to check the server
@@ -728,7 +730,68 @@ class CommonCog(Cog, name=COG_NAME_COMMON):
         result: CursorResult = await connection.execute(stmt)
         return bool(result.scalar())
 
-    # ------------------------------------------------------------------------------------------------------------
+    # ---------------------------------------------------------------------------------------------------------------
+
+    async def check_word_status(self, word: str, guild: Guild, languages: list[Language]) -> WordStatus:
+        """
+        Checks the words status, i.e. if the word is valid, invalid, whitelisted, blacklisted.
+
+        Note that whitelist has higher priority than blacklist.
+
+        Parameters
+        ----------
+        word : str
+            The word that is to be checked.
+        guild : Guild
+            The guild which is calling this function.
+        languages: list[Language]
+            The languages configured by the calling guild.
+
+        Returns
+        -------
+        WordStatus
+            Status representing the kind of status the word has.
+        """
+        word = word.lower()
+
+        if len(word) == 1:
+            return WordStatus.TOO_SHORT
+
+        valid_languages: list[Language] = [language for language in languages if self.word_matches_pattern(word, language.value)]
+        if not valid_languages:
+            return WordStatus.NO_LANGUAGE_MATCH
+
+        async with self.bot.db_connection() as connection:
+            if await self.is_word_whitelisted(word, guild.id, connection):
+                return WordStatus.WHITELISTED
+
+            if await self.is_word_blacklisted(word, guild.id, connection):
+                return WordStatus.BLACKLISTED
+
+            if await self.is_word_in_cache(word, connection, languages):
+                return WordStatus.WORD_EXISTS
+
+            futures: list[Future] = self.start_api_queries(word, valid_languages)
+
+            status = WordStatus.ERROR
+            for future in futures:
+                query_response_code = self.get_query_response(future)
+
+                if query_response_code == self.API_RESPONSE_WORD_EXISTS:
+                    status = WordStatus.WORD_EXISTS
+
+                if query_response_code == self.API_RESPONSE_WORD_DOESNT_EXIST:
+                    status = WordStatus.WORD_DOESNT_EXIST
+
+                if query_response_code == self.API_RESPONSE_ERROR:
+                    status = WordStatus.ERROR
+
+            await self.add_words_to_cache(futures, connection)
+            await connection.commit()
+
+            return status
+
+    # ---------------------------------------------------------------------------------------------------------------
 
     @staticmethod
     def get_current_languages_string(common: CommonCog, server_id: int) -> str:
@@ -775,6 +838,16 @@ class Definition(BaseModel):
     )
 
 DefinitionResult = RootModel[dict[str, list[Definition]]]
+
+
+class WordStatus(Enum):
+    TOO_SHORT = 1
+    NO_LANGUAGE_MATCH = 2
+    WHITELISTED = 3
+    BLACKLISTED = 4
+    WORD_EXISTS = 5
+    WORD_DOESNT_EXIST = 6
+    ERROR = 7
 
 
 async def setup(bot: WordChainBot):
