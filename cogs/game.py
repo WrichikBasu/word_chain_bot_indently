@@ -216,6 +216,9 @@ class GameCog(Cog, name=COG_NAME_GAME):
         word: str = message.content.lower()
         server_languages: list[Language] = config.languages
         valid_languages: list[Language] = [language for language in server_languages if self.common.word_matches_pattern(word, language.value)]
+        
+        if len(word) == 0:
+            return
 
         if not valid_languages:
             if not any(c.isspace() for c in word):
@@ -223,8 +226,6 @@ class GameCog(Cog, name=COG_NAME_GAME):
                 await self.add_reaction(message, '⚠️')
                 await self.send_message_to_channel(message.channel, f'''Your word is not a valid word in any of your configured languages.
 The chain has **not** been broken. Please enter another word.''')
-            return
-        if len(word) == 0:
             return
 
         # -------------------------------
