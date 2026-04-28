@@ -4,6 +4,7 @@ from __future__ import annotations
 import io
 import json
 import logging
+import time
 from logging import Logger
 from logging.config import fileConfig
 from typing import TYPE_CHECKING, Optional
@@ -40,7 +41,12 @@ class AdminCommandsCog(Cog, name=COG_NAME_ADMIN_CMDS):
 
     @property
     def common(self) -> CommonCog:
-        return self.bot.get_cog(COG_NAME_COMMON)
+        for _ in range(5):
+            cog: CommonCog | None = self.bot.get_cog(COG_NAME_COMMON) # noqa
+            if cog is not None:
+                return cog # noqa
+            time.sleep(.2)
+        raise ValueError(f'Cog {COG_NAME_COMMON} not found')
 
     # -----------------------------------------------------------------------------------------------------------------
 

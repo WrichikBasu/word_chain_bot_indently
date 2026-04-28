@@ -9,13 +9,18 @@ import re
 from asyncio import CancelledError
 from collections import defaultdict, deque
 from concurrent.futures import Future
+from enum import Enum
 from json import JSONDecodeError
 from logging.config import fileConfig
 from typing import TYPE_CHECKING, List, Optional
 
 import discord
+from bs4 import BeautifulSoup
+from discord import Guild
 from discord.ext import commands
 from discord.ext.commands import Cog
+from pydantic import BaseModel, ConfigDict, RootModel, field_validator
+from pydantic.alias_generators import to_camel
 from requests_futures.sessions import FuturesSession
 from sqlalchemy import CursorResult, and_, exists, insert, select
 from sqlalchemy.exc import SQLAlchemyError
@@ -75,6 +80,13 @@ class CommonCog(Cog, name=COG_NAME_COMMON):
                 self.bot.tree.remove_command(command.name)
 
         logger.info(f'Cog {self.qualified_name} unloaded.')
+
+    # ---------------------------------------------------------------------------------------------------------------
+
+    @commands.Cog.listener()
+    async def on_command_error(self, ctx: commands.Context, error: commands.CommandError) -> None:
+        if isinstance(error, commands.CommandNotFound):
+            return
 
     # ---------------------------------------------------------------------------------------------------------------
 
@@ -260,7 +272,7 @@ class CommonCog(Cog, name=COG_NAME_COMMON):
                 else:
                     logger.exception('unexpected DB error')
 
-        # ---------------------------------------------------------------------------------------------------------------
+    # ---------------------------------------------------------------------------------------------------------------
 
     def load_discord_roles(self, guild: discord.Guild):
         """
@@ -387,10 +399,10 @@ class CommonCog(Cog, name=COG_NAME_COMMON):
 
         Parameters
         ----------
-        languages : list[Language]
-             A list of languages to search in.
         word : str
              The word to be searched for.
+        languages : list[Language]
+             A list of languages to search in.
 
         Returns
         -------
@@ -462,6 +474,71 @@ class CommonCog(Cog, name=COG_NAME_COMMON):
             logger.error(f'An exception was raised while getting the query result:\n{ex}')
 
         return CommonCog.API_RESPONSE_ERROR
+
+    # ---------------------------------------------------------------------------------------------------------------
+
+    @staticmethod
+    def query_wiktionary_definitions(word: str, languages: List[Language]) -> dict[Language, list[Definition]] | None:
+        """
+        Queries the wiktionary API to find the definition of a given word for given languages.
+
+        Parameters
+        ----------
+        word : str
+             The word to be searched for.
+        languages : list[Language]
+             A list of languages to search in.
+
+        Returns
+        -------
+        list[concurrent.futures.Future]
+              A list of Future objects for the API query, one for each language.
+        """
+        # Create common variations because wiktionary is case-sensitive
+        variations = set()
+        variations.add(word)
+        variations.add(word.lower())
+        variations.add(word.upper())
+        variations.add(word.capitalize())
+
+        result: dict[Language, list[Definition]] = {}
+        failed = 0
+
+        for variation in sorted(variations, reverse=True):
+            url: str = f"https://en.wiktionary.org/api/rest_v1/page/definition/{variation}?redirect=true"
+            headers: dict = {
+                "User-Agent": "word-chain-bot"
+            }
+
+            session: FuturesSession = FuturesSession()
+            future: Future = session.get(url=url, headers=headers)
+
+            try:
+                response = future.result(5)
+
+                if response.status_code == 200:
+                    data = response.json()
+                    converted = DefinitionResult.model_validate(data)
+
+                    for language in languages:
+                        if language.value.code in converted.root:
+                            if language in result:
+                                result[language].extend(converted.root[language.value.code])
+                            else:
+                                result[language] = converted.root[language.value.code]
+
+            except TimeoutError:
+                logger.error('Timeout error raised when trying to get the definition query result.')
+                failed += 1
+            except Exception as ex:
+                logger.error(f'An exception was raised while getting the definition query result:\n{ex}')
+                failed += 1
+
+        if len(variations) == failed:
+            # if all failed, there must be an issue, thus we return None here
+            return None
+        else:
+            return result
 
     # ---------------------------------------------------------------------------------------------------------------
 
@@ -605,7 +682,7 @@ class CommonCog(Cog, name=COG_NAME_COMMON):
 
         # +++++++++++++ Global Blacklist and whitelist checking complete ++++++++++++++++++++
 
-        # If the control is here, it means that the word  has neither been globally
+        # If the control is here, it means that the word has neither been globally
         # blacklisted nor whitelisted, or is not an English word.
 
         # Now, if `server` and `connection` are both not `None`, we proceed to check the server
@@ -653,7 +730,68 @@ class CommonCog(Cog, name=COG_NAME_COMMON):
         result: CursorResult = await connection.execute(stmt)
         return bool(result.scalar())
 
-    # ------------------------------------------------------------------------------------------------------------
+    # ---------------------------------------------------------------------------------------------------------------
+
+    async def check_word_status(self, word: str, guild: Guild, languages: list[Language]) -> WordStatus:
+        """
+        Checks the words status, i.e. if the word is valid, invalid, whitelisted, blacklisted.
+
+        Note that whitelist has higher priority than blacklist.
+
+        Parameters
+        ----------
+        word : str
+            The word that is to be checked.
+        guild : Guild
+            The guild which is calling this function.
+        languages: list[Language]
+            The languages configured by the calling guild.
+
+        Returns
+        -------
+        WordStatus
+            Status representing the kind of status the word has.
+        """
+        word = word.lower()
+
+        if len(word) == 1:
+            return WordStatus.TOO_SHORT
+
+        valid_languages: list[Language] = [language for language in languages if self.word_matches_pattern(word, language.value)]
+        if not valid_languages:
+            return WordStatus.NO_LANGUAGE_MATCH
+
+        async with self.bot.db_connection() as connection:
+            if await self.is_word_whitelisted(word, guild.id, connection):
+                return WordStatus.WHITELISTED
+
+            if await self.is_word_blacklisted(word, guild.id, connection):
+                return WordStatus.BLACKLISTED
+
+            if await self.is_word_in_cache(word, connection, languages):
+                return WordStatus.WORD_EXISTS
+
+            futures: list[Future] = self.start_api_queries(word, valid_languages)
+
+            status = WordStatus.ERROR
+            for future in futures:
+                query_response_code = self.get_query_response(future)
+
+                if query_response_code == self.API_RESPONSE_WORD_EXISTS:
+                    status = WordStatus.WORD_EXISTS
+
+                if query_response_code == self.API_RESPONSE_WORD_DOESNT_EXIST:
+                    status = WordStatus.WORD_DOESNT_EXIST
+
+                if query_response_code == self.API_RESPONSE_ERROR:
+                    status = WordStatus.ERROR
+
+            await self.add_words_to_cache(futures, connection)
+            await connection.commit()
+
+            return status
+
+    # ---------------------------------------------------------------------------------------------------------------
 
     @staticmethod
     def get_current_languages_string(common: CommonCog, server_id: int) -> str:
@@ -678,6 +816,38 @@ class CommonCog(Cog, name=COG_NAME_COMMON):
         for language in common.server_configs[server_id].languages)}'''
 
 # ====================================================================================================================
+
+class DefinitionEntry(BaseModel):
+    definition: str
+
+    @field_validator('definition')
+    def sanitize_html(cls, value: str) -> str: # noqa
+        return BeautifulSoup(value, 'html.parser').get_text().strip().split('\n')[0]
+
+class Definition(BaseModel):
+    definitions: list[DefinitionEntry]
+    language: str
+    part_of_speech: str
+
+    @field_validator('definitions')
+    def filter_empty_definitions(cls, v: list[DefinitionEntry]) -> list[DefinitionEntry]: # noqa
+        return [de for de in v if de.definition is not None and len(de.definition) > 0]
+
+    model_config = ConfigDict(
+        alias_generator=to_camel
+    )
+
+DefinitionResult = RootModel[dict[str, list[Definition]]]
+
+
+class WordStatus(Enum):
+    TOO_SHORT = 1
+    NO_LANGUAGE_MATCH = 2
+    WHITELISTED = 3
+    BLACKLISTED = 4
+    WORD_EXISTS = 5
+    WORD_DOESNT_EXIST = 6
+    ERROR = 7
 
 
 async def setup(bot: WordChainBot):

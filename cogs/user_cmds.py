@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import logging
+import time
 from collections import defaultdict
-from concurrent.futures import Future
 from logging.config import fileConfig
 from typing import TYPE_CHECKING, Optional, Sequence
 
@@ -14,6 +14,7 @@ from sqlalchemy import CursorResult, func, or_, select
 from sqlalchemy.engine.row import Row
 from sqlalchemy.sql.functions import count
 
+from cogs.common import WordStatus
 from consts import COG_NAME_COMMON, COG_NAME_USER_CMDS, LOGGER_NAME_USER_COG, SETTINGS, GameMode
 from language import Language
 from model import BannedMemberModel, Member, MemberModel, ServerConfig, ServerConfigModel
@@ -36,7 +37,11 @@ class UserCommandsCog(Cog, name=COG_NAME_USER_CMDS):
 
     @property
     def common(self) -> CommonCog:
-        return self.bot.get_cog(COG_NAME_COMMON)
+        for _ in range(5):
+            if (cog := self.bot.get_cog(COG_NAME_COMMON)) is not None:
+                return cog # noqa
+            time.sleep(.2)
+        raise ValueError(f'Cog {COG_NAME_COMMON} not found')
 
     # ---------------------------------------------------------------------------------------------------------------
 
@@ -113,68 +118,71 @@ class UserCommandsCog(Cog, name=COG_NAME_USER_CMDS):
         await self.common.ensure_config(guild)
         config = self.common.server_configs[guild.id]
 
-        server_languages = config.languages
-        valid_languages: list[Language] = [language for language in server_languages if self.common.word_matches_pattern(word, language.value)]
+        word = word.lower()
 
         emb = Embed(color=Colour.blurple())
 
-        if not valid_languages:
-            emb.description = f'❌ **{word}** is **not** a legal word.'
-            await interaction.followup.send(embed=emb)
-            return
-
-        if len(word) == 1:
-            emb.description = f'❌ **{word}** is **not** a valid word.'
-            await interaction.followup.send(embed=emb)
-            return
-
-        word = word.lower()
-
-        async with self.bot.db_connection() as connection:
-            if await self.common.is_word_whitelisted(word, guild.id, connection):
+        status = await self.common.check_word_status(word, guild, config.languages)
+        match status:
+            case WordStatus.TOO_SHORT:
+                emb.description = f'❌ The word **{word}** is **not** valid.'
+            case WordStatus.NO_LANGUAGE_MATCH:
+                emb.description = f'❌ The word **{word}** is **not** legal.'
+            case WordStatus.WHITELISTED | WordStatus.WORD_EXISTS:
                 emb.description = f'''✅ The word **{word}** is valid.\n
 -# Please note that the validity of words is checked only for the languages that are enabled in the server. \
 Therefore, a word that is valid in this server may not be valid in another server.'''
-                await interaction.followup.send(embed=emb)
-                return
-
-            if await self.common.is_word_blacklisted(word, guild.id, connection):
-                emb.description = f'❌ The word **{word}** is **blacklisted** and hence, **not** valid.'
-                await interaction.followup.send(embed=emb)
-                return
-
-            if await self.common.is_word_in_cache(word, connection, server_languages):
-                emb.description = f'''✅ The word **{word}** is valid.\n
+            case WordStatus.BLACKLISTED:
+                emb.description = f'❌ The word **{word}** is **blacklisted** and therefore **not** valid.'
+            case WordStatus.WORD_DOESNT_EXIST:
+                emb.description = emb.description = f'''❌ The word **{word}** is **NOT** valid.\n
 -# Please note that the validity of words is checked only for the languages that are enabled in the server. \
 Therefore, a word that is valid in this server may not be valid in another server.'''
-                await interaction.followup.send(embed=emb)
-                return
+            case WordStatus.ERROR | _:
+                emb.description = f'⚠️ There was an issue in processing your request.'
 
-            futures: list[Future] = self.common.start_api_queries(word, valid_languages)
+        await interaction.followup.send(embed=emb)
 
-            query_response_code: int
+    # ---------------------------------------------------------------------------------------------------------------
 
-            for future in futures:
-                query_response_code = self.common.get_query_response(future)
+    @app_commands.command(name='definition', description='Check the definition of a word')
+    @app_commands.describe(word='The word to check')
+    @app_commands.guild_only()
+    async def definition(self, interaction: Interaction, word: str):
+        await interaction.response.defer(ephemeral=True)
 
-                if query_response_code == self.common.API_RESPONSE_WORD_EXISTS:
-                    emb.description = f'''✅ The word **{word}** is valid.\n
--# Please note that the validity of words is checked only for the languages that are enabled in the server. \
-Therefore, a word that is valid in this server may not be valid in another server.'''
-                    break
+        guild = interaction.guild
+        if guild is None:
+            return
 
-            # Add the words to the cache for all languages
-            await self.common.add_words_to_cache(futures, connection)
+        await self.common.ensure_config(guild)
+        config = self.common.server_configs[guild.id]
 
-            if query_response_code == self.common.API_RESPONSE_WORD_DOESNT_EXIST:
-                emb.description = emb.description = f'''❌ **{word}** is **NOT** a valid word.\n
--# Please note that the validity of words is checked only for the languages that are enabled in the server. \
-Therefore, a word that is valid in this server may not be valid in another server.'''
+        status = await self.common.check_word_status(word, guild, config.languages)
 
-            elif query_response_code == self.common.API_RESPONSE_ERROR:
-                emb.description = f'⚠️ There was an issue in fetching the result.'
+        emb: Embed = Embed(colour=Colour.orange())
 
-            await interaction.followup.send(embed=emb)
+        match status:
+            case WordStatus.WORD_EXISTS | WordStatus.WHITELISTED:
+                data = self.common.query_wiktionary_definitions(word, config.languages)
+
+                if data is None:
+                    emb.description = f'⚠️ There was an issue in processing your request.'
+                elif len(data) == 0:
+                    emb.description = f'No definition was found for **{word}** in any of your used languages.'
+                else:
+                    emb.description = "\n".join(
+                        f"**{language.display_name} {d.part_of_speech.lower()}**: {d.definitions[0].definition}"
+                        for language, definitions in data.items()
+                        for d in definitions
+                        if d.definitions and d.definitions[0].definition
+                    )
+            case WordStatus.WORD_DOESNT_EXIST | WordStatus.BLACKLISTED | WordStatus.NO_LANGUAGE_MATCH | WordStatus.TOO_SHORT:
+                emb.description = f'The word **{word}** is not valid and therefore no definition is available.'
+            case WordStatus.ERROR | _:
+                emb.description = f'⚠️ There was an issue in processing your request.'
+
+        await interaction.followup.send(embed=emb)
 
     # ---------------------------------------------------------------------------------------------------------------
 
