@@ -217,7 +217,7 @@ class GameCog(Cog, name=COG_NAME_GAME):
         server_languages: list[Language] = config.languages
         valid_languages: list[Language] = [language for language in server_languages if self.common.word_matches_pattern(word, language.value)]
 
-        if len(word) == 0:
+        if len(word) == 0 or word == '.':
             return
 
         # -------------------------------
