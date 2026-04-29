@@ -1028,7 +1028,7 @@ wheels = [
 
 [[package]]
 name = "word-chain-bot-indently"
-version = "11.0.0"
+version = "11.1.0"
 source = { virtual = "." }
 dependencies = [
     { name = "aiofiles" },
