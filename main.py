@@ -10,7 +10,7 @@ import discord
 from alembic import command as alembic_command
 from alembic.config import Config as AlembicConfig
 from discord import Colour, Embed, Interaction, Object, app_commands
-from discord.ext.commands import AutoShardedBot, ExtensionNotLoaded
+from discord.ext.commands import AutoShardedBot, ExtensionError, ExtensionNotLoaded
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, create_async_engine
 
 import character_frequency as cf
@@ -140,24 +140,33 @@ async def reload(interaction: Interaction, cog_name: str, force_sync: bool = Fal
 
     await interaction.response.defer()
 
+    cogs_failed: list[str] = []
+
     match cog_name:
 
         case 'all':
             for cog_name in COGS_LIST:
-                try:  # Try to unload each cog
+                try:
+                    try:  # Try to unload each cog
+                        await word_chain_bot.unload_extension(f'cogs.{cog_name}')
+                    except ExtensionNotLoaded:
+                        logger.info(f'Extension {cog_name} not loaded.')
+
+                    await word_chain_bot.load_extension(f'cogs.{cog_name}')  # Then reload the
+                except ExtensionError as e:
+                    logger.exception(f'Failed to load extension {cog_name}', e)
+                    cogs_failed.append(cog_name)
+        case _:
+            try:
+                try:
                     await word_chain_bot.unload_extension(f'cogs.{cog_name}')
                 except ExtensionNotLoaded:
                     logger.info(f'Extension {cog_name} not loaded.')
 
-                await word_chain_bot.load_extension(f'cogs.{cog_name}')  # Then reload the cog
-
-        case _:
-            try:
-                await word_chain_bot.unload_extension(f'cogs.{cog_name}')
-            except ExtensionNotLoaded:
-                logger.info(f'Extension {cog_name} not loaded.')
-
-            await word_chain_bot.load_extension(f'cogs.{cog_name}')
+                await word_chain_bot.load_extension(f'cogs.{cog_name}')
+            except ExtensionError as e:
+                logger.exception(f'Failed to load extension {cog_name}', e)
+                cogs_failed.append(cog_name)
 
     admin_guild = Object(id=SETTINGS.admin_guild_id)
     global_payload = [command.to_dict(word_chain_bot.tree) for command in word_chain_bot.tree.get_commands()]
@@ -190,6 +199,9 @@ async def reload(interaction: Interaction, cog_name: str, force_sync: bool = Fal
 
     emb.add_field(name="Global commands", value=f"{len(global_sync)}" if global_sync else "SKIPPED")
     emb.add_field(name="Admin commands", value=f"{len(admin_sync)}" if admin_sync else "SKIPPED")
+
+    if cogs_failed:
+        emb.add_field(name="Cogs", value=f"{",".join([f"*{c}*" for c in cogs_failed])} failed to load")
 
     await interaction.followup.send(embed=emb)
 

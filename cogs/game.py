@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import logging
 import re
+import time
 from asyncio import Future
 from collections import deque
 from logging.config import fileConfig
@@ -36,7 +37,11 @@ class GameCog(Cog, name=COG_NAME_GAME):
 
     @property
     def common(self) -> CommonCog:
-        return self.bot.get_cog(COG_NAME_COMMON)
+        for _ in range(5):
+            if (cog := self.bot.get_cog(COG_NAME_COMMON)) is not None:
+                return cog # noqa
+            time.sleep(.2)
+        raise ValueError(f'Cog {COG_NAME_COMMON} not found')
 
     # ----------------------------------------------------------------------------------------------------------------
 
@@ -212,14 +217,7 @@ class GameCog(Cog, name=COG_NAME_GAME):
         server_languages: list[Language] = config.languages
         valid_languages: list[Language] = [language for language in server_languages if self.common.word_matches_pattern(word, language.value)]
 
-        if not valid_languages:
-            if not any(c.isspace() for c in word):
-                # in this case, we have a single word, that did not match any of the configured language regex patterns
-                await self.add_reaction(message, '⚠️')
-                await self.send_message_to_channel(message.channel, f'''Your word is not a valid word in any of your configured languages.
-The chain has **not** been broken. Please enter another word.''')
-            return
-        if len(word) == 0:
+        if len(word) == 0 or word == '.':
             return
 
         # -------------------------------
@@ -240,6 +238,17 @@ The chain has **not** been broken. Please enter another word.''')
         if len(word) == 1:
             await self.add_reaction(message, '⚠️')
             await self.send_message_to_channel(message.channel, f'''Single-letter inputs are no longer accepted.
+The chain has **not** been broken. Please enter another word.''')
+            return
+
+        # --------------------
+        # Check language match
+        # --------------------
+        if not valid_languages:
+            if not any(c.isspace() for c in word):
+                # in this case, we have a single word, that did not match any of the configured language regex patterns
+                await self.add_reaction(message, '⚠️')
+                await self.send_message_to_channel(message.channel, f'''Your word is not a valid word in any of your configured languages.
 The chain has **not** been broken. Please enter another word.''')
             return
 
