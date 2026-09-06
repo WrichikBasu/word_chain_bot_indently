@@ -13,9 +13,10 @@ from discord.ext.commands import Cog
 from sqlalchemy import CursorResult, delete, insert, select
 from sqlalchemy.exc import SQLAlchemyError
 
-from consts import COG_NAME_COMMON, COG_NAME_MANAGER_CMDS, LOGGER_NAME_MANAGER_COG, GameMode
+from consts import COG_NAME_COMMON, COG_NAME_MANAGER_CMDS, LOGGER_NAME_MANAGER_COG, GameMode, \
+    RELIABLE_ROLE_KARMA_THRESHOLD, RELIABLE_ROLE_ACCURACY_THRESHOLD
 from language import Language
-from model import BlacklistModel, GameModeState, MemberModel, WhitelistModel
+from model import BlacklistModel, GameModeState, MemberModel, WhitelistModel, ServerConfig, ServerConfigModel
 
 if TYPE_CHECKING:
     from cogs.common import CommonCog
@@ -105,6 +106,34 @@ class ManagerCommandsCog(Cog, name=COG_NAME_MANAGER_CMDS):
 
         await interaction.followup.send(embed=emb)
 
+    # ----------------------------------------------------------------------------------------------------------------
+
+    @app_commands.command(name='health_check', description='Performs a health check on your server')
+    @app_commands.default_permissions(manage_guild=True)
+    @app_commands.guild_only()
+    async def health_check(self, interaction: Interaction):
+        await interaction.response.defer()
+
+        guild = interaction.guild
+
+        if guild is None:
+            await interaction.followup.send('Guild not found!')
+            return
+
+        items: list[str] = [
+            f'{guild.name} ({guild.id})'
+        ]
+
+        bot_member = guild.get_member(self.bot.user.id)
+
+        try:
+            config = self.common.server_configs[guild.id]
+            items.extend(self.common.permission_checks_for_config(config, bot_member))
+        except KeyError:
+            items.append('Server config not present!')
+
+        await interaction.followup.send('\n'.join(items))
+
     # ================================================================================================================
 
     class SetupCommandsGroup(Group):
@@ -118,10 +147,11 @@ class ManagerCommandsCog(Cog, name=COG_NAME_MANAGER_CMDS):
 
         @app_commands.command(name='reliable_role',
                               description='Sets the role that a user gets upon reaching'
-                                          ' a karma of 50 and accuracy > 99%')
+                                          f' a karma of {RELIABLE_ROLE_KARMA_THRESHOLD} and'
+                                          f' accuracy > {RELIABLE_ROLE_ACCURACY_THRESHOLD:.1%}')
         @app_commands.describe(role='The role to be used')
         async def set_reliable_role(self, interaction: Interaction, role: Role):
-            """Command to set the role to be used when a user attains 50 karma and accuracy > 99%"""
+            """Command to set the role to be used when a user satisfies the threshold"""
             await interaction.response.defer()
 
             guild = interaction.guild

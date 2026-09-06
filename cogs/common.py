@@ -16,7 +16,7 @@ from typing import TYPE_CHECKING, List, Optional
 
 import discord
 from bs4 import BeautifulSoup
-from discord import Guild
+from discord import Guild, Permissions, Member
 from discord.ext import commands
 from discord.ext.commands import Cog
 from pydantic import BaseModel, ConfigDict, RootModel, field_validator
@@ -814,6 +814,46 @@ class CommonCog(Cog, name=COG_NAME_COMMON):
         return f'''Currently enabled languages:
 {'\n'.join(f'- {language.display_name} (`{language.value.code}`)'
         for language in common.server_configs[server_id].languages)}'''
+
+    # ---------------------------------------------------------------------------------------------------------------
+
+    @staticmethod
+    def permission_checks_for_config(config: ServerConfig | None, bot_member: Member) -> list[str]:
+        items = []
+        guild = bot_member.guild
+
+        def permission_check_strings(permissions: Permissions) -> list[str]:
+            return [f'Can view channels: {'✅' if permissions.view_channel else '❌'}',
+                    f'Can send messages: {'✅' if permissions.send_messages else '❌'}',
+                    f'Can view message history: {'✅' if permissions.read_message_history else '❌'}',
+                    f'Can add reactions: {'✅' if permissions.add_reactions else '❌'}',
+                    f'Can use external emotes: {'✅' if permissions.use_external_emojis else '❌'}']
+
+        guild_permission_messages = ([f'Can manage roles: {'✅' if bot_member.guild_permissions.manage_roles else '❌'}']
+                                     + permission_check_strings(bot_member.guild_permissions))
+
+        items.append('Guild permissions:\n' + '\n'.join(guild_permission_messages) + '\n')
+
+        if config is None:
+            return items
+
+        for game_mode in GameMode:
+            game_state = config.game_state[game_mode]
+            if game_state.channel_id is None:
+                items.append(f'Channel not set for {game_mode.name}\n')
+                continue
+            try:
+                channel = guild.get_channel(game_state.channel_id)
+            except discord.errors.HTTPException:
+                channel = None
+
+            if channel is None:
+                items.append(f'Could not get channel by ID {game_state.channel_id}\n')
+            else:
+                channel_permission_messages = permission_check_strings(channel.permissions_for(bot_member))
+                items.append(
+                    f'Channel permissions ({game_mode.name}):\n' + '\n'.join(channel_permission_messages) + '\n')
+        return items
 
 # ====================================================================================================================
 

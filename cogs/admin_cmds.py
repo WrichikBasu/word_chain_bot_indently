@@ -66,7 +66,7 @@ class AdminCommandsCog(Cog, name=COG_NAME_ADMIN_CMDS):
 
     # -----------------------------------------------------------------------------------------------------------------
 
-    @app_commands.command(name='health_check', description='Performs a health check on a server')
+    @app_commands.command(name='admin_health_check', description='Performs a health check on a server')
     @app_commands.default_permissions(administrator=True)
     @app_commands.guilds(SETTINGS.admin_guild_id)
     @app_commands.guild_only()
@@ -121,48 +121,11 @@ class AdminCommandsCog(Cog, name=COG_NAME_ADMIN_CMDS):
             if len(diff) > 0:
                 items.append(f'Differences in cache and database configs: {diff}\n')
 
-        # permissions:
-        # manage roles
-        # view channels
-        # send messages
-        # view message history
-        # add reactions
-        # use external emotes (?)
+
         bot_member = guild.get_member(self.bot.user.id)
+        config = self.common.server_configs[guild.id]
 
-        def permission_checks(permissions: Permissions) -> list[str]:
-            return [f'Can view channels: {'✅' if permissions.view_channel else '❌'}',
-                    f'Can send messages: {'✅' if permissions.send_messages else '❌'}',
-                    f'Can view message history: {'✅' if permissions.read_message_history else '❌'}',
-                    f'Can add reactions: {'✅' if permissions.add_reactions else '❌'}',
-                    f'Can use external emotes: {'✅' if permissions.use_external_emojis else '❌'}']
-
-        guild_permission_messages = ([f'Can manage roles: {'✅' if bot_member.guild_permissions.manage_roles else '❌'}']
-                                     + permission_checks(bot_member.guild_permissions))
-
-        items.append('Guild permissions:\n' + '\n'.join(guild_permission_messages) + '\n')
-
-        config = cache_config or db_config
-        if not config:
-            await interaction.followup.send('\n'.join(items))
-            return
-
-        for game_mode in GameMode:
-            game_state = config.game_state[game_mode]
-            if game_state.channel_id is None:
-                items.append(f'Channel not set for {game_mode.name}\n')
-                continue
-            try:
-                channel = guild.get_channel(game_state.channel_id)
-            except discord.errors.HTTPException:
-                channel = None
-
-            if channel is None:
-                items.append(f'Could not get channel by ID {game_state.channel_id}\n')
-            else:
-                channel_permission_messages = permission_checks(channel.permissions_for(bot_member))
-                items.append(
-                    f'Channel permissions ({game_mode.name}):\n' + '\n'.join(channel_permission_messages) + '\n')
+        items.extend(self.common.permission_checks_for_config(config, bot_member))
 
         await interaction.followup.send('\n'.join(items))
 

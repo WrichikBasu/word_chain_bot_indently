@@ -13,7 +13,6 @@ from discord import Colour, Embed, Interaction, Object, app_commands
 from discord.ext.commands import AutoShardedBot, ExtensionError, ExtensionNotLoaded
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, create_async_engine
 
-import character_frequency as cf
 from consts import (COG_NAME_ADMIN_CMDS, COG_NAME_COMMON, COG_NAME_GAME, COG_NAME_MANAGER_CMDS, COG_NAME_USER_CMDS,
                     COGS_LIST, LOGGER_NAME_MAIN, SETTINGS)
 
@@ -33,10 +32,6 @@ class WordChainBot(AutoShardedBot):
         intents.message_content = True
         intents.members = True
 
-        if SETTINGS.generate_language_on_start:
-            logger.info('generating language files on start')
-            asyncio.run(cf.main())
-
         super().__init__(command_prefix='!', intents=intents)
 
     # ----------------------------------------------------------------------------------------------------------------
@@ -55,7 +50,11 @@ class WordChainBot(AutoShardedBot):
 
     async def on_ready(self) -> None:
         """Override the on_ready method"""
-        logger.info(f'Bot is ready as {self.user.name}#{self.user.discriminator}')
+        user = self.user
+        if not user:
+            logger.info('Bot is ready')
+        else:
+            logger.info(f'Bot is ready as {user.name}#{user.discriminator}')
 
     # ---------------------------------------------------------------------------------------------------------------
 
@@ -174,9 +173,12 @@ async def reload(interaction: Interaction, cog_name: str, force_sync: bool = Fal
 
     emb: Embed = Embed(title=f'Sync status', description=f'Synchronization complete.', colour=Colour.dark_magenta())
 
+    global_sync: list[app_commands.AppCommand] | None
+    admin_sync: list[app_commands.AppCommand] | None
+
     if force_sync:
-        global_sync: list[app_commands.AppCommand] | None = await word_chain_bot.tree.sync()
-        admin_sync: list[app_commands.AppCommand] | None = await word_chain_bot.tree.sync(guild=admin_guild)
+        global_sync = await word_chain_bot.tree.sync()
+        admin_sync = await word_chain_bot.tree.sync(guild=admin_guild)
 
         store_command_signature(global_payload, admin_payload)
     else:
@@ -185,12 +187,12 @@ async def reload(interaction: Interaction, cog_name: str, force_sync: bool = Fal
         admin_changed = signature['admin_commands'] != admin_payload
 
         if global_changed:
-            global_sync: list[app_commands.AppCommand] = await word_chain_bot.tree.sync()
+            global_sync = await word_chain_bot.tree.sync()
         else:
             global_sync = None
 
         if admin_changed:
-            admin_sync: list[app_commands.AppCommand] = await word_chain_bot.tree.sync(guild=admin_guild)
+            admin_sync = await word_chain_bot.tree.sync(guild=admin_guild)
         else:
             admin_sync = None
 

@@ -15,7 +15,8 @@ from sqlalchemy.engine.row import Row
 from sqlalchemy.sql.functions import count
 
 from cogs.common import WordStatus
-from consts import COG_NAME_COMMON, COG_NAME_USER_CMDS, LOGGER_NAME_USER_COG, SETTINGS, GameMode
+from consts import (COG_NAME_COMMON, COG_NAME_USER_CMDS, LOGGER_NAME_USER_COG, MISTAKE_PENALTY,
+                    RELIABLE_ROLE_ACCURACY_THRESHOLD, RELIABLE_ROLE_KARMA_THRESHOLD, SETTINGS, GameMode)
 from language import Language
 from model import BannedMemberModel, Member, MemberModel, ServerConfig, ServerConfigModel
 from views.dropdown import Dropdown
@@ -192,7 +193,7 @@ Therefore, a word that is valid in this server may not be valid in another serve
 
         await interaction.response.defer(ephemeral=True, thinking=True)
 
-        help_cmd: UserCommandsCog.HelpCommand = UserCommandsCog.HelpCommand(self.bot, interaction)
+        help_cmd: UserCommandsCog.HelpCommand = UserCommandsCog.HelpCommand(self, interaction)
         view1: discord.ui.View = discord.ui.View().add_item(help_cmd.get_dropdown())
         embed: Embed = Embed(title='Help Menu', colour=Colour.blurple(), description=f'Please choose an option below.')
 
@@ -216,9 +217,9 @@ Therefore, a word that is valid in this server may not be valid in another serve
 
         # ------------------------------------------------------------------------------------------------------------
 
-        def __init__(self, bot: WordChainBot, original_interaction: Interaction, original_message_id: int = -1) -> None:
+        def __init__(self, cog: UserCommandsCog, original_interaction: Interaction, original_message_id: int = -1) -> None:
             super().__init__()
-            self.bot: WordChainBot = bot
+            self.cog: UserCommandsCog = cog
             self.original_interaction: Interaction = original_interaction
             self.original_message_id: int = original_message_id  # This has to be set later, after sending the initial message
 
@@ -249,19 +250,20 @@ Therefore, a word that is valid in this server may not be valid in another serve
                                                 ]
 
             async def dropdown_callback(dropdown: Dropdown, interaction: Interaction) -> None:
-
                 view1: View = View().add_item(dropdown.regenerate_self())
 
                 match dropdown.values[0]:
-
                     case UserCommandsCog.HelpCommand.__HOW_TO_PLAY:
                         await interaction.followup.edit_message(self.original_message_id,
                                                                 embed=UserCommandsCog.HelpCommand.get_how_to_play_embed(),
                                                                 view=view1)
 
                     case UserCommandsCog.HelpCommand.__KARMA_SYSTEM:
+                        guild = interaction.guild
+                        config: ServerConfig | None = self.cog.common.server_configs.get(guild.id)
+
                         await interaction.followup.edit_message(self.original_message_id,
-                                                                embed=UserCommandsCog.HelpCommand.get_karma_embed(),
+                                                                embed=UserCommandsCog.HelpCommand.get_karma_embed(config),
                                                                 view=view1)
 
                     case UserCommandsCog.HelpCommand.__GAME_RULES:
@@ -321,7 +323,7 @@ The game is pretty simple.
 - If your word is correct, the bot will react with a tick mark — :white_check_mark:.  
 - No characters other than letters and hyphen (`-`) are accepted. Messages with anything else will be ignored. \
 If only English is selected (default), only letters of the English alphabet are accepted. If other languages are \
-selected, letters with accents are accepted as well.
+selected, typical accentuated letters for that language are accepted as well.
 - You can check if a word is correct using the `/check_word` command - this checks only if the word is generally \
 accepted, it does **not** check if it has the matching starting letter to continue the current chain.
 - Words that have been used once cannot be used again until the chain is broken. The chain, however, will **not**
@@ -358,7 +360,7 @@ have other rules that are not covered here. Please check with the server moderat
         def get_multi_language_embed() -> Embed:
 
             return Embed(title="Multi-language support", description=f'''\
-The bot now allows you to enable upto two languages in a server.
+The bot now allows you to enable up to two languages in a server.
 
 The following languages are supported:
 {', '.join(f'{language.display_name}' for language in Language)}
@@ -374,10 +376,12 @@ In order to enable/disable languages, server managers can use the commands under
             return Embed(description=f'''\
 ## Basic setup
 1. Add the bot to your server. You can click on the bot's profile picture and click "Add App".
-2. Run `/set channel` to set the channel where the game will be played. (You need to have at least `Manage\
-Server` permission to run this command.)
+2. Run `/set channel` to set the channel where the game will be played. (You need to have at least `Manage Server` \
+permission to run this command.)
 
 This will be enough to let users play the game in your server. Send any word to start the chain.
+
+If it doesn't work, managers can use the `/health_check` command to check if the permissions are set correctly.
 
 ## Highly recommended setup
 - Disable the `Add reactions` permissions for `@everyone` in the game channel.
@@ -397,9 +401,9 @@ For multi-language setup, see the `Multi-language support` section in the `/help
         # ------------------------------------------------------------------------------------------------------------
 
         @staticmethod
-        def get_karma_embed() -> Embed:
-            return Embed(title='The Karma System', description=f'''\
-The karma system is based upon the frequency of characters as the first letter of english words.
+        def get_karma_embed(config: ServerConfig | None) -> Embed:
+            description = f'''\
+The karma system is based upon the frequency of characters as the first letter.
 
 **You *gain* karma if:**
 - your word starts with a letter that is less frequent than average (because it is harder to find)
@@ -413,20 +417,26 @@ for the next player)
 
 **You do *not* lose karma if:**
 - your word starts with a letter that is more frequent than average (because you cannot choose the first letter)
-**If you mess up:** You lose 5 karma points.
+
+**If you mess up:** You lose {MISTAKE_PENALTY} karma points.
 
 :point_right:  Karma will never be < 0.
 :point_right:  Check your karma in the `/stats user` command.
-:point_right:  To view the karma leaderboard, use `/leaderboard type:karma`.
-:point_right:  To receive the <@&1305965430351073342> role, you must have karma > 50 and accuracy > 99%.\
-''', colour=Colour.green())
+:point_right:  To view the karma leaderboard, use `/leaderboard user metric:karma`.
+'''
+            if config and config.reliable_role_id:
+                description += f''':point_right:  To receive the <@&{config.reliable_role_id}> role, you must have \
+karma > {RELIABLE_ROLE_KARMA_THRESHOLD} and accuracy > {RELIABLE_ROLE_ACCURACY_THRESHOLD:.1%}.\
+'''
+
+            return Embed(title='The Karma System', description=description, colour=Colour.green())
 
         # ------------------------------------------------------------------------------------------------------------
 
         @staticmethod
         def get_support_server_embed() -> Embed:
             return Embed(title='Support Server', description=f'''\
-For any questions, suggestions or bug reports, or if you just want to hang out with a cool community of word chain\
+For any questions, suggestions or bug reports, or if you just want to hang out with a cool community of word chain \
 players, feel free to join our support server:
 
 https://discord.gg/yhbzVGBNw3''', colour=Colour.pink())
@@ -440,9 +450,13 @@ https://discord.gg/yhbzVGBNw3''', colour=Colour.pink())
 `/stats user` - Shows the stats of a specific user.
 `/stats server` - Shows the stats of the current server.
 `/check_word` - Check if a word exists/check the spelling.
-`/leaderboard` - Shows the leaderboard of the server.
-`/list_commands` - Lists all the slash commands.
-`/show_languages` - Lists all the supported and currently enabled languages.''')
+`/definition` - Check the definition of a word.
+`/leaderboard user` - Shows the leaderboard of players.
+`/leaderboard server` - Shows the global leaderboard of servers.
+`/show_languages` - Lists all the currently enabled languages.
+`/support` - Posts the invitation link to the support server.
+`/vote` - Posts the link to top.gg and discordbotlist.com to vote for Word Chain Bot.
+`/help` - Shows this help page.''')
 
             member = interaction.user
             if not isinstance(member, discord.Member):
@@ -451,15 +465,14 @@ https://discord.gg/yhbzVGBNw3''', colour=Colour.pink())
             if member.guild_permissions.manage_guild:
                 emb.description += '''\n
 **Restricted commands — Server Managers only**
-`/set channel` - Sets the channel to chain words.
+`/set channel` - Sets the channel to chain words. You can set up normal and hard mode at the same time.
 `/set failed_role` - Sets the role to give when a user fails.
 `/set reliable_role` - Sets the reliable role.
 
-`/language show_all` - Shows all supported languages and their codes.
-`/language add` - Enable a language for this server. You can add up to two languages at a time.
+`/language show-all` - Shows all supported languages and their codes.
+`/language add` - Enable a language for this server. You can add up to two languages to your server.
 `/language remove` - Removes a language from the list of enabled languages.
 
-`/unset channel` - Unsets the channel to chain words.
 `/unset failed_role` - Unsets the role to give when a user fails.
 `/unset reliable_role` - Unset the reliable role.
 
@@ -469,7 +482,10 @@ https://discord.gg/yhbzVGBNw3''', colour=Colour.pink())
 
 `/whitelist add` - Add a word to the whitelist for this server.
 `/whitelist remove` - Remove a word from the whitelist of this server.
-`/whitelist show` - Show the whitelist words for this server.'''
+`/whitelist show` - Show the whitelist words for this server.
+
+`/health_check` - Performs a health check on your server to check if the permissions are set correctly.
+`/reset_stats` - Resets all your server's stats, but your configuration is kept.'''
 
             guild = interaction.guild
             if guild is None:
@@ -478,9 +494,15 @@ https://discord.gg/yhbzVGBNw3''', colour=Colour.pink())
             if member.guild_permissions.administrator and guild.id == SETTINGS.admin_guild_id:
                 emb.description += '''\n
 **Restricted commands — Bot Admins only**
+`/announce` - Sends an announcement to all servers into the game channels.
 `/reload` - Reload a specific Cog (or all Cogs).
+`/ban_server` - Bans and unbans a server from the global leaderboard.
+`/ban_member` - Bans and unubans a player globally to participate in playing word chain.
 `/purge_data server` - Remove all data associated with a server.
 `/purge_data user` - Remove all data associated with a user.
+`/reset_config` - Resets all data of a server and provides a fresh config.
+`/list_servers` - Exports a list with all server names, server IDs and the owners user ID.
+`/admin_health_check` - Performs a health check on a server to check if the permissions are set correctly.
 `/logging status` - Shows the status of the loggers.
 `/logging enable_all` - Enables the loggers.
 `/logging disable_all` - Disables the loggers.
@@ -511,7 +533,7 @@ The privacy policy is available \
 The bot is open-source, released under the BSD-3-Clause-License. The source code is \
 [available on GitHub](https://github.com/WrichikBasu/word_chain_bot_indently).
 - **Hosting information**
-The bot is currently hosted on Azure, courtesy of <@329857455423225856>.
+The bot is currently hosted on Hetzner, provided by <@841541609052307458> and his friends.
 - **Credits**
   - Base code taken from [Counting Bot Indently](https://github.com/guanciottaman/counting_bot_indently).
   - Base code modified for the Word Chain Bot by <@1024746441798856717>.

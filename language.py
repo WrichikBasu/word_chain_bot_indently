@@ -18,21 +18,23 @@ def build_regex(start_group: str, middle_group: str, end_group: str) -> str:
 
 
 EN_REGEX: str = build_regex('[a-z]', '[-]|[a-z]', '[a-z]')
-FR_REGEX: str = build_regex('[a-zàâæçéèêëîïôœùûüÿ]', '[-]|[a-zàâæçéèêëîïôœùûüÿ]', '[a-zàâæçéèêëîïôœùûüÿ]')
+FR_REGEX: str = build_regex('[a-zàâæçéèêîôœ]', '[-]|[a-zàâæçéèêëîïôœùûüÿ]', '[a-zàâæçéèêëîïôœùûüÿ]')
 DE_REGEX: str = build_regex('[a-zäöü]', '[-]|[a-zäöüß]', '[a-zäöüß]')
-NL_REGEX: str = build_regex('[a-zéèëç]', '[-]|[a-zéèëç]', '[a-zéèëç]')
-ES_REGEX: str = build_regex('[a-záéíóúüñ]', '[-]|[a-záéíóúüñ]', '[a-záéíóúüñ]')
+NL_REGEX: str = build_regex('[a-záéíóú]', '[-]|[a-záéíóúèëïöüç]', '[a-záéíóúèëïöü]')
+ES_REGEX: str = build_regex('[a-záéíóúñ]', '[-]|[a-záéíóúüñ]', '[a-záéíóú]')
 PT_REGEX: str = build_regex('[a-záâãàçéêíóôõú]', '[-]|[a-záâãàçéêíóôõú]', '[a-záâãàçéêíóôõú]')
 IT_REGEX: str = build_regex('[a-zàèéìíîòóùú]', '[-]|[a-zàèéìíîòóùú]', '[a-zàèéìíîòóùú]')
-NN_REGEX: str = build_regex('[a-zæøå]', '[-]|[a-zæøå]', '[a-zæøå]')  # north germanic (danish, norwegian)
-SV_REGEX: str = build_regex('[a-zåäö]', '[a-zåäö]', '[a-zåäö]')
-IS_REGEX: str = build_regex('[a-záéíóúýþæö]', '[-]|[a-záéíóúýþæöð]', '[a-záéíóúýþæöð]')  # icelandic and faroese
+NN_REGEX: str = build_regex('[a-zæøåé]', '[-]|[a-zæøåé]', '[a-zæøåé]')  # north germanic (danish, norwegian)
+SV_REGEX: str = build_regex('[a-zåäö]', '[-]|[a-zåäöé]', '[a-zåäöé]')
+IS_REGEX: str = build_regex('[a-záéíóúýþæö]', '[-]|[a-záéíóúýþæöð]', '[a-záéíóúýþæöð]')  # icelandic
 PL_REGEX: str = build_regex('[a-ząćęłńóśźż]', '[-]|[a-ząćęłńóśźż]', '[a-ząćęłńóśźż]')
-CS_REGEX: str = build_regex('[a-záčďéěíňóřšťůýž]', '[-]|[a-záčďéěíňóřšťůýž]', '[a-záčďéěíňóřšťůýž]')  # czech and slovak
-SS_REGEX: str = build_regex('[a-zčćđšž]', '[-]|[a-zčćđšž]','[a-zčćđšž]')  # south slavic (slovene, croatian, bosnian, serbian)
+CS_REGEX: str = build_regex('[a-záčďéíňóřšťúýž]', '[-]|[a-záčďéěíňóřšťúůýž]', '[a-záčďéěíňóřšťůýž]')  # czech
+SK_REGEX: str = build_regex('[a-záčďéíľňóôšťúýž]', '[-]|[a-záäčďéíĺľňóôŕšťúýž]', '[a-záäčďéíľňóšťúýž]')  # slovak
+SL_REGEX: str = build_regex('[a-zčšž]', '[-]|[a-zčšž]', '[a-zčšž]')  # slovene
+SS_REGEX: str = build_regex('[a-zčćđšž]', '[-]|[a-zčćđšž]','[a-zčćđšž]')  # croatian, bosnian, serbian
 HU_REGEX: str = build_regex('[a-záéíóöőúüű]', '[-]|[a-záéíóöőúüű]', '[a-záéíóöőúüű]')
 RO_REGEX: str = build_regex('[a-zăâîșț]', '[-]|[a-zăâîșț]', '[a-zăâîșț]')
-TR_REGEX: str = build_regex('[a-zçğıöşü]', '[-]|[a-zçğıöşü]', '[a-zçğıöşü]')
+TR_REGEX: str = build_regex('[a-zâçğıîöşûü]', '[-]|[a-zâçğıîöşûü]', '[a-zâçğıîöşûü]')
 
 DEFAULT_FIRST_TOKEN_SCORES: dict[GameMode, defaultdict[str, float]] = {
     GameMode.NORMAL: defaultdict(lambda: 1.0),
@@ -40,7 +42,7 @@ DEFAULT_FIRST_TOKEN_SCORES: dict[GameMode, defaultdict[str, float]] = {
 }
 
 LANGUAGES_DIRECTORY = Path('languages')
-DEFAULT_THRESHOLD_NORMAL = 0.01
+DEFAULT_THRESHOLD_NORMAL = 0.005
 DEFAULT_THRESHOLD_HARD = 0.05
 
 
@@ -48,6 +50,7 @@ class LanguageInfo(BaseModel):
     code: str = Field(max_length=2, min_length=2) # set 1 ISO-639-1
     code_long: str = Field(max_length=3, min_length=3) # set 3 ISO-639-3
     allowed_word_regex: str
+    has_capitalized_common_nouns: bool = Field(default=False)
     first_token_scores: dict[GameMode, defaultdict[str, float]] = Field(default=DEFAULT_FIRST_TOKEN_SCORES)
     score_threshold: dict[GameMode, float] = Field(default={
         GameMode.NORMAL: DEFAULT_THRESHOLD_NORMAL,
@@ -108,7 +111,7 @@ class Language(Enum):
     # Latin script
     ENGLISH = LanguageInfo(code="en", code_long="eng", allowed_word_regex=EN_REGEX, first_token_scores=EN_FIRST_TOKEN_SCORES)
     FRENCH = LanguageInfo(code='fr', code_long="fra", allowed_word_regex=FR_REGEX, first_token_scores=FR_FIRST_TOKEN_SCORES)
-    GERMAN = LanguageInfo(code='de', code_long="deu", allowed_word_regex=DE_REGEX, first_token_scores=DE_FIRST_TOKEN_SCORES)
+    GERMAN = LanguageInfo(code='de', code_long="deu", allowed_word_regex=DE_REGEX, first_token_scores=DE_FIRST_TOKEN_SCORES, has_capitalized_common_nouns=True)
     DUTCH = LanguageInfo(code='nl', code_long="nld", allowed_word_regex=NL_REGEX, first_token_scores=NL_FIRST_TOKEN_SCORES)
     SPANISH = LanguageInfo(code='es', code_long="spa", allowed_word_regex=ES_REGEX, first_token_scores=ES_FIRST_TOKEN_SCORES)
     PORTUGUESE = LanguageInfo(code='pt', code_long="por", allowed_word_regex=PT_REGEX, first_token_scores=PT_FIRST_TOKEN_SCORES)
@@ -119,8 +122,8 @@ class Language(Enum):
     ICELANDIC = LanguageInfo(code='is', code_long="isl", allowed_word_regex=IS_REGEX, first_token_scores=IS_FIRST_TOKEN_SCORES)
     POLISH = LanguageInfo(code='pl', code_long="pol", allowed_word_regex=PL_REGEX, first_token_scores=PL_FIRST_TOKEN_SCORES)
     CZECH = LanguageInfo(code='cs', code_long="ces", allowed_word_regex=CS_REGEX, first_token_scores=CS_FIRST_TOKEN_SCORES)
-    SLOVAK = LanguageInfo(code='sk', code_long="slk", allowed_word_regex=CS_REGEX, first_token_scores=SK_FIRST_TOKEN_SCORES)
-    SLOVENE = LanguageInfo(code='sl', code_long="slv", allowed_word_regex=SS_REGEX, first_token_scores=SL_FIRST_TOKEN_SCORES)
+    SLOVAK = LanguageInfo(code='sk', code_long="slk", allowed_word_regex=SK_REGEX, first_token_scores=SK_FIRST_TOKEN_SCORES)
+    SLOVENE = LanguageInfo(code='sl', code_long="slv", allowed_word_regex=SL_REGEX, first_token_scores=SL_FIRST_TOKEN_SCORES)
     CROATIAN = LanguageInfo(code='hr', code_long="hrv", allowed_word_regex=SS_REGEX, first_token_scores=HR_FIRST_TOKEN_SCORES)
     BOSNIAN = LanguageInfo(code='bs', code_long="bos", allowed_word_regex=SS_REGEX, first_token_scores=BS_FIRST_TOKEN_SCORES)
     SERBO_CROATIAN = LanguageInfo(code='sh', code_long="hbs", allowed_word_regex=SS_REGEX, first_token_scores=SH_FIRST_TOKEN_SCORES)
