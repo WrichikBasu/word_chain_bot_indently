@@ -326,7 +326,11 @@ class CommonCog(Cog, name=COG_NAME_COMMON):
                         await member.remove_roles(role)
 
         except discord.Forbidden:
+            # no permission to assign roles, nothing we can do here, suppress error
             pass
+        except discord.NotFound:
+            # role not found, presumably deleted, drop role from cache, suppress error
+            self.server_reliable_roles[guild.id] = None
 
     # ---------------------------------------------------------------------------------------------------------------
 
@@ -354,19 +358,29 @@ class CommonCog(Cog, name=COG_NAME_COMMON):
                         # In either case, we have to remove the role.
                         await member.remove_roles(role)
 
-                if not handled_member and config.failed_member_id:
+                if not handled_member and config.failed_member_id is not None:
                     # Current failed member does not yet have the failed role
+                    failed_member: discord.Member | None = None
+
                     try:
-                        failed_member: discord.Member = await guild.fetch_member(config.failed_member_id)
-                        await failed_member.add_roles(role)
+                        # only fetching the member is in try-except, because NotFound is also triggered in add_roles if
+                        # the role was not found, which is handled differently
+                        failed_member = await guild.fetch_member(config.failed_member_id)
                     except discord.NotFound:
                         # Member is no longer in the server
                         config.failed_member_id = None
                         config.correct_inputs_by_failed_member = 0
                         await config.sync_to_db_with_connection(connection)
 
+                    if failed_member is not None:
+                        await failed_member.add_roles(role)
+
         except discord.Forbidden:
+            # no permission to assign roles, nothing we can do here, suppress error
             pass
+        except discord.NotFound:
+            # role not found, presumably deleted, drop role from cache, suppress error
+            self.server_failed_roles[guild.id] = None
 
     # ---------------------------------------------------------------------------------------------------------------
 
