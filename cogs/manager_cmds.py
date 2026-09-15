@@ -255,8 +255,7 @@ to the other game mode!''')
 
             async with self.cog.bot.db_connection() as connection:
                 await config.sync_to_db_with_connection(connection)
-                self.cog.common.server_failed_roles[
-                    guild_id] = role  # Assign role directly if we already have it in this context
+                self.cog.common.server_failed_roles[guild_id] = role  # Assign role directly if we already have it in this context
                 await self.cog.common.add_remove_failed_role(guild, connection)
                 await connection.commit()
 
