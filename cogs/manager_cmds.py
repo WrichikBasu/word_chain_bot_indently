@@ -14,7 +14,8 @@ from sqlalchemy import CursorResult, delete, insert, select
 from sqlalchemy.exc import SQLAlchemyError
 
 from consts import COG_NAME_COMMON, COG_NAME_MANAGER_CMDS, LOGGER_NAME_MANAGER_COG, GameMode, \
-    RELIABLE_ROLE_KARMA_THRESHOLD, RELIABLE_ROLE_ACCURACY_THRESHOLD
+    RELIABLE_ROLE_KARMA_THRESHOLD, RELIABLE_ROLE_ACCURACY_THRESHOLD, DISCORD_UNKNOWN_MEMBER, DISCORD_UNKNOWN_ROLE, \
+    DISCORD_UNKNOWN_USER
 from language import Language
 from model import BlacklistModel, GameModeState, MemberModel, WhitelistModel, ServerConfig, ServerConfigModel
 
@@ -289,15 +290,33 @@ to the other game mode!''')
 
             role = self.cog.common.server_failed_roles[guild.id]
             if role:
+                cleanup_failed = False
                 for member in role.members:
-                    await member.remove_roles(role)
+                    try:
+                        await member.remove_roles(role)
+                    except discord.Forbidden:
+                        # missing permission to remove roles
+                        cleanup_failed = True
+                        break
+                    except discord.NotFound as e:
+                        if e.code in [DISCORD_UNKNOWN_MEMBER, DISCORD_UNKNOWN_USER]:
+                            # member not found, continue with the next one
+                            continue
+                        elif e.code == DISCORD_UNKNOWN_ROLE:
+                            # role not found, break and continue clearing the role from cache
+                            break
+                        else:
+                            raise
                 self.cog.common.server_failed_roles[guild.id] = None
                 emb: Embed = Embed(title='Success', colour=Colour.green(),
-                                   description=f'''Failed role has been removed.''')
+                                   description='Failed role has been removed.' + (
+                                       f' Note: {role.mention} could not be unassigned due to permission errors.'
+                                       if cleanup_failed else '')
+                                   )
                 await interaction.followup.send(embed=emb)
             else:
                 emb: Embed = Embed(title='Error', colour=Colour.red(),
-                                   description=f'''Failed role was already unset!''')
+                                   description='Failed role was already unset!')
                 await interaction.followup.send(embed=emb)
 
         # ------------------------------------------------------------------------------------------------------------
@@ -317,15 +336,32 @@ to the other game mode!''')
 
             role = self.cog.common.server_reliable_roles[guild.id]
             if role:
+                cleanup_failed = False
                 for member in role.members:
-                    await member.remove_roles(role)
+                    try:
+                        await member.remove_roles(role)
+                    except discord.Forbidden:
+                        cleanup_failed = True
+                        break
+                    except discord.NotFound as e:
+                        if e.code in [DISCORD_UNKNOWN_MEMBER, DISCORD_UNKNOWN_USER]:
+                            # member not found, continue with the next one
+                            continue
+                        elif e.code == DISCORD_UNKNOWN_ROLE:
+                            # role not found, break and continue clearing the role from cache
+                            break
+                        else:
+                            raise
                 self.cog.common.server_reliable_roles[guild.id] = None
                 emb: Embed = Embed(title='Success', colour=Colour.green(),
-                                   description=f'''Reliable role has been removed.''')
+                                   description='Reliable role has been removed.' + (
+                                       f' Note: {role.mention} could not be unassigned due to permission errors.'
+                                       if cleanup_failed else '')
+                                   )
                 await interaction.followup.send(embed=emb)
             else:
                 emb: Embed = Embed(title='Error', colour=Colour.red(),
-                                   description=f'''Reliable role was already unset!''')
+                                   description='Reliable role was already unset!')
                 await interaction.followup.send(embed=emb)
 
     # ================================================================================================================

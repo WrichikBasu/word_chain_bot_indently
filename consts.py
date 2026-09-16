@@ -27,6 +27,13 @@ class Settings(BaseSettings):
 SETTINGS = Settings()
 """Application wide settings object."""
 
+DISCORD_UNKNOWN_MEMBER: int = 10007
+"""Discord error code for unknown member (left guild)"""
+DISCORD_UNKNOWN_ROLE: int = 10011
+"""Discord error code for unknown role (role deleted)"""
+DISCORD_UNKNOWN_USER: int = 10013
+"""Discord error code for unknown user (account deleted)"""
+
 # Names of individual cogs
 COG_NAME_COMMON: str = "common"
 COG_NAME_ADMIN_CMDS: str = "admin_cmds"
