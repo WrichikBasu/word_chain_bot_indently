@@ -190,39 +190,6 @@ class ManagerCommandsCog(Cog, name=COG_NAME_MANAGER_CMDS):
 
         # ------------------------------------------------------------------------------------------------------------
 
-        @app_commands.command(name='channel', description='Sets the game channel')
-        @app_commands.describe(channel='The channel where the game will be played')
-        @app_commands.describe(game_mode='Configure either for normal mode or for hard mode')
-        async def set_channel(self, interaction: Interaction, channel: TextChannel, game_mode: GameMode):
-            """Command to set the play channel"""
-            await interaction.response.defer()
-
-            guild = interaction.guild
-            if guild is None:
-                return
-
-            other_game_mode = GameMode.HARD if game_mode == GameMode.NORMAL else GameMode.NORMAL
-            await self.cog.common.ensure_config(guild)
-            config = self.cog.common.server_configs[guild.id]
-
-            if config.game_state[other_game_mode].channel_id == channel.id:
-                emb: Embed = Embed(title='Error', colour=Colour.red(),
-                                   description=f'''You cannot use a channel for this game mode, that is assigned
-to the other game mode!''')
-            else:
-                config.game_state[game_mode].channel_id = channel.id
-                await config.sync_to_db(self.cog.bot)
-                extra_information = 'Start there with any valid word you like.' \
-                    if config.game_state[game_mode].current_word is None else \
-                    f'The last valid word was `{config.game_state[game_mode].current_word}`.'
-                emb: Embed = Embed(title='Success', colour=Colour.green(),
-                                   description=f'''Word chain channel for {game_mode.name.lower()} game mode was set to 
-{channel.mention}. {extra_information}''')
-
-            await interaction.followup.send(embed=emb)
-
-        # ------------------------------------------------------------------------------------------------------------
-
         @app_commands.command(name='failed_role',
                               description='Sets the role to be used when a user puts a wrong word')
         @app_commands.describe(role='The role to be used when a user puts a wrong word')
@@ -264,6 +231,39 @@ to the other game mode!''')
                                    description=f'''Failed role was set to {role.mention}.''')
                 await interaction.followup.send(embed=emb)
 
+        # ------------------------------------------------------------------------------------------------------------
+
+        @app_commands.command(name='channel', description='Sets the game channel')
+        @app_commands.describe(channel='The channel where the game will be played')
+        @app_commands.describe(game_mode='Configure either for normal mode or for hard mode')
+        async def set_channel(self, interaction: Interaction, channel: TextChannel, game_mode: GameMode):
+            """Command to set the play channel"""
+            await interaction.response.defer()
+
+            guild = interaction.guild
+            if guild is None:
+                return
+
+            other_game_mode = GameMode.HARD if game_mode == GameMode.NORMAL else GameMode.NORMAL
+            await self.cog.common.ensure_config(guild)
+            config = self.cog.common.server_configs[guild.id]
+
+            if config.game_state[other_game_mode].channel_id == channel.id:
+                emb: Embed = Embed(title='Error', colour=Colour.red(),
+                                   description=f'''You cannot use a channel for this game mode, that is assigned
+to the other game mode!''')
+            else:
+                config.game_state[game_mode].channel_id = channel.id
+                await config.sync_to_db(self.cog.bot)
+                extra_information = 'Start there with any valid word you like.' \
+                    if config.game_state[game_mode].current_word is None else \
+                    f'The last valid word was `{config.game_state[game_mode].current_word}`.'
+                emb: Embed = Embed(title='Success', colour=Colour.green(),
+                                   description=f'''Word chain channel for {game_mode.name.lower()} game mode was set to 
+{channel.mention}. {extra_information}''')
+
+            await interaction.followup.send(embed=emb)
+
     # ===============================================================================================================
 
     class UnsetCommandsGroup(Group):
@@ -272,6 +272,51 @@ to the other game mode!''')
             super().__init__(name='unset', description='Resets settings',
                              default_permissions=Permissions(manage_guild=True), guild_only=True)
             self.cog: ManagerCommandsCog = parent_cog
+
+        @app_commands.command(name='reliable_role', description='Removes the reliable role feature')
+        async def remove_reliable_role(self, interaction: Interaction):
+            await interaction.response.defer()
+
+            guild = interaction.guild
+            if guild is None:
+                return
+
+            await self.cog.common.ensure_config(guild)
+            config = self.cog.common.server_configs[guild.id]
+            config.reliable_role_id = None
+            await config.sync_to_db(self.cog.bot)
+
+            role = self.cog.common.server_reliable_roles[guild.id]
+            if role:
+                cleanup_failed = False
+                for member in role.members:
+                    try:
+                        await member.remove_roles(role)
+                    except discord.Forbidden:
+                        cleanup_failed = True
+                        break
+                    except discord.NotFound as e:
+                        if e.code in [DISCORD_UNKNOWN_MEMBER, DISCORD_UNKNOWN_USER]:
+                            # member not found, continue with the next one
+                            continue
+                        elif e.code == DISCORD_UNKNOWN_ROLE:
+                            # role not found, break and continue clearing the role from cache
+                            break
+                        else:
+                            raise
+                self.cog.common.server_reliable_roles[guild.id] = None
+                emb: Embed = Embed(title='Success', colour=Colour.green(),
+                                   description='Reliable role has been removed.' + (
+                                       f' Note: {role.mention} could not be unassigned due to permission errors.'
+                                       if cleanup_failed else '')
+                                   )
+                await interaction.followup.send(embed=emb)
+            else:
+                emb: Embed = Embed(title='Error', colour=Colour.red(),
+                                   description='Reliable role was already unset!')
+                await interaction.followup.send(embed=emb)
+
+        # ------------------------------------------------------------------------------------------------------------
 
         @app_commands.command(name='failed_role', description='Removes the failed role feature')
         async def remove_failed_role(self, interaction: Interaction):
@@ -317,51 +362,6 @@ to the other game mode!''')
             else:
                 emb: Embed = Embed(title='Error', colour=Colour.red(),
                                    description='Failed role was already unset!')
-                await interaction.followup.send(embed=emb)
-
-        # ------------------------------------------------------------------------------------------------------------
-
-        @app_commands.command(name='reliable_role', description='Removes the reliable role feature')
-        async def remove_reliable_role(self, interaction: Interaction):
-            await interaction.response.defer()
-
-            guild = interaction.guild
-            if guild is None:
-                return
-
-            await self.cog.common.ensure_config(guild)
-            config = self.cog.common.server_configs[guild.id]
-            config.reliable_role_id = None
-            await config.sync_to_db(self.cog.bot)
-
-            role = self.cog.common.server_reliable_roles[guild.id]
-            if role:
-                cleanup_failed = False
-                for member in role.members:
-                    try:
-                        await member.remove_roles(role)
-                    except discord.Forbidden:
-                        cleanup_failed = True
-                        break
-                    except discord.NotFound as e:
-                        if e.code in [DISCORD_UNKNOWN_MEMBER, DISCORD_UNKNOWN_USER]:
-                            # member not found, continue with the next one
-                            continue
-                        elif e.code == DISCORD_UNKNOWN_ROLE:
-                            # role not found, break and continue clearing the role from cache
-                            break
-                        else:
-                            raise
-                self.cog.common.server_reliable_roles[guild.id] = None
-                emb: Embed = Embed(title='Success', colour=Colour.green(),
-                                   description='Reliable role has been removed.' + (
-                                       f' Note: {role.mention} could not be unassigned due to permission errors.'
-                                       if cleanup_failed else '')
-                                   )
-                await interaction.followup.send(embed=emb)
-            else:
-                emb: Embed = Embed(title='Error', colour=Colour.red(),
-                                   description='Reliable role was already unset!')
                 await interaction.followup.send(embed=emb)
 
     # ================================================================================================================
