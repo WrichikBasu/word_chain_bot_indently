@@ -278,6 +278,7 @@ SPECIAL_REACTION_EMOJIS: dict[str, str] = {
 }
 """
 A dictionary mapping the words to the corresponding special emojis.
+Main source: https://salsa.debian.org/iso-codes-team/iso-codes/-/blob/main/data/iso_3166-1.json
 """
 
 GLOBAL_BLACKLIST_2_LETTER_WORDS_EN: set[str] = {
