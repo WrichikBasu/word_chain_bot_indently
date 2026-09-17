@@ -213,7 +213,7 @@ SPECIAL_REACTION_EMOJIS: dict[str, str] = {
     'palau': '🇵🇼',
     'palestine': '🇵🇸',
     'panama': '🇵🇦',
-    'papua new guinea': '🇵🇬',
+    'papua': '🇵🇬',
     'paraguay': '🇵🇾',
     'peru': '🇵🇪',
     'philippines': '🇵🇭',
