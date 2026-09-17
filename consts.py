@@ -220,7 +220,6 @@ SPECIAL_REACTION_EMOJIS: dict[str, str] = {
     'pitcairn': '🇵🇳',
     'poland': '🇵🇱',
     'portugal': '🇵🇹',
-    'puerto': '🇵🇷',
     'qatar': '🇶🇦',
     'romania': '🇷🇴',
     'rwanda': '🇷🇼',
