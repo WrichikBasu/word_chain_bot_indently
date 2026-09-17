@@ -62,6 +62,7 @@ RELIABLE_ROLE_ACCURACY_THRESHOLD: float = .975
 
 SPECIAL_REACTION_EMOJIS: dict[str, str] = {
     'afghanistan': '🇦🇫',
+    'åland': '🇦🇽',
     'albania': '🇦🇱',
     'algeria': '🇩🇿',
     'andorra': '🇦🇩',
@@ -110,6 +111,7 @@ SPECIAL_REACTION_EMOJIS: dict[str, str] = {
     'congo': '🇨🇬',
     'croatia': '🇭🇷',
     'cuba': '🇨🇺',
+    'curaçao': '🇨🇼',
     'cyprus': '🇨🇾',
     'czechia': '🇨🇿',
     'denmark': '🇩🇰',
@@ -123,6 +125,8 @@ SPECIAL_REACTION_EMOJIS: dict[str, str] = {
     'estonia': '🇪🇪',
     'eswatini': '🇸🇿',
     'ethiopia': '🇪🇹',
+    'falkland': '🇫🇰',
+    'faroe': '🇫🇴',
     'fiji': '🇫🇯',
     'finland': '🇫🇮',
     'france': '🇫🇷',
@@ -221,6 +225,7 @@ SPECIAL_REACTION_EMOJIS: dict[str, str] = {
     'poland': '🇵🇱',
     'portugal': '🇵🇹',
     'qatar': '🇶🇦',
+    'réunion': '🇷🇪',
     'romania': '🇷🇴',
     'rwanda': '🇷🇼',
     'samoa': '🇼🇸',
