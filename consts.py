@@ -107,7 +107,7 @@ SPECIAL_REACTION_EMOJIS: dict[str, str] = {
     'china': '🇨🇳',
     'colombia': '🇨🇴',
     'comoros': '🇰🇲',
-    'congo': '🇨🇩',
+    'congo': '🇨🇬',
     'croatia': '🇭🇷',
     'cuba': '🇨🇺',
     'cyprus': '🇨🇾',
