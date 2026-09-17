@@ -235,7 +235,6 @@ SPECIAL_REACTION_EMOJIS: dict[str, str] = {
     'solomon': '🇸🇧',
     'somalia': '🇸🇴',
     'spain': '🇪🇸',
-    'lanka': '🇱🇰',
     'sudan': '🇸🇩',
     'suriname': '🇸🇷',
     'sweden': '🇸🇪',
