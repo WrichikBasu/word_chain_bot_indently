@@ -275,7 +275,6 @@ SPECIAL_REACTION_EMOJIS: dict[str, str] = {
     'scotland': "🏴󠁧󠁢󠁳󠁣󠁴󠁿",
     'wales': "🏴󠁧󠁢󠁷󠁬󠁳󠁿",
     'usa': '🇺🇸',
-    'america': '🇺🇸',
     'uruguay': '🇺🇾',
     'uzbekistan': '🇺🇿',
     'vanuatu': '🇻🇺',
