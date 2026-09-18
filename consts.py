@@ -264,7 +264,6 @@ SPECIAL_REACTION_EMOJIS: dict[str, str] = {
     'tunisia': '🇹🇳',
     'turkmenistan': '🇹🇲',
     'tuvalu': '🇹🇻',
-    'turkey': '🦃',
     'türkiye': '🇹🇷',
     'uganda': '🇺🇬',
     'ukraine': '🇺🇦',
@@ -284,7 +283,10 @@ SPECIAL_REACTION_EMOJIS: dict[str, str] = {
     'yemen': '🇾🇪',
     'zambia': '🇿🇲',
     'zimbabwe': '🇿🇼',
-    'russia': '🇷🇺'
+    'russia': '🇷🇺',
+    'turkey': '🦃',
+    'europe': '🇪🇺',
+    'nations': '🇺🇳'
 }
 """
 A dictionary mapping the words to the corresponding special emojis.
