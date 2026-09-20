@@ -27,6 +27,13 @@ class Settings(BaseSettings):
 SETTINGS = Settings()
 """Application wide settings object."""
 
+DISCORD_UNKNOWN_MEMBER: int = 10007
+"""Discord error code for unknown member (left guild)"""
+DISCORD_UNKNOWN_ROLE: int = 10011
+"""Discord error code for unknown role (role deleted)"""
+DISCORD_UNKNOWN_USER: int = 10013
+"""Discord error code for unknown user (account deleted)"""
+
 # Names of individual cogs
 COG_NAME_COMMON: str = "common"
 COG_NAME_ADMIN_CMDS: str = "admin_cmds"
@@ -62,6 +69,7 @@ RELIABLE_ROLE_ACCURACY_THRESHOLD: float = .975
 
 SPECIAL_REACTION_EMOJIS: dict[str, str] = {
     'afghanistan': '🇦🇫',
+    'åland': '🇦🇽',
     'albania': '🇦🇱',
     'algeria': '🇩🇿',
     'andorra': '🇦🇩',
@@ -69,8 +77,8 @@ SPECIAL_REACTION_EMOJIS: dict[str, str] = {
     'anguilla': '🇦🇮',
     'antarctica': '🇦🇶',
     'antigua': '🇦🇬',
-    'ascension': '🇦🇨',
     'barbuda': '🇦🇬',
+    'ascension': '🇦🇨',
     'argentina': '🇦🇷',
     'armenia': '🇦🇲',
     'aruba': '🇦🇼',
@@ -107,9 +115,11 @@ SPECIAL_REACTION_EMOJIS: dict[str, str] = {
     'china': '🇨🇳',
     'colombia': '🇨🇴',
     'comoros': '🇰🇲',
-    'congo': '🇨🇩',
+    'congo': '🇨🇬',
+    'ivory': '🇨🇮',
     'croatia': '🇭🇷',
     'cuba': '🇨🇺',
+    'curaçao': '🇨🇼',
     'cyprus': '🇨🇾',
     'czechia': '🇨🇿',
     'denmark': '🇩🇰',
@@ -123,6 +133,8 @@ SPECIAL_REACTION_EMOJIS: dict[str, str] = {
     'estonia': '🇪🇪',
     'eswatini': '🇸🇿',
     'ethiopia': '🇪🇹',
+    'falkland': '🇫🇰',
+    'faroe': '🇫🇴',
     'fiji': '🇫🇯',
     'finland': '🇫🇮',
     'france': '🇫🇷',
@@ -145,6 +157,8 @@ SPECIAL_REACTION_EMOJIS: dict[str, str] = {
     'haiti': '🇭🇹',
     'vatican': '🇻🇦',
     'honduras': '🇭🇳',
+    'hong-kong': '🇭🇰',
+    'hongkong': '🇭🇰',
     'hungary': '🇭🇺',
     'iceland': '🇮🇸',
     'india': '🇮🇳',
@@ -163,6 +177,7 @@ SPECIAL_REACTION_EMOJIS: dict[str, str] = {
     'kenya': '🇰🇪',
     'kiribati': '🇰🇮',
     'korea': '🇰🇷',
+    'kosovo': '🇽🇰',
     'kuwait': '🇰🇼',
     'kyrgyzstan': '🇰🇬',
     "laos": '🇱🇦',
@@ -213,17 +228,18 @@ SPECIAL_REACTION_EMOJIS: dict[str, str] = {
     'palau': '🇵🇼',
     'palestine': '🇵🇸',
     'panama': '🇵🇦',
-    'papua new guinea': '🇵🇬',
+    'papua': '🇵🇬',
     'paraguay': '🇵🇾',
     'peru': '🇵🇪',
     'philippines': '🇵🇭',
     'pitcairn': '🇵🇳',
     'poland': '🇵🇱',
     'portugal': '🇵🇹',
-    'puerto': '🇵🇷',
     'qatar': '🇶🇦',
+    'réunion': '🇷🇪',
     'romania': '🇷🇴',
     'rwanda': '🇷🇼',
+    'grenadines': '🇻🇨',
     'samoa': '🇼🇸',
     'arabia': '🇸🇦',
     'saudi': '🇸🇦',
@@ -236,9 +252,9 @@ SPECIAL_REACTION_EMOJIS: dict[str, str] = {
     'solomon': '🇸🇧',
     'somalia': '🇸🇴',
     'spain': '🇪🇸',
-    'lanka': '🇱🇰',
     'sudan': '🇸🇩',
     'suriname': '🇸🇷',
+    'svalbard': '🇸🇯',
     'sweden': '🇸🇪',
     'switzerland': '🇨🇭',
     'syria': '🇸🇾',
@@ -255,7 +271,6 @@ SPECIAL_REACTION_EMOJIS: dict[str, str] = {
     'tunisia': '🇹🇳',
     'turkmenistan': '🇹🇲',
     'tuvalu': '🇹🇻',
-    'turkey': '🦃',
     'türkiye': '🇹🇷',
     'uganda': '🇺🇬',
     'ukraine': '🇺🇦',
@@ -266,19 +281,23 @@ SPECIAL_REACTION_EMOJIS: dict[str, str] = {
     'scotland': "🏴󠁧󠁢󠁳󠁣󠁴󠁿",
     'wales': "🏴󠁧󠁢󠁷󠁬󠁳󠁿",
     'usa': '🇺🇸',
-    'america': '🇺🇸',
     'uruguay': '🇺🇾',
     'uzbekistan': '🇺🇿',
     'vanuatu': '🇻🇺',
     'venezuela': '🇻🇪',
     'vietnam': '🇻🇳',
+    'sahara': '🇪🇭',
     'yemen': '🇾🇪',
     'zambia': '🇿🇲',
     'zimbabwe': '🇿🇼',
-    'russia': '🇷🇺'
+    'russia': '🇷🇺',
+    'turkey': '🦃',
+    'europe': '🇪🇺',
+    'nations': '🇺🇳'
 }
 """
 A dictionary mapping the words to the corresponding special emojis.
+Main source: https://salsa.debian.org/iso-codes-team/iso-codes/-/blob/main/data/iso_3166-1.json
 """
 
 GLOBAL_BLACKLIST_2_LETTER_WORDS_EN: set[str] = {

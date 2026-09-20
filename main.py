@@ -2,6 +2,7 @@ import asyncio
 import contextlib
 import json
 import logging
+import sys
 from json import JSONDecodeError
 from logging.config import fileConfig
 from typing import Any, AsyncIterator
@@ -21,6 +22,28 @@ fileConfig(fname='config.ini')
 logger = logging.getLogger(LOGGER_NAME_MAIN)
 
 
+class WordChainCommandTree(app_commands.CommandTree):
+    async def on_error(self, interaction: Interaction, error: app_commands.AppCommandError, /) -> None:
+        original = getattr(error, 'original', error)  # unwrap CommandInvokeError
+        command = interaction.command.qualified_name if interaction.command else 'unknown'
+        logger.error(
+            f'Unhandled {type(original).__name__} in /{command} '
+            f'(guild {interaction.guild_id}, channel {interaction.channel_id}, '
+            f'user {interaction.user.id})',
+            exc_info=original,
+        )
+
+        error_embed = Embed(title='Error', colour=Colour.red(),
+                            description='Something went wrong.')
+        try:
+            if interaction.response.is_done():
+                await interaction.followup.send(embed=error_embed, ephemeral=True)
+            else:
+                await interaction.response.send_message(embed=error_embed, ephemeral=True)
+        except discord.HTTPException:
+            logger.warning(f'Unable to notify user about the error in /{command}')
+
+
 class WordChainBot(AutoShardedBot):
     """Word chain bot"""
 
@@ -32,7 +55,7 @@ class WordChainBot(AutoShardedBot):
         intents.message_content = True
         intents.members = True
 
-        super().__init__(command_prefix='!', intents=intents)
+        super().__init__(command_prefix='!', intents=intents, tree_cls=WordChainCommandTree)
 
     # ----------------------------------------------------------------------------------------------------------------
 
@@ -55,6 +78,26 @@ class WordChainBot(AutoShardedBot):
             logger.info('Bot is ready')
         else:
             logger.info(f'Bot is ready as {user.name}#{user.discriminator}')
+
+    # ---------------------------------------------------------------------------------------------------------------
+
+    async def on_error(self, event_method: str, /, *args: Any, **kwargs: Any) -> None:
+        _, exc, _ = sys.exc_info()
+
+        def extract_guild_id(objects: tuple) -> int | None:
+            for discord_object in objects:
+                if isinstance(discord_object, discord.Guild):
+                    return discord_object.id
+                guild = getattr(discord_object, 'guild', None)
+                if isinstance(guild, discord.Guild):
+                    return guild.id
+                g_id = getattr(discord_object, 'guild_id', None)
+                if isinstance(g_id, int):
+                    return g_id
+            return None
+
+        guild_id = extract_guild_id(args)
+        logger.error(f'Unhandled exception in {event_method} ({guild_id=}):', exc_info=exc)
 
     # ---------------------------------------------------------------------------------------------------------------
 
@@ -136,7 +179,6 @@ def store_command_signature(global_commands: list[dict[str, Any]], admin_command
 ])
 async def reload(interaction: Interaction, cog_name: str, force_sync: bool = False):
     """Reloads a particular cog/all cogs."""
-
     await interaction.response.defer()
 
     cogs_failed: list[str] = []

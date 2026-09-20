@@ -314,24 +314,6 @@ The chain has **not** been broken. Please enter another word.''')
                 # Query only languages where word would be valid.
                 futures = self.common.start_api_queries(word, valid_languages)
 
-            # -----------------------------------
-            # Check repetitions
-            # (Repetitions are not mistakes)
-            # -----------------------------------
-            stmt = select(exists(UsedWordsModel).where(
-                UsedWordsModel.server_id == message.guild.id,
-                UsedWordsModel.game_mode == game_mode.value,
-                UsedWordsModel.word == word
-            ))
-            result: CursorResult = await connection.execute(stmt)
-            word_already_used = result.scalar()
-            if word_already_used:
-                await self.add_reaction(message, '⚠️')
-                await self.send_message_to_channel(message.channel, f'''The word *{word}* has already been used before. \
-The chain has **not** been broken.
-Please enter another word.''')
-                return
-
             # -------------
             # Wrong member
             # -------------
@@ -413,6 +395,24 @@ Restart and try to beat the current high score of **{config.game_state[game_mode
                     await self.send_message_to_channel(message.channel, ''':octagonal_sign: There was an issue in the backend.
 The above entered word is **NOT** being taken into account.''')
                     return
+
+            # -----------------------------------
+            # Check repetitions
+            # (Repetitions are not mistakes)
+            # -----------------------------------
+            stmt = select(exists(UsedWordsModel).where(
+                UsedWordsModel.server_id == message.guild.id,
+                UsedWordsModel.game_mode == game_mode.value,
+                UsedWordsModel.word == word
+            ))
+            result: CursorResult = await connection.execute(stmt)
+            word_already_used = result.scalar()
+            if word_already_used:
+                await self.add_reaction(message, '⚠️')
+                await self.send_message_to_channel(message.channel, f'''The word *{word}* has already been used before. \
+The chain has **not** been broken.
+Please enter another word.''')
+                return
 
             # --------------------
             # Check word score

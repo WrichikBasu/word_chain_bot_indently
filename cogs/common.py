@@ -28,7 +28,8 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from consts import (COG_NAME_COMMON, GLOBAL_BLACKLIST_2_LETTER_WORDS_EN, GLOBAL_BLACKLIST_N_LETTER_WORDS_EN,
                     HISTORY_LENGTH, LOGGER_NAME_COMMON_COG, RELIABLE_ROLE_ACCURACY_THRESHOLD,
-                    RELIABLE_ROLE_KARMA_THRESHOLD, GameMode)
+                    RELIABLE_ROLE_KARMA_THRESHOLD, GameMode, DISCORD_UNKNOWN_ROLE, DISCORD_UNKNOWN_MEMBER,
+                    DISCORD_UNKNOWN_USER)
 from language import Language, LanguageInfo
 from model import BlacklistModel, MemberModel, ServerConfig, ServerConfigModel, WhitelistModel, WordCacheModel
 
@@ -300,9 +301,9 @@ class CommonCog(Cog, name=COG_NAME_COMMON):
         1. Accuracy must be >= `RELIABLE_ROLE_ACCURACY_THRESHOLD`. (Accuracy = correct / (correct + wrong))
         2. Karma must be >= `RELIABLE_ROLE_KARMA_THRESHOLD`
         """
-        try:
-            role = self.server_reliable_roles[guild.id]
-            if role:
+        role = self.server_reliable_roles[guild.id]
+        if role:
+            try:
                 stmt = select(MemberModel.member_id).where(
                     MemberModel.server_id == guild.id,
                     MemberModel.karma > RELIABLE_ROLE_KARMA_THRESHOLD,
@@ -318,15 +319,37 @@ class CommonCog(Cog, name=COG_NAME_COMMON):
                 for member_id in only_db_members:
                     member: Optional[discord.Member] = guild.get_member(member_id)
                     if member:
-                        await member.add_roles(role)
+                        try:
+                            await member.add_roles(role)
+                        except discord.NotFound as e:
+                            if e.code in [DISCORD_UNKNOWN_MEMBER, DISCORD_UNKNOWN_USER]:
+                                # member unavailable, continue
+                                continue
+                            else:
+                                raise
 
                 for member_id in only_role_members:
                     member: Optional[discord.Member] = guild.get_member(member_id)
                     if member:
-                        await member.remove_roles(role)
+                        try:
+                            await member.remove_roles(role)
+                        except discord.NotFound as e:
+                            if e.code in [DISCORD_UNKNOWN_MEMBER, DISCORD_UNKNOWN_USER]:
+                                # member unavailable, continue
+                                continue
+                            else:
+                                raise
 
-        except discord.Forbidden:
-            pass
+            except discord.Forbidden:
+                # no permission to assign roles, nothing we can do here, suppress error
+                pass
+            except discord.NotFound as e:
+                if e.code == DISCORD_UNKNOWN_ROLE:
+                    # role not found, presumably deleted, drop role from cache, suppress error
+                    logger.warning(f'Reliable role {role.id} not found, removing role from cache')
+                    self.server_reliable_roles[guild.id] = None
+                else:
+                    raise
 
     # ---------------------------------------------------------------------------------------------------------------
 
@@ -338,13 +361,13 @@ class CommonCog(Cog, name=COG_NAME_COMMON):
         If `failed_role` is not `None` but `failed_member_id` is `None`, then simply removes
         the failed role from all members who have it currently.
         """
-        try:
-            role = self.server_failed_roles[guild.id]
-            if role:
+        role = self.server_failed_roles[guild.id]
+        if role:
+            try:
                 handled_member = False
                 await self.ensure_config(guild, connection)
                 config = self.server_configs[guild.id]
-                for member in self.server_failed_roles[guild.id].members:
+                for member in role.members:
                     if config.failed_member_id == member.id:
                         # Current failed member already has the failed role, so just continue
                         handled_member = True
@@ -352,21 +375,38 @@ class CommonCog(Cog, name=COG_NAME_COMMON):
                     else:
                         # Either failed_member_id is None, or this member is not the current failed member.
                         # In either case, we have to remove the role.
-                        await member.remove_roles(role)
+                        try:
+                            await member.remove_roles(role)
+                        except discord.NotFound as e:
+                            if e.code in [DISCORD_UNKNOWN_MEMBER, DISCORD_UNKNOWN_USER]:
+                                continue
+                            else:
+                                raise
 
-                if not handled_member and config.failed_member_id:
+                if not handled_member and config.failed_member_id is not None:
                     # Current failed member does not yet have the failed role
                     try:
-                        failed_member: discord.Member = await guild.fetch_member(config.failed_member_id)
+                        failed_member = await guild.fetch_member(config.failed_member_id)
                         await failed_member.add_roles(role)
-                    except discord.NotFound:
-                        # Member is no longer in the server
-                        config.failed_member_id = None
-                        config.correct_inputs_by_failed_member = 0
-                        await config.sync_to_db_with_connection(connection)
+                    except discord.NotFound as e:
+                        if e.code in [DISCORD_UNKNOWN_MEMBER, DISCORD_UNKNOWN_USER]:
+                            # Member is no longer in the server
+                            config.failed_member_id = None
+                            config.correct_inputs_by_failed_member = 0
+                            await config.sync_to_db_with_connection(connection)
+                        else:
+                            raise
 
-        except discord.Forbidden:
-            pass
+            except discord.Forbidden:
+                # no permission to assign roles, nothing we can do here, suppress error
+                pass
+            except discord.NotFound as e:
+                if e.code == DISCORD_UNKNOWN_ROLE:
+                    # role not found, presumably deleted, drop role from cache, suppress error
+                    logger.warning(f'Failed role {role.id} not found, removing role from cache')
+                    self.server_failed_roles[guild.id] = None
+                else:
+                    raise
 
     # ---------------------------------------------------------------------------------------------------------------
 
