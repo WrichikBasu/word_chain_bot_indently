@@ -165,7 +165,7 @@ Therefore, a word that is valid in this server may not be valid in another serve
 
         match status:
             case WordStatus.WORD_EXISTS | WordStatus.WHITELISTED:
-                data = self.common.query_wiktionary_definitions(word, config.languages)
+                data = await self.common.query_wiktionary_definitions(word, config.languages)
 
                 if data is None:
                     emb.description = f'⚠️ There was an issue in processing your request.'
@@ -678,10 +678,8 @@ as it will allow more people discover it!
                 match game_mode:
                     case GameMode.NORMAL:
                         high_score_column = ServerConfigModel.high_score
-                        game_mode_name = 'Normal Mode'
                     case GameMode.HARD:
                         high_score_column = ServerConfigModel.hard_mode_high_score
-                        game_mode_name = 'Hard Mode'
 
                 stmt = (select(ServerConfigModel.server_id, high_score_column)
                         .where(
@@ -695,7 +693,7 @@ as it will allow more people discover it!
                     title=f'Top 10 servers by highscore',
                     color=Colour.blue(),
                     description=''
-                ).set_author(name=f'Global ({game_mode_name})')
+                ).set_author(name=f'Global ({game_mode.display_name} Mode)')
 
                 result: CursorResult = await connection.execute(stmt)
                 data: Sequence[Row[tuple[int, int]]] = result.fetchall()
@@ -739,7 +737,7 @@ as it will allow more people discover it!
                 return
 
             server_stats_embed = Embed(
-                description=f'''Game Mode: {'Normal' if game_mode == GameMode.NORMAL else 'Hard'}
+                description=f'''Game Mode: {game_mode.display_name}
 Current Chain Length: {config.game_state[game_mode].current_count}
 Longest chain length: {config.game_state[game_mode].high_score}
 {f"**Last word:** {config.game_state[game_mode].current_word}" if config.game_state[game_mode].current_word else ""}

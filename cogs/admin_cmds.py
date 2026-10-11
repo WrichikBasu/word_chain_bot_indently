@@ -9,7 +9,6 @@ from logging import Logger
 from logging.config import fileConfig
 from typing import TYPE_CHECKING, Optional
 
-import discord
 from discord import Colour, Embed, File, Forbidden, Interaction, Object, Permissions, app_commands
 from discord.ext.commands import Cog
 from sqlalchemy import CursorResult, delete, insert, select
@@ -101,7 +100,7 @@ class AdminCommandsCog(Cog, name=COG_NAME_ADMIN_CMDS):
         except KeyError:
             items.append('Server config not present in cache!\n')
 
-        async with self.bot.db_connection() as connection:
+        async with self.bot.db_connection(locked=False) as connection:
             stmt = select(ServerConfigModel).where(
                 ServerConfigModel.server_id == guild_id_as_number
             )
@@ -125,7 +124,7 @@ class AdminCommandsCog(Cog, name=COG_NAME_ADMIN_CMDS):
         bot_member = guild.get_member(self.bot.user.id)
         config = self.common.server_configs[guild.id]
 
-        items.extend(self.common.permission_checks_for_config(config, bot_member))
+        items.extend(self.common.health_checks_for_config(config, bot_member))
 
         await interaction.followup.send('\n'.join(items))
 
@@ -578,7 +577,7 @@ class AdminCommandsCog(Cog, name=COG_NAME_ADMIN_CMDS):
 
             await interaction.response.defer()
 
-            async with self.cog.bot.db_connection() as connection:
+            async with self.cog.bot.db_connection(locked=False) as connection:
                 stmt = select(ServerConfigModel.server_id).where(ServerConfigModel.is_banned)
                 result = await connection.execute(stmt)
                 server_ids = [row[0] for row in result]
@@ -799,7 +798,7 @@ class AdminCommandsCog(Cog, name=COG_NAME_ADMIN_CMDS):
 
             await interaction.response.defer()
 
-            async with self.cog.bot.db_connection() as connection:
+            async with self.cog.bot.db_connection(locked=False) as connection:
                 stmt = select(BannedMemberModel.member_id)
                 result = await connection.execute(stmt)
                 member_ids = [row[0] for row in result]

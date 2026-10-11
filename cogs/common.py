@@ -1,35 +1,32 @@
 """Cog that contains common logic and infrastructure."""
 from __future__ import annotations
 
-import concurrent.futures
+import asyncio
 import inspect
 import logging
 import os
 import re
-from asyncio import CancelledError
 from collections import defaultdict, deque
-from concurrent.futures import Future
 from enum import Enum
-from json import JSONDecodeError
 from logging.config import fileConfig
 from typing import TYPE_CHECKING, List, Optional
 
+import aiohttp
 import discord
+from aiohttp import ClientConnectionError, ClientSession, ClientTimeout
 from bs4 import BeautifulSoup
-from discord import Guild, Permissions, Member
+from discord import Guild, Member, Permissions
 from discord.ext import commands
 from discord.ext.commands import Cog
 from pydantic import BaseModel, ConfigDict, RootModel, field_validator
 from pydantic.alias_generators import to_camel
-from requests_futures.sessions import FuturesSession
 from sqlalchemy import CursorResult, and_, exists, insert, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from consts import (COG_NAME_COMMON, GLOBAL_BLACKLIST_2_LETTER_WORDS_EN, GLOBAL_BLACKLIST_N_LETTER_WORDS_EN,
-                    HISTORY_LENGTH, LOGGER_NAME_COMMON_COG, RELIABLE_ROLE_ACCURACY_THRESHOLD,
-                    RELIABLE_ROLE_KARMA_THRESHOLD, GameMode, DISCORD_UNKNOWN_ROLE, DISCORD_UNKNOWN_MEMBER,
-                    DISCORD_UNKNOWN_USER)
+from consts import (COG_NAME_COMMON, DISCORD_UNKNOWN_MEMBER, DISCORD_UNKNOWN_ROLE, DISCORD_UNKNOWN_USER,
+                    GLOBAL_BLACKLIST_2_LETTER_WORDS_EN, GLOBAL_BLACKLIST_N_LETTER_WORDS_EN, HISTORY_LENGTH,
+                    LOGGER_NAME_COMMON_COG, RELIABLE_ROLE_ACCURACY_THRESHOLD, RELIABLE_ROLE_KARMA_THRESHOLD, GameMode)
 from language import Language, LanguageInfo
 from model import BlacklistModel, MemberModel, ServerConfig, ServerConfigModel, WhitelistModel, WordCacheModel
 
@@ -42,9 +39,6 @@ logger = logging.getLogger(LOGGER_NAME_COMMON_COG)
 
 class CommonCog(Cog, name=COG_NAME_COMMON):
 
-    API_RESPONSE_WORD_EXISTS: int = 1
-    API_RESPONSE_WORD_DOESNT_EXIST: int = 0
-    API_RESPONSE_ERROR: int = -1
 
     def __init__(self, bot: WordChainBot):
         self.bot: WordChainBot = bot
@@ -81,13 +75,6 @@ class CommonCog(Cog, name=COG_NAME_COMMON):
                 self.bot.tree.remove_command(command.name)
 
         logger.info(f'Cog {self.qualified_name} unloaded.')
-
-    # ---------------------------------------------------------------------------------------------------------------
-
-    @commands.Cog.listener()
-    async def on_command_error(self, ctx: commands.Context, error: commands.CommandError) -> None:
-        if isinstance(error, commands.CommandNotFound):
-            return
 
     # ---------------------------------------------------------------------------------------------------------------
 
@@ -130,11 +117,15 @@ class CommonCog(Cog, name=COG_NAME_COMMON):
 
             if config.game_state[game_mode].current_word:
                 emb.add_field(name='Last valid word', value=f'{config.game_state[game_mode].current_word}', inline=True)
+                token = config.game_state[game_mode].current_word[-game_mode.value:]
+                emb.description += f'Continue with a word starting with `{token}`\n'
 
                 if config.game_state[game_mode].last_member_id:
                     member: Optional[discord.Member] = channel.guild.get_member(config.game_state[game_mode].last_member_id)
                     if member:
                         emb.add_field(name='Last input by', value=f'{member.mention}', inline=True)
+
+            emb.add_field(name='Game mode', value=f'{game_mode.display_name} Mode', inline=True)
 
             try:
                 await channel.send(embed=emb)
@@ -167,6 +158,7 @@ class CommonCog(Cog, name=COG_NAME_COMMON):
                 stmt = insert(ServerConfigModel).values(**new_config.to_sqlalchemy_dict())
                 await _connection.execute(stmt)
                 self.server_configs[new_config.server_id] = new_config
+                self.servers_ready.add(new_config.server_id)
                 logger.warning(f'ensure_config for guild {_guild_id}: new config created')
                 logger.warning(f'trace: {caller_function_name} at {caller_filename}:{caller_lineno} for {guild.id} (shard {guild.shard_id})')
             except SQLAlchemyError as e:
@@ -432,95 +424,74 @@ class CommonCog(Cog, name=COG_NAME_COMMON):
     # ---------------------------------------------------------------------------------------------------------------
 
     @staticmethod
-    def start_api_queries(word: str, languages: List[Language]) -> List[Future]:
+    async def query_wiktionary_titles(session: ClientSession, word: str, language_code: str) -> list[str] | None:
         """
-        Starts Wiktionary API queries in the background to find the given word, in each of the
-        given languages.
+        Queries the Wiktionary API of the given language for the titles of all pages matching the given word,
+        regardless of capitalization.
+
+        Wiktionary page titles are case-sensitive, so the common capitalizations are looked up as exact titles.
+        Other capitalizations (e.g. with capitals inside the word) are covered by the prefix search, which is
+        case-insensitive, but only returns a limited number of results in an order we cannot influence.
 
         Parameters
         ----------
+        session : ClientSession
+            The session to send the request with.
         word : str
-             The word to be searched for.
-        languages : list[Language]
-             A list of languages to search in.
+            The word to be searched for.
+        language_code : str
+            The code of the Wiktionary to search in.
 
         Returns
         -------
-        list[concurrent.futures.Future]
-              A list of Future objects for the API query, one for each language.
+        list[str] | None
+            The titles of the existing pages matching the word, or None if the query failed.
         """
-        futures: List[Future] = []
+        variants: list[str] = list(dict.fromkeys([word, word.lower(), word.capitalize(), word.upper()]))
 
-        for language in languages:
+        url: str = f"https://{language_code}.wiktionary.org/w/api.php"
+        params: dict = {
+            "action": "query",
+            "format": "json",
+            "formatversion": "2",
+            "titles": '|'.join(variants),
+            "list": "prefixsearch",
+            "pssearch": word,
+            "psnamespace": "0",
+            "pslimit": "7",
+            "psprofile": "strict"
+        }
 
-            url: str = f"https://{language.value.code}.wiktionary.org/w/api.php"
-            params: dict = {
-                "action": "opensearch",
-                "namespace": "0",
-                "search": word,
-                "limit": "7",
-                "format": "json",
-                "profile": "strict"
-            }
-            headers: dict = {
-                "User-Agent": "word-chain-bot"
-            }
-
-            session: FuturesSession = FuturesSession()
-            future: Future = session.get(url=url, params=params, headers=headers)
-            futures.append(future)
-
-        return futures
-
-    # ---------------------------------------------------------------------------------------------------------------
-
-    @staticmethod
-    def get_query_response(future: concurrent.futures.Future) -> int:
-        """
-        Get the result of a query that was started in the background.
-
-        Parameters
-        ----------
-        future : concurrent.futures.Future
-            The Future object corresponding to the started API query.
-
-        Returns
-        -------
-        int
-            `WordChainBot.API_RESPONSE_WORD_EXISTS` is the word exists,
-            `WordChainBot.API_RESPONSE_WORD_DOESNT_EXIST` if the word does not exist, or
-            `WordChainBot.API_RESPONSE_ERROR` if an error (of any type) was raised in the query.
-        """
         try:
-            response = future.result(timeout=5)
+            async with session.get(url=url, params=params) as response:
+                if response.status >= 400:
+                    logger.error(f'Received status code {response.status} from {language_code} Wiktionary API query.')
+                    return None
 
-            if response.status_code >= 400:
-                logger.error(f'Received status code {response.status_code} from Wiktionary API query.')
-                return CommonCog.API_RESPONSE_ERROR
+                data = await response.json()
+                if 'error' in data:
+                    logger.error(f'Received error from {language_code} Wiktionary API query: {data["error"]}')
+                    return None
 
-            data = response.json()
-            word: str = data[0]
-            matches: list[str] = data[1]
-            # causes StopIteration if nothing matches
-            _: str = next((match for match in matches if match.lower() == word.lower()))
+                titles: list[str] = [page['title'] for page in data['query']['pages'] if not page.get('missing', False)]
+                titles += [match['title'] for match in data['query']['prefixsearch']
+                           if match['title'].lower() == word.lower()]
+                return list(dict.fromkeys(titles))
 
-            return CommonCog.API_RESPONSE_WORD_EXISTS
-
-        except StopIteration:
-            return CommonCog.API_RESPONSE_WORD_DOESNT_EXIST
-        except TimeoutError:  # Send bot.API_RESPONSE_ERROR
-            logger.error('Timeout error raised when trying to get the query result.')
+        except TimeoutError:
+            logger.error(f'Timeout error raised when trying to get the {language_code} query result.')
+        except ClientConnectionError:
+            logger.error(f'Connection failed when trying to get the {language_code} query result.')
         except Exception as ex:
-            logger.error(f'An exception was raised while getting the query result:\n{ex}')
-
-        return CommonCog.API_RESPONSE_ERROR
+            logger.error(f'An exception was raised while getting the {language_code} query result:\n{ex}')
+        return None
 
     # ---------------------------------------------------------------------------------------------------------------
 
     @staticmethod
-    def query_wiktionary_definitions(word: str, languages: List[Language]) -> dict[Language, list[Definition]] | None:
+    async def query_wiktionary_existence(word: str, languages: list[Language]) -> dict[Language, ApiResponse]:
         """
-        Queries the wiktionary API to find the definition of a given word for given languages.
+        Queries the Wiktionary API of each given language in parallel to find the given word.
 
         Parameters
         ----------
@@ -531,91 +502,119 @@ class CommonCog(Cog, name=COG_NAME_COMMON):
 
         Returns
         -------
-        list[concurrent.futures.Future]
-              A list of Future objects for the API query, one for each language.
+        dict[Language, ApiResponse]
+            For each language the result of its query.
         """
-        # Create common variations because wiktionary is case-sensitive
-        variations = set()
-        variations.add(word)
-        variations.add(word.lower())
-        variations.add(word.upper())
-        variations.add(word.capitalize())
+        headers: dict = {
+            "User-Agent": "word-chain-bot"
+        }
 
+        async def fetch(s: ClientSession, language: Language) -> ApiResponse:
+            titles: list[str] | None = await CommonCog.query_wiktionary_titles(s, word, language.value.code)
+            if titles is None:
+                return ApiResponse.ERROR
+            return ApiResponse.WORD_EXISTS if titles else ApiResponse.WORD_DOESNT_EXIST
+
+        async with aiohttp.ClientSession(headers=headers, timeout=ClientTimeout(total=5)) as session:
+            responses = await asyncio.gather(*(fetch(session, language) for language in languages))
+
+        return dict(zip(languages, responses))
+
+    # ---------------------------------------------------------------------------------------------------------------
+
+    @staticmethod
+    async def query_wiktionary_definitions(word: str, languages: List[Language]) -> dict[Language, list[Definition]] | None:
+        """
+        Queries the Wiktionary API to find the definition of a given word for given languages.
+
+        First, the titles of all pages matching the word are looked up, then the definitions are fetched for those
+        pages only.
+
+        Parameters
+        ----------
+        word : str
+             The word to be searched for.
+        languages : list[Language]
+             A list of languages to search in.
+
+        Returns
+        -------
+        dict[Language, list[Definition]] | None
+              The definitions found per language, or None if the queries failed.
+        """
         result: dict[Language, list[Definition]] = {}
-        failed = 0
 
-        for variation in sorted(variations, reverse=True):
-            url: str = f"https://en.wiktionary.org/api/rest_v1/page/definition/{variation}?redirect=true"
-            headers: dict = {
-                "User-Agent": "word-chain-bot"
-            }
+        headers: dict = {
+            "User-Agent": "word-chain-bot"
+        }
 
-            session: FuturesSession = FuturesSession()
-            future: Future = session.get(url=url, headers=headers)
+        async def fetch(s: ClientSession, title: str) -> DefinitionResult | None:
+            url: str = f"https://en.wiktionary.org/api/rest_v1/page/definition/{title}?redirect=true"
 
             try:
-                response = future.result(5)
-
-                if response.status_code == 200:
-                    data = response.json()
-                    converted = DefinitionResult.model_validate(data)
-
-                    for language in languages:
-                        if language.value.code in converted.root:
-                            if language in result:
-                                result[language].extend(converted.root[language.value.code])
-                            else:
-                                result[language] = converted.root[language.value.code]
+                async with s.get(url=url) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        return DefinitionResult.model_validate(data)
+                    if response.status == 404:
+                        # page exists, but no definitions could be extracted from it
+                        return DefinitionResult.model_validate({})
+                    logger.error(f'Received status code {response.status} from definition query for "{title}".')
+                    return None
 
             except TimeoutError:
                 logger.error('Timeout error raised when trying to get the definition query result.')
-                failed += 1
+            except ClientConnectionError:
+                logger.error('Connection failed when trying to get the definition query result.')
             except Exception as ex:
                 logger.error(f'An exception was raised while getting the definition query result:\n{ex}')
-                failed += 1
+            return None
 
-        if len(variations) == failed:
+        async with aiohttp.ClientSession(headers=headers, timeout=ClientTimeout(total=5)) as session:
+            # the definitions endpoint is only available in the English Wiktionary, which covers all languages
+            titles: list[str] | None = await CommonCog.query_wiktionary_titles(session, word, 'en')
+            if titles is None:
+                return None
+
+            responses = await asyncio.gather(*(fetch(session, title) for title in titles))
+
+        if titles and all(converted is None for converted in responses):
             # if all failed, there must be an issue, thus we return None here
             return None
-        else:
-            return result
+
+        for converted in responses:
+            converted: DefinitionResult | None
+            if converted is None:
+                continue
+            for language in languages:
+                if language.value.code in converted.root:
+                    if language in result:
+                        result[language].extend(converted.root[language.value.code])
+                    else:
+                        result[language] = converted.root[language.value.code]
+
+        return result
 
     # ---------------------------------------------------------------------------------------------------------------
 
     @staticmethod
-    async def add_words_to_cache(futures: List[Future], connection: AsyncConnection) -> None:
+    async def add_existing_words_to_cache(word: str, responses: dict[Language, ApiResponse],
+                                          connection: AsyncConnection) -> None:
         """
-        From the given list of Future objects, get the results of the queries and
-        add the words that were found to the cache.
+        Adds the given word to the cache for every language it was found in.
 
         Parameters
         ----------
-        futures : List[Future]
-            A list of Future objects for the API queries.
+        word : str
+            The word that was queried.
+        responses : dict[Language, ApiResponse]
+            The query results per language, as returned by `query_word_existence`.
         connection : AsyncConnection
             The AsyncConnection object to access the db.
         """
-        future: Future
-        for future in futures:
-            try:
-                response = future.result(timeout=5)
-
-                if response.status_code >= 400:
-                    continue
-
-                data = response.json()
-                word: str = data[0]
-                matches: list[str] = data[1]
-                # causes StopIteration if nothing matches
-                _: str = next((match for match in matches if match.lower() == word.lower()))
-
-                lang_code: str = (data[3][0]).split('//')[1].split('.')[0]
-                language: Language = Language.from_language_code(lang_code)
-
+        for language, response in responses.items():
+            if response == ApiResponse.WORD_EXISTS:
                 await CommonCog.add_word_to_cache(word, language, connection)
-
-            except (IndexError, TimeoutError, CancelledError, JSONDecodeError, StopIteration):
-                continue
 
     # ---------------------------------------------------------------------------------------------------------------
 
@@ -801,7 +800,7 @@ class CommonCog(Cog, name=COG_NAME_COMMON):
         if not valid_languages:
             return WordStatus.NO_LANGUAGE_MATCH
 
-        async with self.bot.db_connection() as connection:
+        async with self.bot.db_connection(locked=False) as connection:
             if await self.is_word_whitelisted(word, guild.id, connection):
                 return WordStatus.WHITELISTED
 
@@ -811,25 +810,18 @@ class CommonCog(Cog, name=COG_NAME_COMMON):
             if await self.is_word_in_cache(word, connection, languages):
                 return WordStatus.WORD_EXISTS
 
-            futures: list[Future] = self.start_api_queries(word, valid_languages)
+        responses: dict[Language, ApiResponse] = await self.query_wiktionary_existence(word, valid_languages)
 
-            status = WordStatus.ERROR
-            for future in futures:
-                query_response_code = self.get_query_response(future)
+        # existing in one language wins, otherwise an error in any language makes the result unreliable
+        if ApiResponse.WORD_EXISTS in responses.values():
+            async with self.bot.db_connection() as connection:
+                await self.add_existing_words_to_cache(word, responses, connection)
+                await connection.commit()
+            return WordStatus.WORD_EXISTS
 
-                if query_response_code == self.API_RESPONSE_WORD_EXISTS:
-                    status = WordStatus.WORD_EXISTS
-
-                if query_response_code == self.API_RESPONSE_WORD_DOESNT_EXIST:
-                    status = WordStatus.WORD_DOESNT_EXIST
-
-                if query_response_code == self.API_RESPONSE_ERROR:
-                    status = WordStatus.ERROR
-
-            await self.add_words_to_cache(futures, connection)
-            await connection.commit()
-
-            return status
+        if ApiResponse.ERROR in responses.values():
+            return WordStatus.ERROR
+        return WordStatus.WORD_DOESNT_EXIST
 
     # ---------------------------------------------------------------------------------------------------------------
 
@@ -857,10 +849,12 @@ class CommonCog(Cog, name=COG_NAME_COMMON):
 
     # ---------------------------------------------------------------------------------------------------------------
 
-    @staticmethod
-    def permission_checks_for_config(config: ServerConfig | None, bot_member: Member) -> list[str]:
+    def health_checks_for_config(self, config: ServerConfig | None, bot_member: Member) -> list[str]:
         items = []
         guild = bot_member.guild
+
+        items.append(f'Guild status ready: {'✅' if guild.id in self.servers_ready else 
+            '❌ (if this flag is stuck for more than an hour, please report it on our support server)'}\n')
 
         def permission_check_strings(permissions: Permissions) -> list[str]:
             return [f'Can view channels: {'✅' if permissions.view_channel else '❌'}',
@@ -918,6 +912,12 @@ class Definition(BaseModel):
     )
 
 DefinitionResult = RootModel[dict[str, list[Definition]]]
+
+
+class ApiResponse(Enum):
+    WORD_EXISTS = 1
+    WORD_DOESNT_EXIST = 0
+    ERROR = -1
 
 
 class WordStatus(Enum):

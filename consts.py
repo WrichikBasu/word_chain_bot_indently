@@ -12,6 +12,10 @@ class GameMode(Enum):
     NORMAL = 1
     HARD = 2
 
+    @property
+    def display_name(self) -> str:
+        return self.name.capitalize()
+
 
 # settings class exists here directly and not in model.py to avoid cyclic imports
 class Settings(BaseSettings):

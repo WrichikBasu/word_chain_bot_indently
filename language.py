@@ -27,6 +27,7 @@ IT_REGEX: str = build_regex('[a-zàèéìíîòóùú]', '[-]|[a-zàèéìíîò
 NN_REGEX: str = build_regex('[a-zæøåé]', '[-]|[a-zæøåé]', '[a-zæøåé]')  # north germanic (danish, norwegian)
 SV_REGEX: str = build_regex('[a-zåäö]', '[-]|[a-zåäöé]', '[a-zåäöé]')
 IS_REGEX: str = build_regex('[a-záéíóúýþæö]', '[-]|[a-záéíóúýþæöð]', '[a-záéíóúýþæöð]')  # icelandic
+FI_REGEX: str = build_regex('[a-zäö]', '[-]|[a-zäö]', '[a-zäö]')  # finnish
 PL_REGEX: str = build_regex('[a-ząćęłńóśźż]', '[-]|[a-ząćęłńóśźż]', '[a-ząćęłńóśźż]')
 CS_REGEX: str = build_regex('[a-záčďéíňóřšťúýž]', '[-]|[a-záčďéěíňóřšťúůýž]', '[a-záčďéěíňóřšťůýž]')  # czech
 SK_REGEX: str = build_regex('[a-záčďéíľňóôšťúýž]', '[-]|[a-záäčďéíĺľňóôŕšťúýž]', '[a-záäčďéíľňóšťúýž]')  # slovak
@@ -92,6 +93,7 @@ DA_FIRST_TOKEN_SCORES: dict[GameMode, defaultdict[str, float]] = load_token_scor
 NO_FIRST_TOKEN_SCORES: dict[GameMode, defaultdict[str, float]] = load_token_scores_from_json('no')
 SV_FIRST_TOKEN_SCORES: dict[GameMode, defaultdict[str, float]] = load_token_scores_from_json('sv')
 IS_FIRST_TOKEN_SCORES: dict[GameMode, defaultdict[str, float]] = load_token_scores_from_json('is')
+FI_FIRST_TOKEN_SCORES: dict[GameMode, defaultdict[str, float]] = load_token_scores_from_json('fi')
 PL_FIRST_TOKEN_SCORES: dict[GameMode, defaultdict[str, float]] = load_token_scores_from_json('pl')
 CS_FIRST_TOKEN_SCORES: dict[GameMode, defaultdict[str, float]] = load_token_scores_from_json('cs')
 SK_FIRST_TOKEN_SCORES: dict[GameMode, defaultdict[str, float]] = load_token_scores_from_json('sk')
@@ -120,6 +122,7 @@ class Language(Enum):
     NORWEGIAN = LanguageInfo(code='no', code_long="nor", allowed_word_regex=NN_REGEX, first_token_scores=NO_FIRST_TOKEN_SCORES)
     SWEDISH = LanguageInfo(code='sv', code_long="swe", allowed_word_regex=SV_REGEX, first_token_scores=SV_FIRST_TOKEN_SCORES)
     ICELANDIC = LanguageInfo(code='is', code_long="isl", allowed_word_regex=IS_REGEX, first_token_scores=IS_FIRST_TOKEN_SCORES)
+    FINNISH = LanguageInfo(code='fi', code_long="fin", allowed_word_regex=FI_REGEX, first_token_scores=FI_FIRST_TOKEN_SCORES)
     POLISH = LanguageInfo(code='pl', code_long="pol", allowed_word_regex=PL_REGEX, first_token_scores=PL_FIRST_TOKEN_SCORES)
     CZECH = LanguageInfo(code='cs', code_long="ces", allowed_word_regex=CS_REGEX, first_token_scores=CS_FIRST_TOKEN_SCORES)
     SLOVAK = LanguageInfo(code='sk', code_long="slk", allowed_word_regex=SK_REGEX, first_token_scores=SK_FIRST_TOKEN_SCORES)
