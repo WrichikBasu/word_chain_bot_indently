@@ -26,7 +26,8 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from consts import (COG_NAME_COMMON, DISCORD_UNKNOWN_MEMBER, DISCORD_UNKNOWN_ROLE, DISCORD_UNKNOWN_USER,
                     GLOBAL_BLACKLIST_2_LETTER_WORDS_EN, GLOBAL_BLACKLIST_N_LETTER_WORDS_EN, HISTORY_LENGTH,
-                    LOGGER_NAME_COMMON_COG, RELIABLE_ROLE_ACCURACY_THRESHOLD, RELIABLE_ROLE_KARMA_THRESHOLD, GameMode)
+                    LOGGER_NAME_COMMON_COG, RELIABLE_ROLE_ACCURACY_THRESHOLD, RELIABLE_ROLE_KARMA_THRESHOLD, USER_AGENT,
+                    GameMode)
 from language import Language, LanguageInfo
 from model import BlacklistModel, MemberModel, ServerConfig, ServerConfigModel, WhitelistModel, WordCacheModel
 
@@ -506,7 +507,7 @@ class CommonCog(Cog, name=COG_NAME_COMMON):
             For each language the result of its query.
         """
         headers: dict = {
-            "User-Agent": "word-chain-bot"
+            "User-Agent": USER_AGENT
         }
 
         async def fetch(s: ClientSession, language: Language) -> ApiResponse:
@@ -545,7 +546,7 @@ class CommonCog(Cog, name=COG_NAME_COMMON):
         result: dict[Language, list[Definition]] = {}
 
         headers: dict = {
-            "User-Agent": "word-chain-bot"
+            "User-Agent": USER_AGENT
         }
 
         async def fetch(s: ClientSession, title: str) -> DefinitionResult | None:

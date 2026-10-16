@@ -38,6 +38,9 @@ DISCORD_UNKNOWN_ROLE: int = 10011
 DISCORD_UNKNOWN_USER: int = 10013
 """Discord error code for unknown user (account deleted)"""
 
+USER_AGENT: str = "word-chain-bot (https://github.com/WrichikBasu/word_chain_bot_indently)"
+"""User-Agent for external API requests."""
+
 # Names of individual cogs
 COG_NAME_COMMON: str = "common"
 COG_NAME_ADMIN_CMDS: str = "admin_cmds"
