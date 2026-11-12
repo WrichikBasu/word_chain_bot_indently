@@ -142,6 +142,28 @@ class Language(Enum):
         else:
             raise ValueError(f'no language found for code "{code}"')
 
+    @classmethod
+    def from_name(cls, name: str):
+        matches = [e for e in cls if e.display_name.lower() == name.lower()]
+        if matches:
+            return matches[0]
+        else:
+            raise ValueError(f'no language found for name "{name}"')
+
+    @classmethod
+    def from_language_code_or_name(cls, code_or_name: str):
+        try:
+            return cls.from_language_code(code_or_name.lower())
+        except ValueError:
+            pass
+
+        try:
+            return cls.from_name(code_or_name.lower())
+        except ValueError:
+            pass
+
+        raise ValueError(f'no language found for code or name "{code_or_name}"')
+
     @property
     def display_name(self):
         """
