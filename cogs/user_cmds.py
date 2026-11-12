@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-import time
 from collections import defaultdict
 from logging.config import fileConfig
 from typing import TYPE_CHECKING, Optional, Sequence
@@ -17,6 +16,7 @@ from sqlalchemy.sql.functions import count
 from cogs.common import WordStatus
 from consts import (COG_NAME_COMMON, COG_NAME_USER_CMDS, LOGGER_NAME_USER_COG, MISTAKE_PENALTY,
                     RELIABLE_ROLE_ACCURACY_THRESHOLD, RELIABLE_ROLE_KARMA_THRESHOLD, SETTINGS, GameMode)
+from errors import CogUnavailableError
 from language import Language
 from model import BannedMemberModel, Member, MemberModel, ServerConfig, ServerConfigModel
 from views.dropdown import Dropdown
@@ -38,11 +38,9 @@ class UserCommandsCog(Cog, name=COG_NAME_USER_CMDS):
 
     @property
     def common(self) -> CommonCog:
-        for _ in range(5):
-            if (cog := self.bot.get_cog(COG_NAME_COMMON)) is not None:
-                return cog # noqa
-            time.sleep(.2)
-        raise ValueError(f'Cog {COG_NAME_COMMON} not found')
+        if (cog := self.bot.get_cog(COG_NAME_COMMON)) is None:
+            raise CogUnavailableError(COG_NAME_COMMON)
+        return cog # noqa
 
     # ---------------------------------------------------------------------------------------------------------------
 

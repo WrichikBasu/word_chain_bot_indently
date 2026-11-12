@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, create_async_en
 
 from consts import (COG_NAME_ADMIN_CMDS, COG_NAME_COMMON, COG_NAME_GAME, COG_NAME_MANAGER_CMDS, COG_NAME_USER_CMDS,
                     COGS_LIST, LOGGER_NAME_MAIN, SETTINGS)
+from errors import COG_UNAVAILABLE_MESSAGE, CogUnavailableError
 
 # load logging config from alembic file because it would be loaded anyway when using alembic
 fileConfig(fname='config.ini')
@@ -27,15 +28,21 @@ class WordChainCommandTree(app_commands.CommandTree):
     async def on_error(self, interaction: Interaction, error: app_commands.AppCommandError, /) -> None:
         original = getattr(error, 'original', error)  # unwrap CommandInvokeError
         command = interaction.command.qualified_name if interaction.command else 'unknown'
-        logger.error(
-            f'Unhandled {type(original).__name__} in /{command} '
-            f'(guild {interaction.guild_id}, channel {interaction.channel_id}, '
-            f'user {interaction.user.id})',
-            exc_info=original,
-        )
 
-        error_embed = Embed(title='Error', colour=Colour.red(),
-                            description='Something went wrong.')
+        if isinstance(original, CogUnavailableError):
+            # expected while a cog is reloading, so no stacktrace needed
+            logger.warning(f'/{command} called while cog {original.cog_name} was unavailable (guild {interaction.guild_id})')
+            error_embed = Embed(title='Updating', colour=Colour.orange(), description=COG_UNAVAILABLE_MESSAGE)
+        else:
+            logger.error(
+                f'Unhandled {type(original).__name__} in /{command} '
+                f'(guild {interaction.guild_id}, channel {interaction.channel_id}, '
+                f'user {interaction.user.id})',
+                exc_info=original,
+            )
+            error_embed = Embed(title='Error', colour=Colour.red(),
+                                description='Something went wrong.')
+
         try:
             if interaction.response.is_done():
                 await interaction.followup.send(embed=error_embed, ephemeral=True)
@@ -83,7 +90,13 @@ class WordChainBot(AutoShardedBot):
     # ---------------------------------------------------------------------------------------------------------------
 
     async def on_error(self, event_method: str, /, *args: Any, **kwargs: Any) -> None:
+        # any unhandled error that escapes an event listener (e.g. on_message)
         _, exc, _ = sys.exc_info()
+
+        # expected while a cog is reloading, events like on_message are simply dropped in that case
+        if isinstance(exc, CogUnavailableError):
+            logger.debug(f'Dropped {event_method} because cog {exc.cog_name} was unavailable')
+            return
 
         def extract_guild_id(objects: tuple) -> int | None:
             for discord_object in objects:

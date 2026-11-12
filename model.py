@@ -114,6 +114,15 @@ class ServerConfig(BaseModel):
     is_banned: bool = False
     languages: List[Language] = Field(default_factory=lambda: [Language.ENGLISH])
 
+    def game_mode_by_channel(self, channel_id: int) -> Optional[GameMode]:
+        """
+        Returns the game mode that is played in given channel, or None if it is not a game channel.
+        """
+        for game_mode in GameMode:
+            if self.game_state[game_mode].channel_id == channel_id:
+                return game_mode
+        return None
+
     def fail_chain(self, game_mode: GameMode, member_id: int) -> None:
         """
         Resets the stats because a mistake was made.

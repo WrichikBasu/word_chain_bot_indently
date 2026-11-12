@@ -6,6 +6,8 @@ import discord.ui
 import uuid6
 from discord import Interaction
 
+from errors import COG_UNAVAILABLE_MESSAGE, CogUnavailableError
+
 
 class Dropdown(discord.ui.Select):
     """
@@ -73,7 +75,10 @@ class Dropdown(discord.ui.Select):
 
     async def callback(self, interaction: discord.Interaction) -> NoReturn:
         await interaction.response.defer()
-        await self._callback_func(self, interaction)
+        try:
+            await self._callback_func(self, interaction)
+        except CogUnavailableError:
+            await interaction.followup.send(COG_UNAVAILABLE_MESSAGE, ephemeral=True)
 
     # ---------------------------------------------------------------------------------------------------------------
 

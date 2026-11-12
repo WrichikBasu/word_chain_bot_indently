@@ -4,7 +4,6 @@ from __future__ import annotations
 import io
 import json
 import logging
-import time
 from logging import Logger
 from logging.config import fileConfig
 from typing import TYPE_CHECKING, Optional
@@ -16,6 +15,7 @@ from sqlalchemy import CursorResult, delete, insert, select
 from consts import (COG_NAME_ADMIN_CMDS, COG_NAME_COMMON, LOGGER_NAME_ADMIN_COG, LOGGER_NAME_COMMON_COG,
                     LOGGER_NAME_GAME_COG, LOGGER_NAME_MAIN, LOGGER_NAME_MANAGER_COG, LOGGER_NAME_USER_COG, LOGGERS_LIST,
                     SETTINGS, GameMode)
+from errors import CogUnavailableError
 from model import (BannedMemberModel, BlacklistModel, MemberModel, ServerConfig, ServerConfigModel, UsedWordsModel,
                    WhitelistModel)
 
@@ -40,12 +40,9 @@ class AdminCommandsCog(Cog, name=COG_NAME_ADMIN_CMDS):
 
     @property
     def common(self) -> CommonCog:
-        for _ in range(5):
-            cog: CommonCog | None = self.bot.get_cog(COG_NAME_COMMON) # noqa
-            if cog is not None:
-                return cog # noqa
-            time.sleep(.2)
-        raise ValueError(f'Cog {COG_NAME_COMMON} not found')
+        if (cog := self.bot.get_cog(COG_NAME_COMMON)) is None:
+            raise CogUnavailableError(COG_NAME_COMMON)
+        return cog # noqa
 
     # -----------------------------------------------------------------------------------------------------------------
 
